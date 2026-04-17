@@ -1,0 +1,125 @@
+import type { PrismaClient, QuoteVersionStatus } from "@prisma/client";
+
+/** Highest `versionNumber` for the quote; list/detail use the same rule. */
+export type CommercialQuoteShellLatestVersionDto = {
+  id: string;
+  versionNumber: number;
+  status: QuoteVersionStatus;
+  proposalGroupCount: number;
+};
+
+export type CommercialQuoteShellSummaryDto = {
+  quote: { id: string; quoteNumber: string; createdAt: string };
+  customer: { id: string; name: string };
+  flowGroup: { id: string; name: string };
+  latestQuoteVersion: CommercialQuoteShellLatestVersionDto | null;
+};
+
+const DEFAULT_LIST_LIMIT = 50;
+const MAX_LIST_LIMIT = 100;
+
+export function clampQuoteShellListLimit(raw: string | null): number {
+  if (raw == null || raw === "") {
+    return DEFAULT_LIST_LIMIT;
+  }
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 1) {
+    return DEFAULT_LIST_LIMIT;
+  }
+  return Math.min(n, MAX_LIST_LIMIT);
+}
+
+function mapRow(row: {
+  id: string;
+  quoteNumber: string;
+  createdAt: Date;
+  customer: { id: string; name: string };
+  flowGroup: { id: string; name: string };
+  versions: {
+    id: string;
+    versionNumber: number;
+    status: QuoteVersionStatus;
+    _count: { proposalGroups: number };
+  }[];
+}): CommercialQuoteShellSummaryDto {
+  const v0 = row.versions[0];
+  return {
+    quote: {
+      id: row.id,
+      quoteNumber: row.quoteNumber,
+      createdAt: row.createdAt.toISOString(),
+    },
+    customer: row.customer,
+    flowGroup: row.flowGroup,
+    latestQuoteVersion: v0
+      ? {
+          id: v0.id,
+          versionNumber: v0.versionNumber,
+          status: v0.status,
+          proposalGroupCount: v0._count.proposalGroups,
+        }
+      : null,
+  };
+}
+
+export async function listCommercialQuoteShellsForTenant(
+  prisma: PrismaClient,
+  params: { tenantId: string; limit: number },
+): Promise<CommercialQuoteShellSummaryDto[]> {
+  const rows = await prisma.quote.findMany({
+    where: { tenantId: params.tenantId },
+    orderBy: { createdAt: "desc" },
+    take: params.limit,
+    select: {
+      id: true,
+      quoteNumber: true,
+      createdAt: true,
+      customer: { select: { id: true, name: true } },
+      flowGroup: { select: { id: true, name: true } },
+      versions: {
+        orderBy: { versionNumber: "desc" },
+        take: 1,
+        select: {
+          id: true,
+          versionNumber: true,
+          status: true,
+          _count: { select: { proposalGroups: true } },
+        },
+      },
+    },
+  });
+
+  return rows.map(mapRow);
+}
+
+export async function getCommercialQuoteShellForTenant(
+  prisma: PrismaClient,
+  params: { tenantId: string; quoteId: string },
+): Promise<CommercialQuoteShellSummaryDto | null> {
+  const row = await prisma.quote.findFirst({
+    where: { id: params.quoteId, tenantId: params.tenantId },
+    select: {
+      id: true,
+      quoteNumber: true,
+      createdAt: true,
+      customer: { select: { id: true, name: true } },
+      flowGroup: { select: { id: true, name: true } },
+      versions: {
+        orderBy: { versionNumber: "desc" },
+        take: 1,
+        select: {
+          id: true,
+          versionNumber: true,
+          status: true,
+          _count: { select: { proposalGroups: true } },
+        },
+      },
+    },
+  });
+
+  if (!row) {
+    return null;
+  }
+
+  return mapRow(row);
+}

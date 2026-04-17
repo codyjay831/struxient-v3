@@ -1,0 +1,602 @@
+// Struxient v3 — Slice 1 relational foundation + extension (PreJobTask, QuoteLocalPacket).
+// Merge basis: docs/schema-slice-1-codepack/03-prisma-schema-draft-v0.md
+// Extension: docs/implementation/schema/slice-1-extension-prejobtask-quotelocalpacket.md
+//
+// Invariants not fully expressible in Prisma (enforce in app / raw SQL):
+// - PreJobTask.tenantId must equal flowGroup.tenantId; if quoteVersionId set, quote must belong to same flowGroup.
+// - QuoteLocalPacket.tenantId must match quoteVersion.quote.tenantId.
+// - Manifest QuoteLineItem: exactly one of (scopePacketRevisionId, quoteLocalPacketId) — see migration CHECK.
+// Service-layer assertions: src/server/slice1/invariants/ (+ getQuoteVersionScopeReadModel read path).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum QuoteVersionStatus {
+  DRAFT
+  SENT
+  SIGNED
+}
+
+enum ScopePacketRevisionStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum WorkflowVersionStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum PacketTaskLineKind {
+  EMBEDDED
+}
+
+enum QuoteLineItemExecutionMode {
+  SOLD_SCOPE
+  MANIFEST
+}
+
+enum AuditEventType {
+  QUOTE_VERSION_SENT
+  QUOTE_VERSION_SIGNED
+  QUOTE_VERSION_ACTIVATED
+}
+
+enum TaskExecutionTaskKind {
+  RUNTIME
+  SKELETON
+}
+
+enum TaskExecutionEventType {
+  STARTED
+  COMPLETED
+}
+
+enum QuoteSignatureMethod {
+  OFFICE_RECORDED
+}
+
+enum PreJobTaskStatus {
+  OPEN
+  READY
+  IN_PROGRESS
+  BLOCKED
+  DONE
+  CANCELLED
+}
+
+enum QuoteLocalPacketOrigin {
+  FORK_FROM_LIBRARY
+  AI_DRAFT
+  MANUAL_LOCAL
+}
+
+enum QuoteLocalPromotionStatus {
+  NONE
+  REQUESTED
+  IN_REVIEW
+  REJECTED
+  COMPLETED
+}
+
+enum QuoteLocalPacketLineKind {
+  EMBEDDED
+  LIBRARY
+}
+
+/// Minimal catalog row so QuoteLocalPacketItem can reference LIBRARY lines (extension doc).
+/// Full TaskDefinition shape deferred to epic 17; expand fields in a follow-up migration.
+enum TaskDefinitionStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+/// Tenant-scoped authorization shell (v3 auth slice). Enforced in API layer; not a full IAM matrix.
+enum TenantMemberRole {
+  OFFICE_ADMIN
+  FIELD_WORKER
+  READ_ONLY
+}
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  /// When true, successful POST …/sign (non-replay) runs activation in the same transaction (`epic 33`).
+  autoActivateOnSign Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  users             User[]
+  customers         Customer[]
+  flowGroups        FlowGroup[]
+  scopePackets      ScopePacket[]
+  workflowTemplates WorkflowTemplate[]
+  quotes            Quote[]
+  auditEvents       AuditEvent[]
+  taskDefinitions   TaskDefinition[]
+  jobs              Job[]
+  quoteSignatures   QuoteSignature[]
+  flows             Flow[]
+  activations       Activation[]
+  runtimeTasks      RuntimeTask[]
+  taskExecutions    TaskExecution[]
+}
+
+model User {
+  id          String   @id @default(cuid())
+  tenantId    String
+  email       String
+  displayName String?
+  /// bcrypt hash for credentials auth; null until set (e.g. legacy rows).
+  passwordHash String?
+  role         TenantMemberRole @default(OFFICE_ADMIN)
+  createdAt   DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  quoteVersionsCreated QuoteVersion[] @relation("QuoteVersionCreatedBy")
+  quoteVersionsSent    QuoteVersion[] @relation("QuoteVersionSentBy")
+  quoteVersionsSigned  QuoteVersion[] @relation("QuoteVersionSignedBy")
+  quoteSignaturesRecorded QuoteSignature[] @relation("QuoteSignatureRecordedBy")
+  auditEvents          AuditEvent[]
+  activationsActivated Activation[] @relation("ActivationActivatedBy")
+  taskExecutions       TaskExecution[]
+
+  preJobTasksAssigned PreJobTask[] @relation("PreJobTaskAssignee")
+  preJobTasksCreated  PreJobTask[] @relation("PreJobTaskCreator")
+
+  quoteLocalPacketsCreated QuoteLocalPacket[] @relation("QuoteLocalPacketCreatedBy")
+  quoteLocalPacketsUpdated QuoteLocalPacket[] @relation("QuoteLocalPacketUpdatedBy")
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+}
+
+model TaskDefinition {
+  id          String               @id @default(cuid())
+  tenantId    String
+  taskKey     String
+  displayName String
+  status      TaskDefinitionStatus @default(DRAFT)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  quoteLocalPacketItems QuoteLocalPacketItem[]
+
+  @@unique([tenantId, taskKey])
+  @@index([tenantId])
+}
+
+model Customer {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  name               String
+  billingAddressJson Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  flowGroups FlowGroup[]
+  quotes     Quote[]
+
+  @@index([tenantId])
+}
+
+model FlowGroup {
+  id         String   @id @default(cuid())
+  tenantId   String
+  customerId String
+  name       String
+  createdAt  DateTime @default(now())
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  customer    Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  quotes      Quote[]
+  preJobTasks PreJobTask[]
+  job         Job?
+
+  @@index([tenantId])
+  @@index([customerId])
+}
+
+model PreJobTask {
+  id             String  @id @default(cuid())
+  tenantId       String
+  flowGroupId    String
+  quoteVersionId String?
+
+  taskType   String
+  sourceType String
+
+  title       String
+  description String?
+
+  assignedToUserId String?
+  createdById      String
+
+  dueAt            DateTime?
+  scheduledStartAt DateTime?
+  scheduledEndAt   DateTime?
+
+  status       PreJobTaskStatus
+  startedAt    DateTime?
+  completedAt  DateTime?
+  cancelledAt  DateTime?
+  cancelReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  flowGroup      FlowGroup     @relation(fields: [flowGroupId], references: [id], onDelete: Restrict)
+  quoteVersion   QuoteVersion? @relation(fields: [quoteVersionId], references: [id], onDelete: SetNull)
+  assignedToUser User?         @relation("PreJobTaskAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  createdBy      User          @relation("PreJobTaskCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, flowGroupId, status])
+  @@index([tenantId, assignedToUserId, status])
+}
+
+model ScopePacket {
+  id          String @id @default(cuid())
+  tenantId    String
+  packetKey   String
+  displayName String
+
+  tenant    Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  revisions ScopePacketRevision[]
+
+  @@unique([tenantId, packetKey])
+  @@index([tenantId])
+}
+
+model ScopePacketRevision {
+  id             String                    @id @default(cuid())
+  scopePacketId  String
+  revisionNumber Int
+  status         ScopePacketRevisionStatus
+  publishedAt    DateTime
+
+  scopePacket     ScopePacket      @relation(fields: [scopePacketId], references: [id], onDelete: Restrict)
+  packetTaskLines PacketTaskLine[]
+  quoteLineItems  QuoteLineItem[]
+
+  quoteLocalPacketsForkedFromThis QuoteLocalPacket[] @relation("QuoteLocalPacketForkSource")
+
+  @@unique([scopePacketId, revisionNumber])
+  @@index([scopePacketId])
+  @@index([status])
+}
+
+model PacketTaskLine {
+  id                    String             @id @default(cuid())
+  scopePacketRevisionId String
+  lineKey               String
+  tierCode              String?
+  sortOrder             Int
+  lineKind              PacketTaskLineKind
+  embeddedPayloadJson   Json
+
+  scopePacketRevision ScopePacketRevision @relation(fields: [scopePacketRevisionId], references: [id], onDelete: Restrict)
+
+  @@unique([scopePacketRevisionId, lineKey])
+  @@index([scopePacketRevisionId])
+}
+
+model WorkflowTemplate {
+  id          String @id @default(cuid())
+  tenantId    String
+  templateKey String
+  displayName String
+
+  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  versions WorkflowVersion[]
+
+  @@unique([tenantId, templateKey])
+  @@index([tenantId])
+}
+
+model WorkflowVersion {
+  id                 String                @id @default(cuid())
+  workflowTemplateId String
+  versionNumber      Int
+  status             WorkflowVersionStatus
+  publishedAt        DateTime
+  snapshotJson       Json
+
+  workflowTemplate    WorkflowTemplate @relation(fields: [workflowTemplateId], references: [id], onDelete: Restrict)
+  pinnedQuoteVersions QuoteVersion[]
+  flows               Flow[]
+
+  @@unique([workflowTemplateId, versionNumber])
+  @@index([workflowTemplateId])
+  @@index([status])
+}
+
+model Job {
+  id          String   @id @default(cuid())
+  tenantId    String
+  flowGroupId String   @unique
+  createdAt   DateTime @default(now())
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  flowGroup FlowGroup @relation(fields: [flowGroupId], references: [id], onDelete: Restrict)
+  flows     Flow[]
+  activations Activation[]
+
+  @@index([tenantId])
+}
+
+model Flow {
+  id                String   @id @default(cuid())
+  tenantId          String
+  jobId             String
+  workflowVersionId String
+  quoteVersionId    String   @unique
+  createdAt         DateTime @default(now())
+
+  tenant            Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  job               Job               @relation(fields: [jobId], references: [id], onDelete: Restrict)
+  workflowVersion   WorkflowVersion   @relation(fields: [workflowVersionId], references: [id], onDelete: Restrict)
+  quoteVersion      QuoteVersion      @relation(fields: [quoteVersionId], references: [id], onDelete: Restrict)
+  activation      Activation?
+  runtimeTasks     RuntimeTask[]
+  taskExecutions   TaskExecution[]
+
+  @@index([tenantId])
+  @@index([jobId])
+}
+
+model TaskExecution {
+  id              String                  @id @default(cuid())
+  tenantId        String
+  flowId          String
+  taskKind        TaskExecutionTaskKind
+  runtimeTaskId   String?
+  skeletonTaskId  String?
+  eventType       TaskExecutionEventType
+  actorUserId     String
+  notes           String?
+  createdAt       DateTime                @default(now())
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  flow        Flow         @relation(fields: [flowId], references: [id], onDelete: Restrict)
+  actor       User         @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+  runtimeTask RuntimeTask? @relation(fields: [runtimeTaskId], references: [id], onDelete: Restrict)
+
+  @@unique([runtimeTaskId, eventType])
+  @@index([tenantId, flowId])
+  @@index([flowId, createdAt])
+}
+
+model Activation {
+  id                    String   @id @default(cuid())
+  tenantId              String
+  quoteVersionId        String   @unique
+  jobId                 String
+  flowId                String   @unique
+  packageSnapshotSha256 String
+  activatedAt           DateTime @default(now())
+  activatedById         String
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  quoteVersion QuoteVersion @relation(fields: [quoteVersionId], references: [id], onDelete: Restrict)
+  job          Job          @relation(fields: [jobId], references: [id], onDelete: Restrict)
+  flow         Flow         @relation(fields: [flowId], references: [id], onDelete: Restrict)
+  activatedBy  User         @relation("ActivationActivatedBy", fields: [activatedById], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([jobId])
+}
+
+model RuntimeTask {
+  id             String   @id @default(cuid())
+  tenantId       String
+  flowId         String
+  packageTaskId  String
+  nodeId         String
+  quoteVersionId String
+  lineItemId     String
+  planTaskIds    Json
+  displayTitle   String
+  createdAt      DateTime @default(now())
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  flow         Flow         @relation(fields: [flowId], references: [id], onDelete: Restrict)
+  quoteVersion   QuoteVersion      @relation(fields: [quoteVersionId], references: [id], onDelete: Restrict)
+  taskExecutions TaskExecution[]
+
+  @@unique([flowId, packageTaskId])
+  @@index([tenantId])
+  @@index([flowId])
+}
+
+model Quote {
+  id          String   @id @default(cuid())
+  tenantId    String
+  customerId  String
+  flowGroupId String
+  quoteNumber String
+  createdAt   DateTime @default(now())
+
+  tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  customer  Customer       @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  flowGroup FlowGroup      @relation(fields: [flowGroupId], references: [id], onDelete: Restrict)
+  versions  QuoteVersion[]
+
+  @@unique([tenantId, quoteNumber])
+  @@index([tenantId])
+  @@index([customerId])
+  @@index([flowGroupId])
+}
+
+model QuoteSignature {
+  id             String               @id @default(cuid())
+  tenantId       String
+  quoteVersionId String               @unique
+  method         QuoteSignatureMethod
+  signedAt       DateTime             @default(now())
+  recordedById   String
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  quoteVersion QuoteVersion @relation(fields: [quoteVersionId], references: [id], onDelete: Restrict)
+  recordedBy   User         @relation("QuoteSignatureRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+}
+
+model QuoteVersion {
+  id                           String             @id @default(cuid())
+  quoteId                      String
+  versionNumber                Int
+  status                       QuoteVersionStatus
+  pinnedWorkflowVersionId      String?
+  title                        String?
+  createdAt                    DateTime           @default(now())
+  createdById                  String
+  sentAt                       DateTime?
+  sentById                     String?
+  sendClientRequestId          String?            @unique
+  planSnapshotSha256           String?
+  packageSnapshotSha256        String?
+  generatedPlanSnapshot        Json?
+  executionPackageSnapshot     Json?
+  composePreviewStalenessToken String?
+  signedAt                     DateTime?
+  signedById                   String?
+
+  quote                 Quote             @relation(fields: [quoteId], references: [id], onDelete: Restrict)
+  pinnedWorkflowVersion WorkflowVersion?  @relation(fields: [pinnedWorkflowVersionId], references: [id], onDelete: Restrict)
+  createdBy             User              @relation("QuoteVersionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  sentBy                User?             @relation("QuoteVersionSentBy", fields: [sentById], references: [id], onDelete: Restrict)
+  signedBy              User?             @relation("QuoteVersionSignedBy", fields: [signedById], references: [id], onDelete: SetNull)
+  proposalGroups        ProposalGroup[]
+  quoteLineItems        QuoteLineItem[]
+  auditEvents           AuditEvent[]
+  quoteSignature        QuoteSignature?
+  flow                  Flow?
+  activation            Activation?
+  runtimeTasks          RuntimeTask[]
+
+  preJobTasks       PreJobTask[]
+  quoteLocalPackets QuoteLocalPacket[]
+
+  @@unique([quoteId, versionNumber])
+  @@index([quoteId])
+  @@index([status])
+  @@index([pinnedWorkflowVersionId])
+  @@index([signedById])
+}
+
+model QuoteLocalPacket {
+  id                              String                    @id @default(cuid())
+  tenantId                        String
+  quoteVersionId                  String
+  displayName                     String
+  description                     String?
+  originType                      QuoteLocalPacketOrigin
+  forkedFromScopePacketRevisionId String?
+  aiProvenanceJson                Json?
+  promotionStatus                 QuoteLocalPromotionStatus @default(NONE)
+  promotedScopePacketId           String?
+  createdById                     String
+  updatedById                     String?
+  createdAt                       DateTime                  @default(now())
+  updatedAt                       DateTime                  @updatedAt
+
+  quoteVersion QuoteVersion         @relation(fields: [quoteVersionId], references: [id], onDelete: Cascade)
+  forkedFrom   ScopePacketRevision? @relation("QuoteLocalPacketForkSource", fields: [forkedFromScopePacketRevisionId], references: [id], onDelete: SetNull)
+  createdBy    User                 @relation("QuoteLocalPacketCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy    User?                @relation("QuoteLocalPacketUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  items                      QuoteLocalPacketItem[]
+  lineItemsPinningThisPacket QuoteLineItem[]
+
+  @@index([quoteVersionId])
+  @@index([tenantId, quoteVersionId])
+}
+
+model QuoteLocalPacketItem {
+  id                 String  @id @default(cuid())
+  quoteLocalPacketId String
+  lineKey            String
+  sortOrder          Int
+  tierCode           String?
+
+  lineKind            QuoteLocalPacketLineKind
+  embeddedPayloadJson Json?
+  taskDefinitionId    String?
+
+  /// Stable node key within QuoteVersion.pinned WorkflowVersion.snapshotJson (align with compose; see extension doc).
+  targetNodeKey String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  quoteLocalPacket QuoteLocalPacket @relation(fields: [quoteLocalPacketId], references: [id], onDelete: Cascade)
+  taskDefinition   TaskDefinition?  @relation(fields: [taskDefinitionId], references: [id], onDelete: SetNull)
+
+  @@unique([quoteLocalPacketId, lineKey])
+  @@index([quoteLocalPacketId, sortOrder])
+}
+
+model ProposalGroup {
+  id             String @id @default(cuid())
+  quoteVersionId String
+  name           String
+  sortOrder      Int
+
+  quoteVersion   QuoteVersion    @relation(fields: [quoteVersionId], references: [id], onDelete: Cascade)
+  quoteLineItems QuoteLineItem[]
+
+  @@index([quoteVersionId])
+}
+
+model QuoteLineItem {
+  id                    String                     @id @default(cuid())
+  quoteVersionId        String
+  proposalGroupId       String
+  sortOrder             Int
+  scopePacketRevisionId String?
+  quoteLocalPacketId    String?
+  tierCode              String?
+  quantity              Int
+  executionMode         QuoteLineItemExecutionMode
+  title                 String
+  description           String?
+  unitPriceCents        Int?
+  lineTotalCents        Int?
+
+  quoteVersion        QuoteVersion         @relation(fields: [quoteVersionId], references: [id], onDelete: Cascade)
+  proposalGroup       ProposalGroup        @relation(fields: [proposalGroupId], references: [id], onDelete: Restrict)
+  scopePacketRevision ScopePacketRevision? @relation(fields: [scopePacketRevisionId], references: [id], onDelete: Restrict)
+  quoteLocalPacket    QuoteLocalPacket?    @relation(fields: [quoteLocalPacketId], references: [id], onDelete: Restrict)
+
+  @@index([quoteVersionId])
+  @@index([proposalGroupId])
+  @@index([scopePacketRevisionId])
+  @@index([quoteLocalPacketId])
+}
+
+model AuditEvent {
+  id                   String         @id @default(cuid())
+  tenantId             String
+  eventType            AuditEventType
+  actorId              String
+  targetQuoteVersionId String
+  payloadJson          Json?
+  createdAt            DateTime       @default(now())
+
+  tenant             Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  actor              User         @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  targetQuoteVersion QuoteVersion @relation(fields: [targetQuoteVersionId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, createdAt])
+  @@index([targetQuoteVersionId])
+}

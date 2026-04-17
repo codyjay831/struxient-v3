@@ -1,0 +1,81 @@
+# Real Postgres + real Next server + Vitest integration smoke (credentials auth, no dev bypass).
+name: Integration smoke
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+concurrency:
+  group: integration-smoke-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: struxient
+          POSTGRES_PASSWORD: struxient
+          POSTGRES_DB: struxient_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U struxient -d struxient_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      DATABASE_URL: postgresql://struxient:struxient@127.0.0.1:5432/struxient_ci
+      # CI-only secret shape (not production); satisfies Auth.js minimum expectations.
+      AUTH_SECRET: ci-integration-smoke-auth-secret-min-32-chars-required
+      AUTH_URL: http://127.0.0.1:3000
+      NEXTAUTH_URL: http://127.0.0.1:3000
+      INTEGRATION_BASE_URL: http://127.0.0.1:3000
+      STRUXIENT_SEED_SKIP_DEV_ENV: "1"
+      STRUXIENT_SEED_SKIP_DATABASE_URL_MIRROR: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma migrate (deploy)
+        run: npx prisma migrate deploy
+
+      - name: Seed DB + write integration fixture
+        run: npm run db:seed
+
+      - name: Build Next.js
+        run: npm run build
+
+      - name: Start Next.js (background)
+        env:
+          NODE_ENV: production
+        run: |
+          nohup npm run start -- --port 3000 > /tmp/next-start.log 2>&1 &
+          echo $! > /tmp/next.pid
+          sleep 2
+
+      - name: Wait for app readiness
+        run: node scripts/ci/wait-for-http.mjs
+
+      - name: Run integration smoke
+        run: npm run test:integration
+
+      - name: Print Next.js log on failure
+        if: failure()
+        run: |
+          echo "--- tail next-start.log ---"
+          tail -n 200 /tmp/next-start.log || true

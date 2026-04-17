@@ -1,0 +1,13 @@
+{
+  "basePassword": "struxient-dev",
+  "tenantAId": "run npm run db:seed to generate scripts/integration/fixture.json",
+  "tenantBId": "",
+  "quoteVersionId": "",
+  "proposalGroupId": "",
+  "emails": {
+    "office": "seed@example.com",
+    "readOnly": "readonly@example.com",
+    "field": "field@example.com",
+    "tenantBOffice": "other@example.com"
+  }
+}

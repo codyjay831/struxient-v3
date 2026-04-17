@@ -1,0 +1,51 @@
+{
+  "name": "struxient-v3",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Struxient v3 — docs + Prisma schema (application code TBD)",
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "prisma:validate": "prisma validate",
+    "prisma:format": "prisma format",
+    "prisma:generate": "prisma generate",
+    "db:seed": "prisma db seed",
+    "db:seed:activated": "tsx prisma/seed-activated-path.ts",
+    "typecheck": "tsc --noEmit",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "ci:wait-for-app": "node scripts/ci/wait-for-http.mjs",
+    "test:unit": "vitest run --config vitest.unit.config.ts",
+    "postinstall": "cross-env DATABASE_URL=postgresql://placeholder:placeholder@127.0.0.1:5432/placeholder prisma generate"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.1",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^22.19.0",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "autoprefixer": "^10.4.21",
+    "cross-env": "^7.0.3",
+    "dotenv": "^17.4.1",
+    "eslint": "^9.39.1",
+    "eslint-config-next": "^15.5.6",
+    "postcss": "^8.5.6",
+    "prisma": "^6.19.0",
+    "tailwindcss": "^3.4.18",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.4"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.0",
+    "bcryptjs": "^3.0.3",
+    "next": "^15.5.6",
+    "next-auth": "^5.0.0-beta.30",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  }
+}
