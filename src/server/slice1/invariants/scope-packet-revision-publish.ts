@@ -1,21 +1,31 @@
 /**
- * Pure preflight assertion for the interim DRAFT → PUBLISHED transition on a
+ * Pure preflight assertion for the DRAFT → PUBLISHED transition on a
  * `ScopePacketRevision`.
  *
- * Operationalizes the canon-locked publish gates from the interim-publish-
- * authority decision pack as a single structured invariant. Kept Prisma-free
- * so it is fully unit-testable; the orchestrating mutation
- * (`publishScopePacketRevisionForTenant`) loads truth and feeds it in.
+ * Operationalizes the canon-locked publish gates as a single structured
+ * invariant. Kept Prisma-free so it is fully unit-testable; the orchestrating
+ * mutation (`publishScopePacketRevisionForTenant`) loads truth and feeds it in.
  *
  * Tenant ownership is intentionally NOT enforced here — the orchestrating
  * mutation handles it as a load-side `findFirst` filter and returns
  * `"not_found"` on miss, mirroring the promotion mutation pattern. That keeps
  * tenant safety as a gate-zero / 404 concern rather than a 409 invariant.
  *
+ * Sibling-PUBLISHED handling: under the revision-2 evolution decision pack
+ * §5, the "at most one PUBLISHED revision per packet" invariant is preserved
+ * by the publish writer transactionally demoting any sibling PUBLISHED row to
+ * SUPERSEDED — not by rejecting the publish here. Consequently this assertion
+ * no longer takes a `packetHasOtherPublishedRevision` parameter and the prior
+ * `SCOPE_PACKET_REVISION_PUBLISH_PACKET_HAS_PUBLISHED` rejection branch is
+ * retired (decision pack §13). The `currentStatus = DRAFT` gate alone now
+ * blocks both re-publish of PUBLISHED and the canon-forbidden publish of a
+ * SUPERSEDED revision.
+ *
  * Canon refs:
- *   - docs/canon/05-packet-canon.md ("Canon amendment — interim publish authority")
+ *   - docs/canon/05-packet-canon.md ("Canon amendment — interim publish authority",
+ *     "Canon amendment — revision-2 evolution policy (post-publish)")
  *   - docs/implementation/decision-packs/interim-publish-authority-decision-pack.md
- *     §3 (canonical flow), §5 (preflight contract), §6 (multi-PUBLISHED policy)
+ *   - docs/implementation/decision-packs/revision-2-evolution-decision-pack.md §5, §13
  */
 
 import type { ScopePacketRevisionStatus } from "@prisma/client";
@@ -30,19 +40,9 @@ export type AssertScopePacketRevisionPublishPreconditionsParams = {
   /**
    * Result of `evaluateScopePacketRevisionReadiness` against the same revision's
    * `PacketTaskLine` set. The publish writer must not invent or skip any gate
-   * the predicate covers (decision pack §5).
+   * the predicate covers.
    */
   readiness: ScopePacketRevisionReadinessResult;
-  /**
-   * `true` when at least one OTHER revision under the same `scopePacketId`
-   * currently has `status = PUBLISHED`. Caller computes via a tiny indexed
-   * existence check inside the publish transaction; passing it in as a
-   * boolean keeps this assertion pure and fully unit-testable.
-   *
-   * Canon: at most one PUBLISHED revision per ScopePacket at a time
-   * (decision pack §6).
-   */
-  packetHasOtherPublishedRevision: boolean;
 };
 
 export function assertScopePacketRevisionPublishPreconditions(
@@ -68,17 +68,6 @@ export function assertScopePacketRevisionPublishPreconditions(
         scopePacketId: params.scopePacketId,
         scopePacketRevisionId: params.scopePacketRevisionId,
         blockers: params.readiness.blockers,
-      },
-    );
-  }
-
-  if (params.packetHasOtherPublishedRevision) {
-    throw new InvariantViolationError(
-      "SCOPE_PACKET_REVISION_PUBLISH_PACKET_HAS_PUBLISHED",
-      "ScopePacket already has a PUBLISHED revision; the interim slice allows at most one PUBLISHED revision per packet at a time.",
-      {
-        scopePacketId: params.scopePacketId,
-        scopePacketRevisionId: params.scopePacketRevisionId,
       },
     );
   }

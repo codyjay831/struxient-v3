@@ -34,13 +34,12 @@ describe("assertScopePacketRevisionPublishPreconditions", () => {
     scopePacketRevisionId: "rev_1",
   };
 
-  it("accepts DRAFT + ready + no other PUBLISHED sibling", () => {
+  it("accepts DRAFT + ready", () => {
     expect(() =>
       assertScopePacketRevisionPublishPreconditions({
         ...baseParams,
         currentStatus: "DRAFT",
         readiness: READY,
-        packetHasOtherPublishedRevision: false,
       }),
     ).not.toThrow();
   });
@@ -52,7 +51,6 @@ describe("assertScopePacketRevisionPublishPreconditions", () => {
           ...baseParams,
           currentStatus: "PUBLISHED",
           readiness: READY,
-          packetHasOtherPublishedRevision: false,
         }),
       "SCOPE_PACKET_REVISION_PUBLISH_NOT_DRAFT",
     );
@@ -63,6 +61,26 @@ describe("assertScopePacketRevisionPublishPreconditions", () => {
     });
   });
 
+  // Revision-2 evolution decision pack §11: a SUPERSEDED revision is read-only
+  // and cannot be re-published. The currentStatus = DRAFT gate enforces this
+  // alongside the PUBLISHED rejection above.
+  it("rejects SUPERSEDED revision with NOT_DRAFT (un-supersede via re-publish forbidden)", () => {
+    const err = expectInvariant(
+      () =>
+        assertScopePacketRevisionPublishPreconditions({
+          ...baseParams,
+          currentStatus: "SUPERSEDED",
+          readiness: READY,
+        }),
+      "SCOPE_PACKET_REVISION_PUBLISH_NOT_DRAFT",
+    );
+    expect(err.context).toMatchObject({
+      scopePacketId: "pkt_1",
+      scopePacketRevisionId: "rev_1",
+      currentStatus: "SUPERSEDED",
+    });
+  });
+
   it("rejects DRAFT with NOT_READY when readiness has blockers", () => {
     const err = expectInvariant(
       () =>
@@ -70,7 +88,6 @@ describe("assertScopePacketRevisionPublishPreconditions", () => {
           ...baseParams,
           currentStatus: "DRAFT",
           readiness: NOT_READY,
-          packetHasOtherPublishedRevision: false,
         }),
       "SCOPE_PACKET_REVISION_PUBLISH_NOT_READY",
     );
@@ -82,23 +99,6 @@ describe("assertScopePacketRevisionPublishPreconditions", () => {
     expect((err.context as { blockers: unknown[] }).blockers).toHaveLength(1);
   });
 
-  it("rejects DRAFT + ready when a sibling PUBLISHED revision already exists", () => {
-    const err = expectInvariant(
-      () =>
-        assertScopePacketRevisionPublishPreconditions({
-          ...baseParams,
-          currentStatus: "DRAFT",
-          readiness: READY,
-          packetHasOtherPublishedRevision: true,
-        }),
-      "SCOPE_PACKET_REVISION_PUBLISH_PACKET_HAS_PUBLISHED",
-    );
-    expect(err.context).toMatchObject({
-      scopePacketId: "pkt_1",
-      scopePacketRevisionId: "rev_1",
-    });
-  });
-
   it("status check fires before readiness — re-publish of a PUBLISHED row never leaks readiness blockers", () => {
     expectInvariant(
       () =>
@@ -106,22 +106,14 @@ describe("assertScopePacketRevisionPublishPreconditions", () => {
           ...baseParams,
           currentStatus: "PUBLISHED",
           readiness: NOT_READY,
-          packetHasOtherPublishedRevision: false,
         }),
       "SCOPE_PACKET_REVISION_PUBLISH_NOT_DRAFT",
     );
   });
 
-  it("readiness check fires before sibling-PUBLISHED check (readiness is a stronger preflight signal)", () => {
-    expectInvariant(
-      () =>
-        assertScopePacketRevisionPublishPreconditions({
-          ...baseParams,
-          currentStatus: "DRAFT",
-          readiness: NOT_READY,
-          packetHasOtherPublishedRevision: true,
-        }),
-      "SCOPE_PACKET_REVISION_PUBLISH_NOT_READY",
-    );
-  });
+  // Sibling-PUBLISHED rejection has been retired (revision-2 evolution decision
+  // pack §5, §13). The publish writer now demotes any sibling PUBLISHED row to
+  // SUPERSEDED inside the same transaction, preserving the "at most one
+  // PUBLISHED revision per packet" invariant via demotion rather than refusal.
+  // This assertion no longer takes a `packetHasOtherPublishedRevision` input.
 });

@@ -8,6 +8,12 @@ export type ApiPrincipal = {
   tenantId: string;
   role: TenantMemberRole;
   authSource: "session" | "dev_bypass";
+  // Optional display-only fields. Required contract is unchanged; consumers
+  // that never needed identity-display fields are unaffected. Populated when
+  // the underlying auth source can provide them (DB row on bypass; session
+  // user on JWT). Never used for authorization decisions.
+  email?: string;
+  displayName?: string | null;
 };
 
 export function apiAuthMeta(principal: ApiPrincipal) {
@@ -54,7 +60,7 @@ export async function tryGetApiPrincipal(): Promise<
     const prisma = getPrisma();
     const user = await prisma.user.findFirst({
       where: { id: userId, tenantId },
-      select: { id: true, tenantId: true, role: true },
+      select: { id: true, tenantId: true, role: true, email: true, displayName: true },
     });
     if (!user) {
       return { ok: false, failure: { kind: "bypass_invalid_user" } };
@@ -66,6 +72,8 @@ export async function tryGetApiPrincipal(): Promise<
         tenantId: user.tenantId,
         role: user.role,
         authSource: "dev_bypass",
+        email: user.email,
+        displayName: user.displayName,
       },
     };
   }
@@ -82,6 +90,8 @@ export async function tryGetApiPrincipal(): Promise<
       tenantId: session.user.tenantId,
       role: session.user.role,
       authSource: "session",
+      email: session.user.email ?? undefined,
+      displayName: session.user.name ?? null,
     },
   };
 }
@@ -94,7 +104,7 @@ function failureToResponse(failure: ResolvePrincipalFailure): NextResponse {
           error: {
             code: "AUTHENTICATION_REQUIRED",
             message:
-              "Sign in with credentials (see /dev/login) or, in local non-production only, set STRUXIENT_DEV_AUTH_BYPASS=true with STRUXIENT_DEV_TENANT_ID and STRUXIENT_DEV_USER_ID from seed.",
+              "Sign in with credentials (see /login) or, in local non-production only, set STRUXIENT_DEV_AUTH_BYPASS=true with STRUXIENT_DEV_TENANT_ID and STRUXIENT_DEV_USER_ID from seed.",
           },
         },
         { status: 401 },

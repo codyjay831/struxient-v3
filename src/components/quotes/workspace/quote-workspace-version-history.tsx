@@ -3,6 +3,7 @@ import type { QuoteVersionHistoryItemDto } from "@/server/slice1/reads/quote-ver
 import { QuoteWorkspaceVersionStatusBadge } from "./quote-workspace-version-status-badge";
 
 type Props = {
+  quoteId: string;
   versions: QuoteVersionHistoryItemDto[];
 };
 
@@ -13,7 +14,7 @@ function shortId(id: string): string {
 /**
  * Compact version history for office scanning; raw JSON behind disclosure per row.
  */
-export function QuoteWorkspaceVersionHistory({ versions }: Props) {
+export function QuoteWorkspaceVersionHistory({ quoteId, versions }: Props) {
   return (
     <section aria-labelledby="version-history-heading" className="mb-8">
       <div className="mb-3 flex items-center justify-between">
@@ -64,7 +65,7 @@ export function QuoteWorkspaceVersionHistory({ versions }: Props) {
                   </td>
                   <td className="px-3 py-3 text-center">
                     <Link
-                      href={`/dev/quote-scope/${v.id}`}
+                      href={`/quotes/${quoteId}/versions/${v.id}/scope`}
                       className={`inline-block rounded px-2 py-1 text-xs font-medium transition-colors ${
                         isHead
                           ? "bg-sky-900/20 text-sky-400 border border-sky-800/30 hover:bg-sky-800/30"

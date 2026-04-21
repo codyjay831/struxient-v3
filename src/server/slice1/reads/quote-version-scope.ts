@@ -121,6 +121,11 @@ export function assertQuoteVersionScopeViewInvariants(view: QuoteVersionScopeVie
       );
     }
 
+    // Read path: pass `pinAcceptance: "PUBLISHED_OR_SUPERSEDED"` so that
+    // `QuoteLineItem` rows pinned to a now-SUPERSEDED revision (demoted on a
+    // later publish-of-N+1) continue to load. The mutation path is unaffected
+    // and still rejects DRAFT/SUPERSEDED with `LINE_SCOPE_REVISION_NOT_PUBLISHED`.
+    // Canon: docs/implementation/decision-packs/revision-2-evolution-decision-pack.md §6.
     assertQuoteLineItemInvariants({
       quoteLineItemId: line.id,
       quoteVersionId: line.quoteVersionId,
@@ -132,6 +137,7 @@ export function assertQuoteVersionScopeViewInvariants(view: QuoteVersionScopeVie
       quoteLocalPacketId: line.quoteLocalPacketId,
       scopePacketRevision: line.scopePacketRevision,
       quoteLocalPacket: line.quoteLocalPacket,
+      pinAcceptance: "PUBLISHED_OR_SUPERSEDED",
     });
   }
 }

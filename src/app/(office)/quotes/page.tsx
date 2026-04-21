@@ -37,7 +37,7 @@ export default async function OfficeQuotesListPage() {
   const auth = await tryGetApiPrincipal();
 
   if (!auth.ok) {
-    redirect("/dev/login");
+    redirect("/login");
   }
 
   const items = await listCommercialQuoteShellsForTenant(getPrisma(), {
@@ -62,7 +62,7 @@ export default async function OfficeQuotesListPage() {
           <h2 className="text-zinc-200 font-medium">No quotes found</h2>
           <p className="text-zinc-500 text-sm mt-1 mb-6">Get started by creating your first commercial quote shell.</p>
           <Link 
-            href="/dev/new-quote-shell" 
+            href="/quotes/new" 
             className="inline-flex items-center px-4 py-2 bg-sky-700 hover:bg-sky-600 text-white rounded-md text-sm font-medium transition-colors"
           >
             Create Quote Shell

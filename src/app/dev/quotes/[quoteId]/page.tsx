@@ -1,10 +1,17 @@
 import Link from "next/link";
+import { PrismaClientInitializationError } from "@prisma/client/runtime/library";
 import { getPrisma } from "@/server/db/prisma";
 import { getQuoteWorkspaceForTenant } from "@/server/slice1/reads/quote-workspace-reads";
-import { principalHasCapability, tryGetApiPrincipal } from "@/lib/auth/api-principal";
+import {
+  principalHasCapability,
+  tryGetApiPrincipal,
+  type ApiPrincipal,
+} from "@/lib/auth/api-principal";
 import { deriveNewestActivatedExecutionEntryTarget } from "@/lib/workspace/derive-workspace-execution-entry-target";
 import { deriveNewestSignedWithoutActivationTarget } from "@/lib/workspace/derive-workspace-signed-activate-target";
 import { deriveNewestSentSignTarget } from "@/lib/workspace/derive-workspace-sent-sign-target";
+import { deriveQuoteHeadWorkspaceReadiness } from "@/lib/workspace/derive-quote-head-workspace-readiness";
+import { InvariantViolationError } from "@/server/slice1/errors";
 import { InternalBreadcrumb } from "@/components/internal/internal-breadcrumb";
 import { InternalNotFoundState } from "@/components/internal/internal-state-feedback";
 import { QuoteWorkspaceActions } from "@/components/quotes/workspace/quote-workspace-actions";
@@ -19,52 +26,54 @@ import { QuoteWorkspaceActivateSigned } from "@/components/quotes/workspace/quot
 import { QuoteWorkspaceExecutionBridge } from "@/components/quotes/workspace/quote-workspace-execution-bridge";
 import { QuoteWorkspaceVersionHistory } from "@/components/quotes/workspace/quote-workspace-version-history";
 import { QuoteWorkspacePipelineStep } from "@/components/quotes/workspace/quote-workspace-pipeline-step";
-import { ExecutionBridgeData } from "@/components/quotes/workspace/quote-workspace-execution-bridge";
-import { 
-  deriveQuoteHeadWorkspaceReadiness, 
-  type QuoteHeadReadinessInput 
-} from "@/lib/workspace/derive-quote-head-workspace-readiness";
+import {
+  deriveExecutionBridgeData,
+  deriveHeadDraftPipelineTargets,
+  presentAuthFailure,
+  presentWorkspaceLoadError,
+  toQuoteHeadReadinessInput,
+  type WorkspaceLoadErrorInput,
+} from "./quote-workspace-page-state";
 
 type PageProps = { params: Promise<{ quoteId: string }> };
 
 export const dynamic = "force-dynamic";
 
-function toReadinessInput(row: any): QuoteHeadReadinessInput {
-  return {
-    id: row.id,
-    versionNumber: row.versionNumber,
-    status: row.status,
-    hasPinnedWorkflow: row.hasPinnedWorkflow,
-    hasFrozenArtifacts: row.hasFrozenArtifacts,
-    hasActivation: row.hasActivation,
-    proposalGroupCount: row.proposalGroupCount,
-    sentAt: row.sentAt,
-    signedAt: row.signedAt,
-  };
-}
-
+/**
+ * Internal dev surface for the quote workspace.
+ *
+ * Page-level responsibilities are kept thin:
+ *   1. Resolve the auth principal (and render a structured failure panel if
+ *      that fails — distinct per failure kind so operators see why).
+ *   2. Load the workspace read model inside a try/catch so DB outages and
+ *      invariant violations surface as inline panels with remediation, not
+ *      as Next's generic 500 page.
+ *   3. Derive pipeline targets / readiness via pure helpers in
+ *      `./quote-workspace-page-state.ts` (covered by unit tests).
+ *
+ * Auth, tenant scope, and the `office_mutate` capability gate remain
+ * enforced server-side. The `AuthChip` only surfaces the already-resolved
+ * `principal.authSource` so operators can see at a glance whether they are
+ * on a real session or the documented dev bypass — it never weakens the
+ * gate itself.
+ */
 export default async function DevQuoteWorkspacePage({ params }: PageProps) {
   const { quoteId } = await params;
   const auth = await tryGetApiPrincipal();
 
   if (!auth.ok) {
-    return (
-      <main className="mx-auto max-w-2xl space-y-4 p-8">
-        <p className="text-zinc-300">
-          Sign in at <Link href="/dev/login" className="text-sky-400">/dev/login</Link> or enable dev auth
-          bypass (see .env.example).
-        </p>
-        <Link href="/" className="inline-block text-sm text-sky-400">
-          ← Hub
-        </Link>
-      </main>
-    );
+    return <AuthFailureScreen failure={auth.failure} />;
   }
 
-  const ws = await getQuoteWorkspaceForTenant(getPrisma(), {
-    tenantId: auth.principal.tenantId,
-    quoteId,
-  });
+  let ws: Awaited<ReturnType<typeof getQuoteWorkspaceForTenant>>;
+  try {
+    ws = await getQuoteWorkspaceForTenant(getPrisma(), {
+      tenantId: auth.principal.tenantId,
+      quoteId,
+    });
+  } catch (e) {
+    return <WorkspaceLoadErrorScreen error={classifyWorkspaceLoadError(e)} />;
+  }
 
   if (!ws) {
     return (
@@ -85,41 +94,26 @@ export default async function DevQuoteWorkspacePage({ params }: PageProps) {
   }
 
   const head = ws.versions[0] ?? null;
-  const readiness = deriveQuoteHeadWorkspaceReadiness(head ? toReadinessInput(head) : null);
+  const headLineItemCount = ws.headLineItemSummary?.lineItemCount ?? 0;
+  const readiness = deriveQuoteHeadWorkspaceReadiness(
+    head ? toQuoteHeadReadinessInput(head, headLineItemCount) : null,
+  );
   const recommendedStep = readiness.kind === "head" ? readiness.recommendedStepIndex : null;
 
-  const latestDraft = ws.versions.find((v) => v.status === "DRAFT") ?? null;
   const canOfficeMutate = principalHasCapability(auth.principal, "office_mutate");
 
-  // Targets for pipeline steps
-  const headDraftPinTarget = head?.status === "DRAFT" ? {
-    quoteVersionId: head.id,
-    versionNumber: head.versionNumber,
-    pinnedWorkflowVersionId: head.pinnedWorkflowVersionId,
-  } : null;
-
-  const latestDraftWorkspaceTarget = head?.status === "DRAFT" ? {
-    quoteVersionId: head.id,
-    versionNumber: head.versionNumber,
-    hasPinnedWorkflow: !!head.pinnedWorkflowVersionId,
-  } : null;
+  const { pinTarget: headDraftPinTarget, workspaceTarget: latestDraftWorkspaceTarget } =
+    deriveHeadDraftPipelineTargets(head);
 
   const sentSignTarget = deriveNewestSentSignTarget(ws.versions);
   const signedActivateTarget = deriveNewestSignedWithoutActivationTarget(ws.versions);
   const executionEntryTarget = deriveNewestActivatedExecutionEntryTarget(ws.versions);
 
-  // Execution bridge data
-  const executionBridgeData: ExecutionBridgeData = executionEntryTarget ? {
-    kind: "linked",
+  const executionBridgeData = deriveExecutionBridgeData({
+    executionEntryTarget,
     quoteId,
-    quoteVersionId: executionEntryTarget.quoteVersionId,
-    versionNumber: executionEntryTarget.versionNumber,
-    flowId: null, // Minimal fix: UI handles null flowId/activatedAt
     jobId: ws.flowGroup.jobId,
-    activationId: null,
-    activatedAtIso: null,
-    runtimeTaskCount: null,
-  } : { kind: "none" };
+  });
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-8 text-zinc-200 sm:px-6 lg:px-8">
@@ -134,12 +128,18 @@ export default async function DevQuoteWorkspacePage({ params }: PageProps) {
                 { label: "Workspace" },
               ]}
             />
-            <h1 className="mt-2 text-xl font-semibold tracking-tight text-zinc-50 sm:text-2xl">
-              Quote workspace
-            </h1>
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <h1 className="text-xl font-semibold tracking-tight text-zinc-50 sm:text-2xl">
+                Quote workspace
+              </h1>
+              <AuthChip principal={auth.principal} />
+            </div>
             <p className="mt-2 max-w-xl text-xs leading-relaxed text-zinc-500">
               Progress this quote through the commercial lifecycle from draft to execution.
               Readiness and suggested actions are based on the current head version.
+              Mutations require an office session with{" "}
+              <code className="text-zinc-400">office_mutate</code> capability — gates are enforced
+              server-side.
             </p>
           </div>
           <Link href="/" className="text-sm text-zinc-500 hover:text-zinc-400">
@@ -150,20 +150,8 @@ export default async function DevQuoteWorkspacePage({ params }: PageProps) {
 
       <QuoteWorkspaceShellSummary quoteId={quoteId} shell={ws} head={head} />
 
-      <div className="mb-8" id="line-items">
-        <QuoteWorkspaceLineItemSummary
-          versionNumber={head?.versionNumber ?? null}
-          summary={ws.headLineItemSummary}
-        />
-      </div>
-
-      <QuoteWorkspaceLineItemList
-        versionNumber={head?.versionNumber ?? null}
-        items={ws.headLineItems}
-      />
-
       <div className="mb-10">
-        <QuoteWorkspaceHeadReadiness head={head} />
+        <QuoteWorkspaceHeadReadiness head={head} headLineItemCount={headLineItemCount} />
       </div>
 
       <section aria-labelledby="workflow-heading" className="mb-10">
@@ -172,7 +160,8 @@ export default async function DevQuoteWorkspacePage({ params }: PageProps) {
             Lifecycle stages
           </h2>
           <p className="mt-1 max-w-2xl text-xs leading-relaxed text-zinc-500">
-            Follow the commercial steps to activate this quote. Some actions require an office session with{" "}
+            Line items / packets define the work; the process template defines the node/stage skeleton it runs through.
+            Author scope first, then pin a template, then send. Some actions require an office session with{" "}
             <span className="font-mono text-zinc-400">office_mutate</span> capability.
           </p>
         </div>
@@ -181,19 +170,31 @@ export default async function DevQuoteWorkspacePage({ params }: PageProps) {
           <div id="step-1">
             <QuoteWorkspacePipelineStep
               step={1}
-              title="Review & revise"
-              hint="Create draft revisions and modify scope line items."
+              title="Review scope & line items"
+              hint="Line items and their packets are the primary scope authoring object — they define the sold work."
               isRecommended={recommendedStep === 1}
             >
-              <QuoteWorkspaceActions quoteId={quoteId} canOfficeMutate={canOfficeMutate} />
+              <div id="line-items" className="space-y-6">
+                <QuoteWorkspaceLineItemSummary
+                  versionNumber={head?.versionNumber ?? null}
+                  summary={ws.headLineItemSummary}
+                />
+
+                <QuoteWorkspaceLineItemList
+                  versionNumber={head?.versionNumber ?? null}
+                  items={ws.headLineItems}
+                />
+
+                <QuoteWorkspaceActions quoteId={quoteId} canOfficeMutate={canOfficeMutate} />
+              </div>
             </QuoteWorkspacePipelineStep>
           </div>
 
           <div id="step-2">
             <QuoteWorkspacePipelineStep
               step={2}
-              title="Select workflow"
-              hint="Attach a workflow version to determine the execution structure."
+              title="Pin process template"
+              hint="Pick the published process template (node/stage skeleton) the work will run through. The template does not define the work — your line items do."
               isRecommended={recommendedStep === 2}
             >
               <QuoteWorkspacePinWorkflow pinTarget={headDraftPinTarget} canOfficeMutate={canOfficeMutate} />
@@ -204,7 +205,7 @@ export default async function DevQuoteWorkspacePage({ params }: PageProps) {
             <QuoteWorkspacePipelineStep
               step={3}
               title="Prepare & send proposal"
-              hint="Freeze the version and send it for customer approval."
+              hint="Compose line items / packets onto the pinned template's nodes, freeze the snapshot, and send."
               isRecommended={recommendedStep === 3}
             >
               <QuoteWorkspaceComposeSendPanel latestDraft={latestDraftWorkspaceTarget} canOfficeMutate={canOfficeMutate} />
@@ -215,7 +216,7 @@ export default async function DevQuoteWorkspacePage({ params }: PageProps) {
             <QuoteWorkspacePipelineStep
               step={4}
               title="Record signature"
-              hint="Log approval to move the quote to SIGNED status."
+              hint="Capture customer approval to move this version to SIGNED."
               isRecommended={recommendedStep === 4}
             >
               <QuoteWorkspaceSignSent signTarget={sentSignTarget} canOfficeMutate={canOfficeMutate} />
@@ -226,7 +227,7 @@ export default async function DevQuoteWorkspacePage({ params }: PageProps) {
             <QuoteWorkspacePipelineStep
               step={5}
               title="Activate execution"
-              hint="Launch the runtime workflow and create execution records."
+              hint="Instantiate runtime tasks from the frozen execution package onto the pinned template's nodes."
               isRecommended={recommendedStep === 5}
             >
               <QuoteWorkspaceActivateSigned
@@ -242,7 +243,7 @@ export default async function DevQuoteWorkspacePage({ params }: PageProps) {
         <QuoteWorkspaceExecutionBridge data={executionBridgeData} />
       </div>
 
-      <QuoteWorkspaceVersionHistory versions={ws.versions} />
+      <QuoteWorkspaceVersionHistory quoteId={quoteId} versions={ws.versions} />
 
       <details className="mt-10 rounded-lg border border-dashed border-zinc-800 bg-zinc-950/30 p-4 text-sm text-zinc-500">
         <summary className="cursor-pointer text-xs font-medium text-zinc-400 hover:text-zinc-300">
@@ -277,4 +278,150 @@ export default async function DevQuoteWorkspacePage({ params }: PageProps) {
       </details>
     </main>
   );
+}
+
+/* ---------------- Inline screens (server-rendered) ---------------- */
+
+function AuthChip({ principal }: { principal: ApiPrincipal }) {
+  const isSession = principal.authSource === "session";
+  return (
+    <span
+      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
+        isSession
+          ? "border border-emerald-700/60 bg-emerald-900/30 text-emerald-200"
+          : "border border-amber-700/60 bg-amber-900/30 text-amber-200"
+      }`}
+      title={
+        isSession
+          ? "Authenticated via real NextAuth session."
+          : "Authenticated via STRUXIENT_DEV_AUTH_BYPASS — non-production only."
+      }
+    >
+      auth: {principal.authSource} · role: {principal.role.toLowerCase()}
+    </span>
+  );
+}
+
+function AuthFailureScreen({
+  failure,
+}: {
+  failure: Parameters<typeof presentAuthFailure>[0];
+}) {
+  const p = presentAuthFailure(failure);
+  const toneCls =
+    p.tone === "amber"
+      ? "border-amber-900/60 bg-amber-950/20 text-amber-200"
+      : "border-red-900/60 bg-red-950/20 text-red-200";
+  return (
+    <main className="mx-auto max-w-2xl space-y-5 p-8 text-zinc-200">
+      <header className="border-b border-zinc-800 pb-4">
+        <InternalBreadcrumb
+          category="Commercial"
+          segments={[{ label: "Quotes", href: "/dev/quotes" }, { label: "Auth required" }]}
+        />
+        <h1 className="mt-2 text-xl font-semibold tracking-tight text-zinc-50">Quote workspace</h1>
+      </header>
+      <section className={`rounded-lg border p-5 shadow-sm ${toneCls}`}>
+        <p className="text-[11px] font-semibold uppercase tracking-wide opacity-90">
+          Auth failure · {p.failureKind}
+        </p>
+        <p className="mt-1 text-sm font-semibold">{p.title}</p>
+        <p className="mt-1 text-xs leading-relaxed opacity-90">{p.message}</p>
+        <ul className="mt-3 list-disc space-y-1.5 pl-5 text-xs leading-relaxed opacity-90">
+          {p.remediation.map((r, i) => (
+            <li key={i}>{r}</li>
+          ))}
+        </ul>
+      </section>
+      <div className="flex flex-wrap gap-3 text-xs">
+        <Link
+          href="/dev/login"
+          className="rounded border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-zinc-200 hover:bg-zinc-800 transition-colors"
+        >
+          Sign in
+        </Link>
+        <Link
+          href="/"
+          className="rounded border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-zinc-500 hover:text-zinc-400 transition-colors"
+        >
+          ← Hub
+        </Link>
+      </div>
+    </main>
+  );
+}
+
+function WorkspaceLoadErrorScreen({ error }: { error: WorkspaceLoadErrorInput }) {
+  const p = presentWorkspaceLoadError(error);
+  const toneCls =
+    p.tone === "amber"
+      ? "border-amber-900/60 bg-amber-950/20 text-amber-200"
+      : "border-red-900/60 bg-red-950/20 text-red-200";
+  return (
+    <main className="mx-auto max-w-2xl space-y-5 p-8 text-zinc-200">
+      <header className="border-b border-zinc-800 pb-4">
+        <InternalBreadcrumb
+          category="Commercial"
+          segments={[{ label: "Quotes", href: "/dev/quotes" }, { label: "Load error" }]}
+        />
+        <h1 className="mt-2 text-xl font-semibold tracking-tight text-zinc-50">Quote workspace</h1>
+      </header>
+      <section className={`rounded-lg border p-5 shadow-sm ${toneCls}`}>
+        <p className="text-[11px] font-semibold uppercase tracking-wide opacity-90">
+          Load failure · {p.errorKind}
+          {p.code ? ` · ${p.code}` : ""}
+        </p>
+        <p className="mt-1 text-sm font-semibold">{p.title}</p>
+        <p className="mt-1 text-xs leading-relaxed opacity-90">{p.message}</p>
+        <ul className="mt-3 list-disc space-y-1.5 pl-5 text-xs leading-relaxed opacity-90">
+          {p.remediation.map((r, i) => (
+            <li key={i}>{r}</li>
+          ))}
+        </ul>
+        {p.context !== undefined ? (
+          <pre className="mt-3 overflow-auto rounded border border-current/30 bg-black/40 p-2 font-mono text-[10px] leading-snug">
+            {JSON.stringify(p.context, null, 2)}
+          </pre>
+        ) : null}
+      </section>
+      <div className="flex flex-wrap gap-3 text-xs">
+        <Link
+          href="/dev/quotes"
+          className="rounded border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-zinc-200 hover:bg-zinc-800 transition-colors"
+        >
+          ← All quotes
+        </Link>
+        <Link
+          href="/"
+          className="rounded border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-zinc-500 hover:text-zinc-400 transition-colors"
+        >
+          Hub
+        </Link>
+      </div>
+    </main>
+  );
+}
+
+/**
+ * Page-side error → helper-input adapter. Mirrors the catch ladder used by
+ * `/dev/quote-scope/[quoteVersionId]/page.tsx` so behavior is consistent
+ * across adjacent quote surfaces. Pure-helper presentation lives in
+ * `./quote-workspace-page-state.ts`.
+ */
+function classifyWorkspaceLoadError(e: unknown): WorkspaceLoadErrorInput {
+  if (e instanceof PrismaClientInitializationError) {
+    return { kind: "prisma_init", message: e.message };
+  }
+  if (e instanceof Error && e.message.startsWith("[Struxient] DATABASE_URL")) {
+    return { kind: "missing_database_url", message: e.message };
+  }
+  if (e instanceof InvariantViolationError) {
+    return e.context !== undefined
+      ? { kind: "invariant", code: e.code, message: e.message, context: e.context }
+      : { kind: "invariant", code: e.code, message: e.message };
+  }
+  if (e instanceof Error) {
+    return { kind: "unknown", message: e.message };
+  }
+  return { kind: "unknown", message: "Unknown failure while loading quote workspace." };
 }

@@ -29,6 +29,18 @@ export type ScopePacketSummaryDto = {
   displayName: string;
   revisionCount: number;
   publishedRevisionCount: number;
+  /**
+   * Count of revisions whose `status === "SUPERSEDED"`. Always 0 prior to the
+   * first publish-of-revision-N+1 demotion (revision-2 evolution decision pack §5).
+   */
+  supersededRevisionCount: number;
+  /**
+   * True when at least one revision under the packet has `status === "DRAFT"`.
+   * Drives the "Create next DRAFT revision" UI gate (visible only when the
+   * packet has a current PUBLISHED revision and zero DRAFT revisions, per the
+   * decision pack §4 multi-DRAFT policy).
+   */
+  hasDraftRevision: boolean;
   latestPublishedRevisionId: string | null;
   latestPublishedRevisionNumber: number | null;
   latestPublishedAtIso: string | null;

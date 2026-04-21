@@ -3,25 +3,34 @@ import { evaluateScopePacketRevisionReadiness } from "@/lib/scope-packet-revisio
 import { assertScopePacketRevisionPublishPreconditions } from "../invariants/scope-packet-revision-publish";
 
 /**
- * Interim publish action: `ScopePacketRevision` `DRAFT` → `PUBLISHED`.
+ * Publish action: `ScopePacketRevision` `DRAFT` → `PUBLISHED`, with automatic
+ * demotion of any sibling PUBLISHED revision to `SUPERSEDED` in the same
+ * transaction (revision-2 evolution decision pack §5).
  *
  * Canon-authorized scope (do not widen):
  *   - office_mutate-gated; tenant ownership enforced via load-side filter.
  *   - Mandatory preflight: status must be DRAFT, readiness predicate must be
- *     `isReady: true`, parent ScopePacket must currently have ZERO other
- *     PUBLISHED revisions.
- *   - Atomic write: `status = PUBLISHED` AND `publishedAt = NOW()` in one
- *     transaction. No other fields are touched. No new revision is created.
- *   - Re-publish of an already-PUBLISHED revision rejects (not no-op).
+ *     `isReady: true`. The "at most one PUBLISHED per packet" invariant is
+ *     preserved by transactionally demoting any sibling PUBLISHED revision to
+ *     SUPERSEDED — not by rejecting the publish.
+ *   - Atomic write inside one transaction:
+ *       1. demote sibling PUBLISHED rows on the same packet to SUPERSEDED
+ *          (publishedAt on the demoted row is preserved as historical truth)
+ *       2. set the target revision: `status = PUBLISHED`, `publishedAt = NOW()`
+ *   - Re-publish of an already-PUBLISHED revision rejects (not no-op) via the
+ *     `currentStatus = DRAFT` gate. Publish of a SUPERSEDED revision likewise
+ *     rejects through the same gate.
  *
  * Out of scope (preserved as deferred): admin-review queue, IN_REVIEW/REJECTED
  * transitions, dedicated `catalog.publish` capability, catalog-side editing,
- * un-publish/supersede/archive/deprecate, ScopePacket.status, PacketTier,
- * publishedBy, audit trail row, packet.published webhook, schema changes.
+ * standalone un-publish/un-supersede/archive/deprecate, ScopePacket.status,
+ * PacketTier, publishedBy, dedicated audit trail row, packet.published webhook.
  *
  * Canon refs:
- *   - docs/canon/05-packet-canon.md ("Canon amendment — interim publish authority")
+ *   - docs/canon/05-packet-canon.md ("Canon amendment — interim publish authority",
+ *     "Canon amendment — revision-2 evolution policy (post-publish)")
  *   - docs/implementation/decision-packs/interim-publish-authority-decision-pack.md
+ *   - docs/implementation/decision-packs/revision-2-evolution-decision-pack.md §5, §11
  *   - docs/epics/15-scope-packets-epic.md §16 / §17 / §155
  */
 
@@ -39,6 +48,13 @@ export type PublishScopePacketRevisionResult = {
   revisionNumber: number;
   status: "PUBLISHED";
   publishedAtIso: string;
+  /**
+   * Number of sibling PUBLISHED revisions that were demoted to SUPERSEDED in
+   * the same transaction. 0 on the first publish of a packet; 1 on every
+   * publish of revision N+1 (decision pack §5). Exposed for the API DTO so
+   * callers / inspectors can confirm the demotion happened atomically.
+   */
+  demotedSiblingCount: number;
 };
 
 export async function publishScopePacketRevisionForTenant(
@@ -73,10 +89,12 @@ export async function publishScopePacketRevisionForTenant(
   });
   if (!target) return "not_found";
 
-  // The "no other PUBLISHED on this packet" check and the two-field write
-  // happen inside the same transaction so a parallel publish on a sibling
-  // revision cannot win the race. The readiness check is pure and runs
-  // outside the transaction (it operates on already-loaded data).
+  // Readiness is pure and runs outside the transaction (operates on
+  // already-loaded data). Inside the transaction we (1) demote any sibling
+  // PUBLISHED row to SUPERSEDED, then (2) promote the target. updateMany on
+  // the sibling makes the demotion idempotent and race-safe — the unique
+  // (scopePacketId, revisionNumber) index plus the status check guarantees
+  // correctness even under parallel publish attempts.
   const readiness = evaluateScopePacketRevisionReadiness({
     packetTaskLines: target.packetTaskLines.map((line) => ({
       id: line.id,
@@ -91,25 +109,29 @@ export async function publishScopePacketRevisionForTenant(
     })),
   });
 
-  const updated = await prisma.$transaction(async (tx) => {
-    const sibling = await tx.scopePacketRevision.findFirst({
-      where: {
-        scopePacketId: target.scopePacketId,
-        status: "PUBLISHED",
-        NOT: { id: target.id },
-      },
-      select: { id: true },
-    });
-
+  const { updated, demotedSiblingCount } = await prisma.$transaction(async (tx) => {
     assertScopePacketRevisionPublishPreconditions({
       scopePacketId: target.scopePacketId,
       scopePacketRevisionId: target.id,
       currentStatus: target.status,
       readiness,
-      packetHasOtherPublishedRevision: sibling != null,
     });
 
-    return tx.scopePacketRevision.update({
+    // Step 1: demote any sibling PUBLISHED revision on the same packet to
+    // SUPERSEDED. publishedAt on the demoted row is intentionally preserved
+    // as historical truth (decision pack §11). Per canon there is at most
+    // one such row, but updateMany handles the {0, 1, n} case uniformly.
+    const demotion = await tx.scopePacketRevision.updateMany({
+      where: {
+        scopePacketId: target.scopePacketId,
+        status: "PUBLISHED",
+        NOT: { id: target.id },
+      },
+      data: { status: "SUPERSEDED" },
+    });
+
+    // Step 2: promote the target.
+    const row = await tx.scopePacketRevision.update({
       where: { id: target.id },
       data: { status: "PUBLISHED", publishedAt: new Date() },
       select: {
@@ -120,6 +142,8 @@ export async function publishScopePacketRevisionForTenant(
         publishedAt: true,
       },
     });
+
+    return { updated: row, demotedSiblingCount: demotion.count };
   });
 
   // The update's select narrows `status` to ScopePacketRevisionStatus; the
@@ -136,5 +160,6 @@ export async function publishScopePacketRevisionForTenant(
     revisionNumber: updated.revisionNumber,
     status: "PUBLISHED",
     publishedAtIso: updated.publishedAt.toISOString(),
+    demotedSiblingCount,
   };
 }

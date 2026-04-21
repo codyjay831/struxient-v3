@@ -50,10 +50,23 @@ function mapRow(row: {
 
 export async function listFlowGroupsForTenant(
   prisma: PrismaClient,
-  params: { tenantId: string; limit: number },
+  params: {
+    tenantId: string;
+    limit: number;
+    /**
+     * Optional customer filter. When set, returns only FlowGroups whose
+     * `customerId` matches. Tenant scoping is preserved by the leading
+     * `tenantId` predicate; this filter is additive and never widens visibility.
+     */
+    customerId?: string;
+  },
 ): Promise<FlowGroupSummaryDto[]> {
+  const where: { tenantId: string; customerId?: string } = { tenantId: params.tenantId };
+  if (params.customerId) {
+    where.customerId = params.customerId;
+  }
   const rows = await prisma.flowGroup.findMany({
-    where: { tenantId: params.tenantId },
+    where,
     orderBy: { createdAt: "desc" },
     take: params.limit,
     select: {

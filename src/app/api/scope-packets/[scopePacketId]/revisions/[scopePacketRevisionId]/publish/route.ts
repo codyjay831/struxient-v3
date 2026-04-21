@@ -9,18 +9,22 @@ import { apiAuthMeta, requireApiPrincipalWithCapability } from "@/lib/auth/api-p
 /**
  * POST /api/scope-packets/[scopePacketId]/revisions/[scopePacketRevisionId]/publish
  *
- * Interim publish action: transitions a DRAFT ScopePacketRevision to PUBLISHED,
- * setting `publishedAt = NOW()` atomically. Mandatory preflight: tenant
- * ownership, status === DRAFT, readiness predicate isReady, no other PUBLISHED
- * sibling revision under the same packet.
+ * Publish action: transitions a DRAFT ScopePacketRevision to PUBLISHED, setting
+ * `publishedAt = NOW()` atomically. Mandatory preflight: tenant ownership,
+ * status === DRAFT, readiness predicate isReady. As of the revision-2 evolution
+ * decision pack §5, when a sibling PUBLISHED revision exists on the same
+ * packet, the writer transactionally demotes that sibling to SUPERSEDED in the
+ * same transaction; the publish itself never rejects on that condition.
  *
  * Body: none required. (Reserved as `{}` so a future `confirm` token or
  * client-side optimistic concurrency hint can be added without a route change.)
  *
  * No admin-review states are written. No `catalog.publish` capability exists
  * yet; `office_mutate` is the interim authority. See:
- *   - docs/canon/05-packet-canon.md ("Canon amendment — interim publish authority")
+ *   - docs/canon/05-packet-canon.md ("Canon amendment — interim publish authority",
+ *     "Canon amendment — revision-2 evolution policy (post-publish)")
  *   - docs/implementation/decision-packs/interim-publish-authority-decision-pack.md
+ *   - docs/implementation/decision-packs/revision-2-evolution-decision-pack.md §5
  */
 type RouteContext = {
   params: Promise<{ scopePacketId: string; scopePacketRevisionId: string }>;

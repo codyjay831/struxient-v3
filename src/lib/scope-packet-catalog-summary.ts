@@ -17,10 +17,20 @@ const MAX_LIST_LIMIT = 200;
 export type ScopePacketRevisionForSummary = {
   id: string;
   revisionNumber: number;
-  status: "DRAFT" | "PUBLISHED";
   /**
-   * Nullable for DRAFT revisions produced by the interim one-step promotion
-   * flow. PUBLISHED revisions still carry a Date; the "latest published"
+   * `SUPERSEDED` is added by the revision-2 evolution slice when revision N is
+   * demoted on publish-of-N+1. The summary continues to report only PUBLISHED
+   * counts and the "latest published" pointer; SUPERSEDED rows are surfaced
+   * separately via `supersededRevisionCount` for the catalog inspector and
+   * the `hasDraftRevision` flag stays accurate for the create-DRAFT UI gate.
+   *
+   * Canon: docs/canon/05-packet-canon.md ("Canon amendment — revision-2
+   * evolution policy (post-publish)").
+   */
+  status: "DRAFT" | "PUBLISHED" | "SUPERSEDED";
+  /**
+   * Nullable for DRAFT revisions produced by the promotion / create-DRAFT
+   * flows. PUBLISHED and SUPERSEDED rows carry a Date; the "latest published"
    * pointer below only ever inspects PUBLISHED rows so the null branch is
    * never reached for them.
    *
@@ -32,6 +42,18 @@ export type ScopePacketRevisionForSummary = {
 export type ScopePacketRevisionsSummary = {
   revisionCount: number;
   publishedRevisionCount: number;
+  /**
+   * Number of revisions whose `status === "SUPERSEDED"`. Always 0 prior to
+   * the first publish-of-revision-N+1 demotion.
+   */
+  supersededRevisionCount: number;
+  /**
+   * True when at least one revision under the packet has `status === "DRAFT"`.
+   * Drives the "Create next DRAFT revision" UI gate (visible only when the
+   * packet has a current PUBLISHED revision and zero DRAFT revisions, per the
+   * decision pack §4 multi-DRAFT policy).
+   */
+  hasDraftRevision: boolean;
   latestPublishedRevisionId: string | null;
   latestPublishedRevisionNumber: number | null;
   latestPublishedAtIso: string | null;
@@ -49,10 +71,19 @@ export function summarizeScopePacketRevisions(
 ): ScopePacketRevisionsSummary {
   const revisionCount = revisions.length;
   let publishedRevisionCount = 0;
+  let supersededRevisionCount = 0;
+  let hasDraftRevision = false;
   let latest: ScopePacketRevisionForSummary | null = null;
 
   for (const rev of revisions) {
-    if (rev.status !== "PUBLISHED") continue;
+    if (rev.status === "DRAFT") {
+      hasDraftRevision = true;
+      continue;
+    }
+    if (rev.status === "SUPERSEDED") {
+      supersededRevisionCount++;
+      continue;
+    }
     publishedRevisionCount++;
     if (latest === null) {
       latest = rev;
@@ -70,6 +101,8 @@ export function summarizeScopePacketRevisions(
   return {
     revisionCount,
     publishedRevisionCount,
+    supersededRevisionCount,
+    hasDraftRevision,
     latestPublishedRevisionId: latest?.id ?? null,
     latestPublishedRevisionNumber: latest?.revisionNumber ?? null,
     latestPublishedAtIso: latest?.publishedAt?.toISOString() ?? null,

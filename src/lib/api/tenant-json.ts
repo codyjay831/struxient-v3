@@ -47,10 +47,45 @@ export function requireTenantJson(
 }
 
 /**
- * Map Prisma init, invariant, and Struxient env errors to JSON responses; returns null if unhandled (rethrow).
+ * Duck-typed detection for Prisma init failures.
+ *
+ * `instanceof PrismaClientInitializationError` is unreliable under Turbopack /
+ * Next.js dev: the Prisma runtime module can be loaded twice (once via
+ * `@prisma/client`'s internal import graph, once via our direct
+ * `@prisma/client/runtime/library` import), producing two distinct constructor
+ * identities. We therefore also accept any error whose `name` is
+ * `PrismaClientInitializationError` or whose `errorCode` is `P1001`
+ * ("Can't reach database server"). This is the difference between a structured
+ * 503 `DATABASE_UNAVAILABLE` JSON response and a silent `{}` 500.
  */
-export function jsonResponseForCaughtError(e: unknown): NextResponse | null {
-  if (e instanceof PrismaClientInitializationError) {
+function isPrismaInitError(e: unknown): e is Error & { errorCode?: string } {
+  if (e instanceof PrismaClientInitializationError) return true;
+  if (!(e instanceof Error)) return false;
+  if (e.name === "PrismaClientInitializationError") return true;
+  const errorCode = (e as { errorCode?: unknown }).errorCode;
+  return typeof errorCode === "string" && errorCode === "P1001";
+}
+
+/**
+ * Map any caught error to a structured JSON `NextResponse`.
+ *
+ * Contract: ALWAYS returns a `NextResponse` — never `null`. Routes that catch
+ * errors and call this helper are guaranteed a structured `{ error: { code,
+ * message, ... } }` body and a meaningful status code. This prevents the
+ * silent `{}` 500 that Next.js produces when an exception escapes a Route
+ * Handler.
+ *
+ * Handled categories (in order):
+ *   1. Prisma initialization failure (DB unreachable, P1001)         → 503 DATABASE_UNAVAILABLE
+ *   2. Missing `DATABASE_URL` thrown by `getPrisma()`                 → 500 DATABASE_URL_MISSING
+ *   3. `InvariantViolationError` (slice 1 service invariants)        → status from `invariantToHttpStatus`
+ *   4. Anything else                                                 → 500 INTERNAL_ERROR
+ *
+ * For the `INTERNAL_ERROR` fallback, the underlying error is logged
+ * server-side and a safe `details` block is included only outside production.
+ */
+export function jsonResponseForCaughtError(e: unknown): NextResponse {
+  if (isPrismaInitError(e)) {
     return NextResponse.json(
       {
         error: {
@@ -72,7 +107,22 @@ export function jsonResponseForCaughtError(e: unknown): NextResponse | null {
       { status },
     );
   }
-  return null;
+
+  console.error("[api] unhandled error in route handler:", e);
+
+  const isProd = process.env.NODE_ENV === "production";
+  const safeName = e instanceof Error ? e.name : typeof e;
+  const safeMessage = e instanceof Error ? e.message : "Unknown server error.";
+  const body = {
+    error: {
+      code: "INTERNAL_ERROR",
+      message: isProd
+        ? "An unexpected server error occurred. Check server logs for details."
+        : safeMessage,
+      ...(isProd ? {} : { details: { name: safeName } }),
+    },
+  };
+  return NextResponse.json(body, { status: 500 });
 }
 
 function invariantToHttpStatus(code: Slice1InvariantCode): number {
@@ -94,10 +144,14 @@ function invariantToHttpStatus(code: Slice1InvariantCode): number {
     // Canon: docs/implementation/decision-packs/interim-publish-authority-decision-pack.md.
     case "SCOPE_PACKET_REVISION_PUBLISH_NOT_DRAFT":
     case "SCOPE_PACKET_REVISION_PUBLISH_NOT_READY":
-    case "SCOPE_PACKET_REVISION_PUBLISH_PACKET_HAS_PUBLISHED":
     // Quote-local fork from PUBLISHED ScopePacketRevision: source-state conflict.
     // Canon: docs/canon/05-packet-canon.md §100-101, bridge-decision 03.
     case "SCOPE_PACKET_REVISION_FORK_NOT_PUBLISHED":
+    // Revision-2 evolution create-DRAFT preflight conflicts (decision pack §3-5).
+    // All three describe a state-conflict between the requested DRAFT-clone
+    // transition and the current state of the source packet → 409.
+    case "SCOPE_PACKET_REVISION_CREATE_DRAFT_NO_PUBLISHED_SOURCE":
+    case "SCOPE_PACKET_REVISION_CREATE_DRAFT_PACKET_HAS_DRAFT":
       return 409;
     case "TASK_DEFINITION_NOT_FOUND":
     case "QUOTE_LOCAL_PACKET_NOT_FOUND":
@@ -132,6 +186,7 @@ function invariantToHttpStatus(code: Slice1InvariantCode): number {
     case "QUOTE_LOCAL_PACKET_PROMOTION_INVALID_DISPLAY_NAME":
     case "QUOTE_LOCAL_PACKET_PROMOTION_SOURCE_HAS_NO_ITEMS":
     case "SCOPE_PACKET_REVISION_FORK_SOURCE_HAS_NO_ITEMS":
+    case "SCOPE_PACKET_REVISION_CREATE_DRAFT_SOURCE_HAS_NO_ITEMS":
       return 400;
     default:
       return 422;

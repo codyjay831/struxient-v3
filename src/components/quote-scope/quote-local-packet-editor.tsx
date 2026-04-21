@@ -472,7 +472,7 @@ function PacketRow({
                 </span>
                 {isPromoted && packet.promotedScopePacketId ? (
                   <a
-                    href={`/dev/catalog-packets/${encodeURIComponent(packet.promotedScopePacketId)}`}
+                    href={`/library/packets/${encodeURIComponent(packet.promotedScopePacketId)}`}
                     className="rounded border border-emerald-800/60 bg-emerald-950/30 px-1.5 py-0.5 text-emerald-300 hover:text-emerald-200"
                   >
                     open promoted packet ↗

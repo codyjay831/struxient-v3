@@ -16,6 +16,10 @@ type PageProps = {
 const REVISION_STATUS_BADGE: Record<string, string> = {
   DRAFT: "border-amber-800/60 bg-amber-950/30 text-amber-300",
   PUBLISHED: "border-emerald-800/60 bg-emerald-950/30 text-emerald-300",
+  // Revision-2 evolution: a previously PUBLISHED revision demoted on
+  // publish-of-N+1. Read-only thereafter; existing pins still resolve.
+  // Canon: docs/implementation/decision-packs/revision-2-evolution-decision-pack.md §6, §11.
+  SUPERSEDED: "border-zinc-700/80 bg-zinc-900/50 text-zinc-400",
 };
 
 const LINE_KIND_BADGE: Record<string, string> = {

@@ -15,7 +15,7 @@ export default async function ProjectEvidenceRollupPage({ params }: PageProps) {
   const auth = await tryGetApiPrincipal();
 
   if (!auth.ok) {
-    redirect("/dev/login");
+    redirect("/login");
   }
 
   const prisma = getPrisma();

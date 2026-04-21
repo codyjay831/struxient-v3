@@ -98,10 +98,10 @@ export function QuoteWorkspacePinWorkflow({ pinTarget, canOfficeMutate }: Props)
       setDraftId(next ?? "");
       setResult({
         kind: "success",
-        title: pinnedWorkflowVersionId ? "Workflow selected" : "Selection cleared",
-        message: pinnedWorkflowVersionId 
-          ? "Workflow has been attached to this draft. You can now proceed to review scope and send the proposal."
-          : "The workflow selection has been removed from this draft.",
+        title: pinnedWorkflowVersionId ? "Process template pinned" : "Process template unpinned",
+        message: pinnedWorkflowVersionId
+          ? "The process template provides the node/stage skeleton. Your line items / packets will compose onto this template's nodes when you send."
+          : "This draft no longer has a process template pinned. Pin one before sending so packets can compose onto its nodes.",
       });
       router.refresh();
     } finally {
@@ -114,8 +114,8 @@ export function QuoteWorkspacePinWorkflow({ pinTarget, canOfficeMutate }: Props)
     if (trimmed === "") {
       setResult({
         kind: "error",
-        title: "Invalid selection",
-        message: "Choose a published version or paste an id, or use Clear selection.",
+        title: "No template chosen",
+        message: "Pick a published process template from the list, paste an id, or use Unpin template.",
       });
       return;
     }
@@ -129,9 +129,9 @@ export function QuoteWorkspacePinWorkflow({ pinTarget, canOfficeMutate }: Props)
   if (!pinTarget) {
     return (
       <section className="mb-6 rounded border border-zinc-800 bg-zinc-950/40 p-4 text-sm">
-        <h2 className="mb-1 text-sm font-medium text-zinc-200">Workflow selection</h2>
+        <h2 className="mb-1 text-sm font-medium text-zinc-200">Process template</h2>
         <p className="text-xs text-zinc-500">
-          Workflow selection is only available for draft versions. The current version is already locked.
+          The pinned process template can only be changed on a draft version. The current version is locked.
         </p>
       </section>
     );
@@ -139,22 +139,24 @@ export function QuoteWorkspacePinWorkflow({ pinTarget, canOfficeMutate }: Props)
 
   return (
     <section className="mb-6 rounded border border-zinc-800 bg-zinc-950/40 p-4 text-sm">
-      <h2 className="mb-1 text-sm font-medium text-zinc-200">Select workflow</h2>
+      <h2 className="mb-1 text-sm font-medium text-zinc-200">Pin process template</h2>
       <p className="text-xs text-zinc-500">
-        Choose a published workflow to attach to this draft.
+        The process template defines the <span className="text-zinc-300">node/stage skeleton</span> this engagement
+        will run through. It does <span className="text-zinc-300">not</span> define the work — your line items and
+        packets do that. At send time, your packets are composed onto this template&apos;s nodes.
       </p>
 
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-        <span className="text-zinc-500">Current selection:</span>
+        <span className="text-zinc-500">Current template:</span>
         {pinTarget.pinnedWorkflowVersionId ?
           <span className="font-medium text-zinc-200">
-            {catalog?.find(i => i.id === pinTarget.pinnedWorkflowVersionId)?.templateDisplayName ?? "Attached"} (v{catalog?.find(i => i.id === pinTarget.pinnedWorkflowVersionId)?.versionNumber ?? "…"})
+            {catalog?.find(i => i.id === pinTarget.pinnedWorkflowVersionId)?.templateDisplayName ?? "Pinned"} (v{catalog?.find(i => i.id === pinTarget.pinnedWorkflowVersionId)?.versionNumber ?? "…"})
           </span>
-        : <span className="text-amber-700/90 font-medium italic">No workflow selected</span>}
+        : <span className="text-amber-700/90 font-medium italic">No template pinned</span>}
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-        <span className="text-zinc-500">Available versions:</span>
+        <span className="text-zinc-500">Available templates:</span>
         {canOfficeMutate ?
           <select
             id="wf-pin-select"
@@ -163,7 +165,7 @@ export function QuoteWorkspacePinWorkflow({ pinTarget, canOfficeMutate }: Props)
             onChange={(e) => setDraftId(e.target.value)}
             className="max-w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-xs text-zinc-200 disabled:opacity-50"
           >
-            <option value="">Select a workflow…</option>
+            <option value="">Choose a process template…</option>
             {catalog?.map((i) => (
               <option key={i.id} value={i.id}>
                 {i.templateDisplayName} (v{i.versionNumber})
@@ -190,10 +192,10 @@ export function QuoteWorkspacePinWorkflow({ pinTarget, canOfficeMutate }: Props)
       </div>
 
       {catalogError ? <p className="mt-1 text-xs text-amber-600/90">{catalogError}</p> : null}
-      
+
       {!canOfficeMutate ?
         <p className="mt-2 text-xs text-zinc-500">
-          Changing workflow selection requires an office session with elevated permissions.
+          Changing the pinned process template requires an office session with elevated permissions.
         </p>
       : <>
           <div className="mt-4 flex flex-wrap gap-2">
@@ -203,7 +205,7 @@ export function QuoteWorkspacePinWorkflow({ pinTarget, canOfficeMutate }: Props)
               onClick={() => void applyPinnedId()}
               className="rounded bg-sky-900/80 px-4 py-1.5 text-xs font-medium text-sky-50 hover:bg-sky-800/90 disabled:opacity-50 transition-colors"
             >
-              {busy ? "Saving…" : "Save selection"}
+              {busy ? "Pinning…" : "Pin template"}
             </button>
             <button
               type="button"
@@ -211,7 +213,7 @@ export function QuoteWorkspacePinWorkflow({ pinTarget, canOfficeMutate }: Props)
               onClick={() => void clearPin()}
               className="rounded border border-zinc-600 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800/80 disabled:opacity-40 transition-colors"
             >
-              Clear selection
+              Unpin template
             </button>
           </div>
 
@@ -220,6 +222,10 @@ export function QuoteWorkspacePinWorkflow({ pinTarget, canOfficeMutate }: Props)
               <summary className="cursor-pointer font-medium hover:text-zinc-500">Technical details</summary>
               <div className="mt-2 space-y-2">
                 <p>Target: v{pinTarget.versionNumber} · <span className="font-mono">{pinTarget.quoteVersionId}</span></p>
+                <p className="text-zinc-600">
+                  Stored as <code className="font-mono">QuoteVersion.pinnedWorkflowVersionId</code>. The DB column name
+                  is historical; UX uses &quot;process template&quot; to match canon (`docs/canon/06-node-and-flowspec-canon.md`).
+                </p>
                 <div className="flex flex-col gap-1">
                   <span className="text-[9px] uppercase tracking-wider text-zinc-500">Manual ID Entry</span>
                   <input
@@ -249,8 +255,8 @@ export function QuoteWorkspacePinWorkflow({ pinTarget, canOfficeMutate }: Props)
           message={result.message}
           technicalDetails={result.technicalDetails}
           nextStep={
-            result.kind === "success" && pinTarget.pinnedWorkflowVersionId 
-              ? { label: "Prepare & send proposal", href: "#step-3" } 
+            result.kind === "success" && pinTarget.pinnedWorkflowVersionId
+              ? { label: "Prepare & send proposal", href: "#step-3" }
               : undefined
           }
         />

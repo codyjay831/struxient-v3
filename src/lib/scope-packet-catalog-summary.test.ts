@@ -9,7 +9,7 @@ import {
 function rev(
   id: string,
   revisionNumber: number,
-  status: "DRAFT" | "PUBLISHED",
+  status: "DRAFT" | "PUBLISHED" | "SUPERSEDED",
   publishedAtIso: string,
 ): ScopePacketRevisionForSummary {
   return { id, revisionNumber, status, publishedAt: new Date(publishedAtIso) };
@@ -20,10 +20,41 @@ describe("summarizeScopePacketRevisions", () => {
     expect(summarizeScopePacketRevisions([])).toEqual({
       revisionCount: 0,
       publishedRevisionCount: 0,
+      supersededRevisionCount: 0,
+      hasDraftRevision: false,
       latestPublishedRevisionId: null,
       latestPublishedRevisionNumber: null,
       latestPublishedAtIso: null,
     });
+  });
+
+  // Revision-2 evolution: a SUPERSEDED row is counted in revisionCount and
+  // supersededRevisionCount, never in publishedRevisionCount, never selected
+  // as latestPublished. Decision pack §6 / §11.
+  it("counts SUPERSEDED rows separately and never as the latest published pointer", () => {
+    const summary = summarizeScopePacketRevisions([
+      rev("r1", 1, "SUPERSEDED", "2026-01-01T00:00:00Z"),
+      rev("r2", 2, "PUBLISHED", "2026-02-01T00:00:00Z"),
+    ]);
+    expect(summary.revisionCount).toBe(2);
+    expect(summary.publishedRevisionCount).toBe(1);
+    expect(summary.supersededRevisionCount).toBe(1);
+    expect(summary.hasDraftRevision).toBe(false);
+    expect(summary.latestPublishedRevisionId).toBe("r2");
+    expect(summary.latestPublishedRevisionNumber).toBe(2);
+  });
+
+  it("hasDraftRevision becomes true when any DRAFT row exists (multi-DRAFT UI gate input)", () => {
+    const onlyPublished = summarizeScopePacketRevisions([
+      rev("r1", 1, "PUBLISHED", "2026-01-01T00:00:00Z"),
+    ]);
+    expect(onlyPublished.hasDraftRevision).toBe(false);
+
+    const oneDraft = summarizeScopePacketRevisions([
+      rev("r1", 1, "PUBLISHED", "2026-01-01T00:00:00Z"),
+      rev("r2", 2, "DRAFT", "2026-02-01T00:00:00Z"),
+    ]);
+    expect(oneDraft.hasDraftRevision).toBe(true);
   });
 
   it("counts all revisions but only published count toward publishedRevisionCount", () => {

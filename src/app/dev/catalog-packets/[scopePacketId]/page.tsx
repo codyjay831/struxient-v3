@@ -1,7 +1,8 @@
 import Link from "next/link";
+import { CreateNextRevisionForm } from "@/components/catalog-packets/create-next-revision-form";
 import { InternalBreadcrumb } from "@/components/internal/internal-breadcrumb";
 import { InternalNotFoundState } from "@/components/internal/internal-state-feedback";
-import { tryGetApiPrincipal } from "@/lib/auth/api-principal";
+import { tryGetApiPrincipal, principalHasCapability } from "@/lib/auth/api-principal";
 import { getPrisma } from "@/server/db/prisma";
 import { getScopePacketDetailForTenant } from "@/server/slice1/reads/scope-packet-catalog-reads";
 
@@ -12,6 +13,10 @@ type PageProps = { params: Promise<{ scopePacketId: string }> };
 const REVISION_STATUS_BADGE: Record<string, string> = {
   DRAFT: "border-amber-800/60 bg-amber-950/30 text-amber-300",
   PUBLISHED: "border-emerald-800/60 bg-emerald-950/30 text-emerald-300",
+  // Revision-2 evolution: a previously PUBLISHED revision demoted on
+  // publish-of-N+1. Read-only thereafter; existing pins still resolve.
+  // Canon: docs/implementation/decision-packs/revision-2-evolution-decision-pack.md §6, §11.
+  SUPERSEDED: "border-zinc-700/80 bg-zinc-900/50 text-zinc-400",
 };
 
 export default async function DevCatalogPacketDetailPage({ params }: PageProps) {
@@ -101,7 +106,16 @@ export default async function DevCatalogPacketDetailPage({ params }: PageProps) 
         </div>
       </header>
 
-      <section className="space-y-3">
+      {detail.latestPublishedRevisionId != null &&
+      !detail.hasDraftRevision &&
+      principalHasCapability(auth.principal, "office_mutate") ? (
+        <CreateNextRevisionForm
+          scopePacketId={detail.id}
+          latestPublishedRevisionNumber={detail.latestPublishedRevisionNumber!}
+        />
+      ) : null}
+
+      <section className="mt-6 space-y-3">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">
           Revisions
         </h2>

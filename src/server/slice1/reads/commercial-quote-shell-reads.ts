@@ -70,10 +70,33 @@ function mapRow(row: {
 
 export async function listCommercialQuoteShellsForTenant(
   prisma: PrismaClient,
-  params: { tenantId: string; limit: number },
+  params: {
+    tenantId: string;
+    limit: number;
+    /**
+     * Optional customer filter. When set, returns only Quote rows whose
+     * `customerId` matches. Tenant scoping is preserved by the leading
+     * `tenantId` predicate; this filter is additive and never widens visibility.
+     */
+    customerId?: string;
+    /**
+     * Optional flow-group (project) filter. When set, returns only Quote rows
+     * whose `flowGroupId` matches. Same tenant-scoping guarantee as above.
+     */
+    flowGroupId?: string;
+  },
 ): Promise<CommercialQuoteShellSummaryDto[]> {
+  const where: { tenantId: string; customerId?: string; flowGroupId?: string } = {
+    tenantId: params.tenantId,
+  };
+  if (params.customerId) {
+    where.customerId = params.customerId;
+  }
+  if (params.flowGroupId) {
+    where.flowGroupId = params.flowGroupId;
+  }
   const rows = await prisma.quote.findMany({
-    where: { tenantId: params.tenantId },
+    where,
     orderBy: { createdAt: "desc" },
     take: params.limit,
     select: {

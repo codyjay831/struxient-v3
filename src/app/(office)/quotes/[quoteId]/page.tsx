@@ -32,11 +32,12 @@ type PageProps = { params: Promise<{ quoteId: string }> };
 
 export const dynamic = "force-dynamic";
 
-function toReadinessInput(row: any): QuoteHeadReadinessInput {
+function toReadinessInput(row: any, lineItemCount: number): QuoteHeadReadinessInput {
   return {
     id: row.id,
     versionNumber: row.versionNumber,
     status: row.status,
+    lineItemCount,
     hasPinnedWorkflow: row.hasPinnedWorkflow,
     hasFrozenArtifacts: row.hasFrozenArtifacts,
     hasActivation: row.hasActivation,
@@ -51,7 +52,7 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
   const auth = await tryGetApiPrincipal();
 
   if (!auth.ok) {
-    redirect("/dev/login");
+    redirect("/login");
   }
 
   const ws = await getQuoteWorkspaceForTenant(getPrisma(), {
@@ -64,7 +65,10 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
   }
 
   const head = ws.versions[0] ?? null;
-  const readiness = deriveQuoteHeadWorkspaceReadiness(head ? toReadinessInput(head) : null);
+  const headLineItemCount = ws.headLineItemSummary?.lineItemCount ?? 0;
+  const readiness = deriveQuoteHeadWorkspaceReadiness(
+    head ? toReadinessInput(head, headLineItemCount) : null,
+  );
   const recommendedStep = readiness.kind === "head" ? readiness.recommendedStepIndex : null;
 
   const latestDraft = ws.versions.find((v) => v.status === "DRAFT") ?? null;
@@ -118,9 +122,11 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
           </p>
         </div>
         <div className="flex items-center gap-3">
-           <Link href={`/dev/quote-scope/${head?.id}`} className="px-3 py-1.5 rounded border border-zinc-700 bg-zinc-900 text-xs font-medium text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-all">
-              Inspect Scope
-           </Link>
+           {head ? (
+             <Link href={`/quotes/${quoteId}/versions/${head.id}/scope`} className="px-3 py-1.5 rounded border border-zinc-700 bg-zinc-900 text-xs font-medium text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-all">
+                Inspect Scope
+             </Link>
+           ) : null}
         </div>
       </header>
 
@@ -128,83 +134,110 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
         <div className="lg:col-span-2 space-y-10">
           <QuoteWorkspaceShellSummary quoteId={quoteId} shell={ws} head={head} />
 
-          <div id="line-items">
-            <QuoteWorkspaceLineItemSummary
-              versionNumber={head?.versionNumber ?? null}
-              summary={ws.headLineItemSummary}
-            />
-          </div>
-
-          <QuoteWorkspaceLineItemList
-            versionNumber={head?.versionNumber ?? null}
-            items={ws.headLineItems}
-          />
-
           <section aria-labelledby="workflow-heading">
             <div className="mb-6 border-b border-zinc-800 pb-2">
               <h2 id="workflow-heading" className="text-lg font-semibold text-zinc-50">
                 Commercial Pipeline
               </h2>
               <p className="mt-1 text-sm text-zinc-500">
-                The standard operating procedure for moving a quote to execution.
+                Line items / packets define the work. The process template defines the node/stage skeleton it runs through.
+                Author scope first, then pin a template, then send.
               </p>
             </div>
 
             <div className="space-y-8">
-              <QuoteWorkspacePipelineStep
-                step={1}
-                title="Review & Revise"
-                hint="Modify scope line items and manage draft revisions."
-                isRecommended={recommendedStep === 1}
-              >
-                <QuoteWorkspaceActions quoteId={quoteId} canOfficeMutate={canOfficeMutate} />
-              </QuoteWorkspacePipelineStep>
+              <div id="step-1">
+                <QuoteWorkspacePipelineStep
+                  step={1}
+                  title="Review Scope & Line Items"
+                  hint="Line items and their packets are the primary scope authoring object — they define the sold work."
+                  isRecommended={recommendedStep === 1}
+                >
+                  <div id="line-items" className="space-y-6">
+                    <QuoteWorkspaceLineItemSummary
+                      versionNumber={head?.versionNumber ?? null}
+                      summary={ws.headLineItemSummary}
+                    />
 
-              <QuoteWorkspacePipelineStep
-                step={2}
-                title="Select Workflow"
-                hint="Attach a technical process skeleton to this quote."
-                isRecommended={recommendedStep === 2}
-              >
-                <QuoteWorkspacePinWorkflow pinTarget={headDraftPinTarget} canOfficeMutate={canOfficeMutate} />
-              </QuoteWorkspacePipelineStep>
+                    <QuoteWorkspaceLineItemList
+                      versionNumber={head?.versionNumber ?? null}
+                      items={ws.headLineItems}
+                    />
 
-              <QuoteWorkspacePipelineStep
-                step={3}
-                title="Prepare & Send"
-                hint="Freeze the artifacts and send the proposal to the customer."
-                isRecommended={recommendedStep === 3}
-              >
-                <QuoteWorkspaceComposeSendPanel latestDraft={latestDraftWorkspaceTarget} canOfficeMutate={canOfficeMutate} />
-              </QuoteWorkspacePipelineStep>
+                    {/* Authoring lives on a dedicated office route. The
+                        workspace stays the overview/control surface; this
+                        button hands off to the scope editor for line-item
+                        CRUD on the head draft. */}
+                    <div className="flex flex-wrap items-center gap-3">
+                      <Link
+                        href={`/quotes/${quoteId}/scope`}
+                        className="rounded bg-sky-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-600 transition-colors"
+                      >
+                        Open Scope Editor →
+                      </Link>
+                      <span className="text-[11px] text-zinc-500">
+                        Add, edit, or remove line items on the head draft.
+                      </span>
+                    </div>
 
-              <QuoteWorkspacePipelineStep
-                step={4}
-                title="Record Signature"
-                hint="Verify customer approval and prepare for activation."
-                isRecommended={recommendedStep === 4}
-              >
-                <QuoteWorkspaceSignSent signTarget={sentSignTarget} canOfficeMutate={canOfficeMutate} />
-              </QuoteWorkspacePipelineStep>
+                    <QuoteWorkspaceActions quoteId={quoteId} canOfficeMutate={canOfficeMutate} />
+                  </div>
+                </QuoteWorkspacePipelineStep>
+              </div>
 
-              <QuoteWorkspacePipelineStep
-                step={5}
-                title="Activate Execution"
-                hint="Launch the runtime workflow and create execution records."
-                isRecommended={recommendedStep === 5}
-              >
-                <QuoteWorkspaceActivateSigned
-                  activateTarget={signedActivateTarget}
-                  canOfficeMutate={canOfficeMutate}
-                />
-              </QuoteWorkspacePipelineStep>
+              <div id="step-2">
+                <QuoteWorkspacePipelineStep
+                  step={2}
+                  title="Pin Process Template"
+                  hint="Pick the published process template (node/stage skeleton) the work will run through. The template does not define the work — your line items do."
+                  isRecommended={recommendedStep === 2}
+                >
+                  <QuoteWorkspacePinWorkflow pinTarget={headDraftPinTarget} canOfficeMutate={canOfficeMutate} />
+                </QuoteWorkspacePipelineStep>
+              </div>
+
+              <div id="step-3">
+                <QuoteWorkspacePipelineStep
+                  step={3}
+                  title="Prepare & Send Proposal"
+                  hint="Compose line items / packets onto the pinned template's nodes, freeze the snapshot, and send."
+                  isRecommended={recommendedStep === 3}
+                >
+                  <QuoteWorkspaceComposeSendPanel latestDraft={latestDraftWorkspaceTarget} canOfficeMutate={canOfficeMutate} />
+                </QuoteWorkspacePipelineStep>
+              </div>
+
+              <div id="step-4">
+                <QuoteWorkspacePipelineStep
+                  step={4}
+                  title="Record Signature"
+                  hint="Capture customer approval to move this version to SIGNED."
+                  isRecommended={recommendedStep === 4}
+                >
+                  <QuoteWorkspaceSignSent signTarget={sentSignTarget} canOfficeMutate={canOfficeMutate} />
+                </QuoteWorkspacePipelineStep>
+              </div>
+
+              <div id="step-5">
+                <QuoteWorkspacePipelineStep
+                  step={5}
+                  title="Activate Execution"
+                  hint="Instantiate runtime tasks from the frozen execution package onto the pinned template's nodes."
+                  isRecommended={recommendedStep === 5}
+                >
+                  <QuoteWorkspaceActivateSigned
+                    activateTarget={signedActivateTarget}
+                    canOfficeMutate={canOfficeMutate}
+                  />
+                </QuoteWorkspacePipelineStep>
+              </div>
             </div>
           </section>
         </div>
 
         <div className="space-y-8">
           <div className="sticky top-24 space-y-8">
-            <QuoteWorkspaceHeadReadiness head={head} />
+            <QuoteWorkspaceHeadReadiness head={head} headLineItemCount={headLineItemCount} />
             
             <QuoteWorkspacePaymentGates quoteId={quoteId} gates={ws.paymentGates} canOfficeMutate={canOfficeMutate} />
             
@@ -214,7 +247,7 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
 
             <QuoteWorkspaceExecutionBridge data={executionBridgeData} />
             
-            <QuoteWorkspaceVersionHistory versions={ws.versions} />
+            <QuoteWorkspaceVersionHistory quoteId={quoteId} versions={ws.versions} />
 
             <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-6">
                <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500 mb-4">Support & Metadata</h3>

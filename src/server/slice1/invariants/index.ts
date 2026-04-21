@@ -4,7 +4,13 @@ export { assertPreJobTaskAnchors } from "./pre-job-task";
 export {
   assertQuoteLineItemInvariants,
   assertScopePacketRevisionIsPublishedForPin,
+  assertScopePacketRevisionIsValidPinForReadModel,
+  type ScopePacketRevisionPinAcceptance,
 } from "./quote-line-item";
+export {
+  assertCreateDraftScopePacketRevisionPreconditions,
+  type AssertCreateDraftScopePacketRevisionPreconditionsParams,
+} from "./scope-packet-revision-create-draft";
 export { assertQuoteLocalPacketTenantMatchesQuote } from "./quote-local-packet";
 export {
   assertScopePacketRevisionPublishPreconditions,

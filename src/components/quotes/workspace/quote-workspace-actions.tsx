@@ -55,7 +55,7 @@ export function QuoteWorkspaceActions({ quoteId, canOfficeMutate }: Props) {
       {!canOfficeMutate ? (
         <p className="text-xs text-zinc-500">
           Creating a new version requires an office session with elevated permissions.
-          Sign in at <code className="text-zinc-400">/dev/login</code> as office to perform this action.
+          Sign in at <code className="text-zinc-400">/login</code> as office to perform this action.
         </p>
       ) : (
         <div className="space-y-3">

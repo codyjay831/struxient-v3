@@ -70,7 +70,6 @@ export type Slice1InvariantCode =
   // each maps to 409 Conflict.
   | "SCOPE_PACKET_REVISION_PUBLISH_NOT_DRAFT"
   | "SCOPE_PACKET_REVISION_PUBLISH_NOT_READY"
-  | "SCOPE_PACKET_REVISION_PUBLISH_PACKET_HAS_PUBLISHED"
   // Quote-local fork from a PUBLISHED ScopePacketRevision (canon-05 §100-101
   // "Task mutation (mandatory fork)", bridge-decision 03 "Packet Fork /
   // Promotion"). Inverse of the interim promotion mapping; deep-copies
@@ -78,7 +77,23 @@ export type Slice1InvariantCode =
   // FORK_FROM_LIBRARY. Source must be PUBLISHED (the only canon-blessed
   // library state); empty source rejected to match the promotion-side rule.
   | "SCOPE_PACKET_REVISION_FORK_NOT_PUBLISHED"
-  | "SCOPE_PACKET_REVISION_FORK_SOURCE_HAS_NO_ITEMS";
+  | "SCOPE_PACKET_REVISION_FORK_SOURCE_HAS_NO_ITEMS"
+  // Revision-2 evolution: create the next DRAFT revision as a deep clone of
+  // the current PUBLISHED revision. Canon: docs/canon/05-packet-canon.md
+  // ("Canon amendment — revision-2 evolution policy (post-publish)"),
+  // docs/implementation/decision-packs/revision-2-evolution-decision-pack.md.
+  // All three describe state-conflicts between the requested transition and
+  // the current state of the source packet; each maps to 409 Conflict.
+  | "SCOPE_PACKET_REVISION_CREATE_DRAFT_NO_PUBLISHED_SOURCE"
+  | "SCOPE_PACKET_REVISION_CREATE_DRAFT_PACKET_HAS_DRAFT"
+  | "SCOPE_PACKET_REVISION_CREATE_DRAFT_SOURCE_HAS_NO_ITEMS"
+  // Read-side defensive code for QuoteLineItem.scopePacketRevisionId resolved
+  // from the database to a status that is not in the broadened read-set
+  // {PUBLISHED, SUPERSEDED}. Indicates either a corrupted historical pin or an
+  // out-of-band status mutation. Mutation-side path continues to use
+  // LINE_SCOPE_REVISION_NOT_PUBLISHED (PUBLISHED-only); this code is reserved
+  // for the read-side assertion and is not user-actionable.
+  | "LINE_SCOPE_REVISION_PIN_INVALID_STATE";
 
 export class InvariantViolationError extends Error {
   readonly code: Slice1InvariantCode;

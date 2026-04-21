@@ -186,6 +186,25 @@ When an estimator creates a useful `QuoteLocalPacket`, they may click **"Promote
 
 **Authority for this amendment:** `docs/implementation/decision-packs/interim-publish-authority-decision-pack.md`.
 
+### Canon amendment — revision-2 evolution policy (post-publish)
+
+**Canon (interim slice, planning truth — implementation deferred to its own follow-up code epic):** Following the interim publish authority amendment, same-packet evolution to revision N+1 is governed by a single decision pack that resolves the questions explicitly deferred in `interim-publish-authority-decision-pack.md` §6 and §11. The pack does **not** authorize implementation; it locks the canon truth that the next implementation epic will execute against.
+
+**Locked policy (summary; full text in the pack):**
+
+- **Source of revision N+1 DRAFT:** A revision-N+1 `ScopePacketRevision` DRAFT is born as a **deep clone of the current PUBLISHED revision** of the same `ScopePacket`. No other source is authorized. The mapping is field-for-field verbatim across `PacketTaskLine` rows (`lineKey`, `sortOrder`, `tierCode`, `lineKind`, `embeddedPayloadJson`, `taskDefinitionId`, `targetNodeKey`).
+- **Multi-DRAFT policy:** A `ScopePacket` must have **at most one `DRAFT` revision** at a time. The create-DRAFT action rejects when another DRAFT exists.
+- **Publish-of-N+1 policy:** When revision N+1 publishes, the previous PUBLISHED revision is **automatically demoted to a new `SUPERSEDED` status** in the same DB transaction as the `DRAFT → PUBLISHED + publishedAt = NOW()` write. The "at most one PUBLISHED per packet" invariant from §172 is preserved by the demote, not by rejecting the publish.
+- **Pinned-line behavior:** Already-pinned `QuoteLineItem.scopePacketRevisionId` rows that point at a SUPERSEDED revision **remain valid** — the read-side pin invariant must accept `PUBLISHED | SUPERSEDED`. **New pins** to a SUPERSEDED revision are **forbidden** — the mutation-side pin invariant continues to require `PUBLISHED` exactly. The `LINE_SCOPE_REVISION_NOT_PUBLISHED` error code is preserved on the mutation path.
+- **DRAFT-edit scope:** Catalog-side editing of any DRAFT revision (`PacketTaskLine` CRUD, packet metadata edits) **remains deferred**. The first revision-2 slice ships create-DRAFT-from-clone and publish-with-supersede only; DRAFT authoring is a separate epic with its own canon authority.
+- **Picker semantics:** Unchanged. Pickers continue to filter `status = PUBLISHED` (canon §159 / §161). SUPERSEDED is naturally excluded.
+
+**Schema impact (one conditional change, deferred to the follow-up epic, NOT made by this canon amendment):** Adds `SUPERSEDED` to the existing `ScopePacketRevisionStatus` enum. No other schema changes.
+
+**Sunset clause:** When the admin-review epic lands, the create-DRAFT and publish authorities shift to whichever capability that epic names; the supersede policy is reviewed against the admin-review state machine rather than assumed.
+
+**Authority for this amendment:** `docs/implementation/decision-packs/revision-2-evolution-decision-pack.md`.
+
 ### PUBLISHED revision discipline for pickers
 
 **Canon:** Future quote / catalog pickers (library packet selector, tier selector, AI grounding sources) **must filter to `ScopePacketRevision.status = PUBLISHED`**. Revisions produced by the interim promotion flow are `DRAFT` and must **not** appear as selectable library packets until a later epic publishes them. This preserves library hygiene during the interim slice.
@@ -219,4 +238,5 @@ When an estimator creates a useful `QuoteLocalPacket`, they may click **"Promote
 | Quote-local fork? | **QuoteLocalPacket** for task-level mutations |
 | Promotion to library? | **Explicit**, estimator-driven one-step for interim slice (creates `ScopePacket` + `DRAFT` revision); full admin-reviewed publish **deferred** to a later epic |
 | Publish to library? | **Explicit**, office-user one-step for interim slice (DRAFT → PUBLISHED, readiness-gated, at most one `PUBLISHED` per packet, `publishedAt = NOW()`); full admin-review queue and dedicated `catalog.publish` capability **deferred** to a later epic |
+| Same-packet evolution to revision 2+? | **Locked** (canon planning truth — implementation deferred to its own epic): revision N+1 DRAFT is a **deep clone of the current PUBLISHED revision**; **at most one DRAFT** per packet; publish of N+1 **demotes the previous PUBLISHED to a new `SUPERSEDED` status** in one transaction; **already-pinned** quote lines pointing at SUPERSEDED **remain valid**; **new pins** to SUPERSEDED are **forbidden**; catalog-side DRAFT editing **still deferred**. Single conditional schema change identified (`SUPERSEDED` enum value) — **not yet made**. See `docs/implementation/decision-packs/revision-2-evolution-decision-pack.md`. |
 | Library philosophy | **Curated**, not a dumping ground |

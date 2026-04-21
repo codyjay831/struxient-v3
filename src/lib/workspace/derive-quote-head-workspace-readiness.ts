@@ -1,13 +1,23 @@
 /**
  * Head-version workspace readiness: pure derivation from workspace/history fields only.
  * Does not call scope/lifecycle/freeze APIs — avoids duplicate truth and hidden drift.
+ *
+ * Step model (canon-aligned, see `docs/canon/03-quote-to-execution-canon.md` and
+ * `docs/canon/06-node-and-flowspec-canon.md`):
+ *   1. Review scope & line items   — line items + packets define the sold work
+ *   2. Pin process template        — node/stage skeleton the work runs through
+ *   3. Prepare & send proposal     — compose + freeze
+ *   4. Record signature            — customer acceptance
+ *   5. Activate execution          — instantiate runtime tasks on pinned template
  */
 
-/** Subset of `QuoteVersionHistoryItemDto` — keep in sync manually (no server import here). */
+/** Subset of `QuoteVersionHistoryItemDto` (+ derived line item count) — keep in sync manually. */
 export type QuoteHeadReadinessInput = {
   id: string;
   versionNumber: number;
   status: "DRAFT" | "SENT" | "SIGNED" | string;
+  /** Count of QuoteLineItem rows on the head version. Drives "scope authored" check. */
+  lineItemCount: number;
   hasPinnedWorkflow: boolean;
   hasFrozenArtifacts: boolean;
   hasActivation: boolean;
@@ -47,7 +57,11 @@ function checklistItem(
 
 /**
  * Derives a compact readiness view for the **head** (newest) version only.
- * Send “readiness” for drafts is intentionally partial: compose errors / empty plan are only knowable via compose-preview + send-time compose.
+ *
+ * Recommendation order is canon-faithful: scope authoring is the primary authoring step,
+ * the process-template pin is a structural prerequisite for compose, and send/sign/activate
+ * follow. Send "readiness" for drafts is intentionally partial — compose errors / empty plan
+ * are only knowable via compose-preview + send-time compose.
  */
 export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput | null): QuoteHeadWorkspaceReadiness {
   if (!head) {
@@ -55,40 +69,54 @@ export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput 
   }
 
   const { status } = head;
+  const hasScope = head.lineItemCount > 0;
+
   const checklist: ReadinessChecklistItem[] = [
     checklistItem(
+      "scope",
+      "Scope authored (line items present)",
+      hasScope ? "yes" : "no",
+      status === "DRAFT"
+        ? hasScope
+          ? `${String(head.lineItemCount)} line item(s) on this draft. Line items + packets define the sold work.`
+          : "No line items yet — author scope before pinning a process template or sending."
+        : hasScope
+          ? "Frozen scope from this version is what activation will instantiate."
+          : "Unusual for sent/signed — no line items recorded on this version.",
+    ),
+    checklistItem(
       "pin",
-      "Pinned workflow version",
+      "Process template pinned",
       head.hasPinnedWorkflow ? "yes" : "no",
-      status === "DRAFT" ?
-        head.hasPinnedWorkflow ?
-          "Required before send; satisfied for static checks only."
-        : "Missing — send is blocked until PATCH sets pinnedWorkflowVersionId."
-      : status === "SENT" || status === "SIGNED" ?
-        head.hasPinnedWorkflow ?
-          "Expected after a normal send (snapshots tied to a workflow version)."
-        : "Unusual for sent/signed — verify data or history."
-      : undefined,
+      status === "DRAFT"
+        ? head.hasPinnedWorkflow
+          ? "Required before send; the template provides the node/stage skeleton compose places line items onto."
+          : "Missing — pin a published process template so packets can be composed onto its nodes."
+        : status === "SENT" || status === "SIGNED"
+          ? head.hasPinnedWorkflow
+            ? "Expected after a normal send (snapshots are tied to a process template version)."
+            : "Unusual for sent/signed — verify data or history."
+          : undefined,
     ),
     checklistItem(
       "frozen",
-      "Frozen plan/package snapshot hashes recorded",
+      "Frozen plan/package snapshot recorded",
       head.hasFrozenArtifacts ? "yes" : "no",
-      status === "DRAFT" ?
-        "Usually false while still draft; send records hashes."
-      : "After send, expect yes; use freeze read for detail.",
+      status === "DRAFT"
+        ? "Usually false while still draft; send records hashes."
+        : "After send, expect yes; use freeze read for detail.",
     ),
     checklistItem(
       "activation",
       "Activation row exists",
       head.hasActivation ? "yes" : "no",
-      status === "DRAFT" || status === "SENT" ?
-        "Activation follows sign in the normal pipeline (not expected on draft/sent-only)."
-      : status === "SIGNED" ?
-        head.hasActivation ?
-          "Post-activate — use lifecycle + runtime reads as appropriate."
-        : "Signed but not activated — POST activate when prerequisites are met."
-      : undefined,
+      status === "DRAFT" || status === "SENT"
+        ? "Activation follows sign in the normal pipeline (not expected on draft/sent-only)."
+        : status === "SIGNED"
+          ? head.hasActivation
+            ? "Post-activate — use lifecycle + runtime reads as appropriate."
+            : "Signed but not activated — POST activate when prerequisites are met."
+          : undefined,
     ),
     checklistItem(
       "groups",
@@ -102,16 +130,29 @@ export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput 
   let recommendedStepIndex: number | null = null;
   const honestyNotes: string[] = [
     "This summary uses workspace/history fields only. It does not embed scope, lifecycle, or freeze JSON.",
+    "Line items + packets define the sold work. The process template only defines the node/stage skeleton.",
   ];
 
   if (status === "DRAFT") {
     honestyNotes.push(
       "Whether send will succeed is not fully knowable here: send re-runs compose server-side; run compose-preview for validation and staleness token.",
     );
-    if (!head.hasPinnedWorkflow) {
-      recommendedStepIndex = 2; // Select workflow
+
+    if (!hasScope) {
+      recommendedStepIndex = 1; // Review scope & line items
       likelyNextSteps.push(
-        "Set pinned workflow: PATCH /api/quote-versions/{id} with pinnedWorkflowVersionId (office_mutate).",
+        "Add line items / scope packets to this draft — line items are the primary scope authoring object.",
+      );
+      likelyNextSteps.push(
+        "Then pin a published process template (the node/stage skeleton compose places work onto).",
+      );
+    } else if (!head.hasPinnedWorkflow) {
+      recommendedStepIndex = 2; // Pin process template
+      likelyNextSteps.push(
+        "Pin a published process template: PATCH /api/quote-versions/{id} with pinnedWorkflowVersionId (office_mutate). The template defines the node/stage skeleton — your line items / packets supply the work.",
+      );
+      likelyNextSteps.push(
+        "Then run compose preview and send — packets are composed onto the pinned template's nodes.",
       );
     } else {
       recommendedStepIndex = 3; // Prepare & send proposal

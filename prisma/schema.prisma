@@ -26,6 +26,7 @@ enum QuoteVersionStatus {
 enum ScopePacketRevisionStatus {
   DRAFT
   PUBLISHED
+  SUPERSEDED
 }
 
 enum WorkflowVersionStatus {

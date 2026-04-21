@@ -6,11 +6,12 @@ import {
 } from "@/lib/workspace/derive-quote-head-workspace-readiness";
 import type { QuoteVersionHistoryItemDto } from "@/server/slice1/reads/quote-version-history-reads";
 
-function toReadinessInput(row: QuoteVersionHistoryItemDto): QuoteHeadReadinessInput {
+function toReadinessInput(row: QuoteVersionHistoryItemDto, lineItemCount: number): QuoteHeadReadinessInput {
   return {
     id: row.id,
     versionNumber: row.versionNumber,
     status: row.status,
+    lineItemCount,
     hasPinnedWorkflow: row.hasPinnedWorkflow,
     hasFrozenArtifacts: row.hasFrozenArtifacts,
     hasActivation: row.hasActivation,
@@ -22,13 +23,15 @@ function toReadinessInput(row: QuoteVersionHistoryItemDto): QuoteHeadReadinessIn
 
 type Props = {
   head: QuoteVersionHistoryItemDto | null;
+  /** Count of line items on the head version (drives the "scope authored" check). */
+  headLineItemCount?: number;
 };
 
 /**
  * Enhanced readiness / blockers summary for the quote workspace.
  */
-export function QuoteWorkspaceHeadReadiness({ head }: Props) {
-  const r = deriveQuoteHeadWorkspaceReadiness(head ? toReadinessInput(head) : null);
+export function QuoteWorkspaceHeadReadiness({ head, headLineItemCount = 0 }: Props) {
+  const r = deriveQuoteHeadWorkspaceReadiness(head ? toReadinessInput(head, headLineItemCount) : null);
 
   if (r.kind === "no_versions") {
     return (

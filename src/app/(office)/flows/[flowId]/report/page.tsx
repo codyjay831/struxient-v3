@@ -14,7 +14,7 @@ export default async function FlowEvidenceReportPage({ params }: Props) {
   const auth = await tryGetApiPrincipal();
 
   if (!auth.ok) {
-    redirect("/dev/login");
+    redirect("/login");
   }
 
   const report = await getFlowEvidenceReportReadModel(getPrisma(), {

@@ -19,7 +19,7 @@ export default async function OfficeFlowExecutionPage({ params }: PageProps) {
   const auth = await tryGetApiPrincipal();
 
   if (!auth.ok) {
-    redirect("/dev/login");
+    redirect("/login");
   }
 
   const prisma = getPrisma();
@@ -28,7 +28,7 @@ export default async function OfficeFlowExecutionPage({ params }: PageProps) {
     getFlowDiscoveryItemForTenant(prisma, { tenantId: auth.principal.tenantId, flowId }),
   ]);
 
-  if (!model) {
+  if (!model || !context) {
     return (
       <main className="mx-auto max-w-4xl px-4 py-8 text-zinc-200 sm:px-6 lg:px-8">
         <InternalNotFoundState
