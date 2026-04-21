@@ -133,11 +133,13 @@ The following were **open in foundation** but are **closed by v3 canon**:
 
 **Open question:** How far **estimators** may **override** **node placement / exclusions / manual tasks** **without** **new scope packet version**?
 
-**Why closed:** Resolved by bridge decision pack. Minor overrides (quantity, price, description) stay on the `QuoteLineItem`. Task-level structural changes (add/remove/reorder tasks) trigger a mandatory fork into a `QuoteLocalPacket`. The library packet is never modified from the quote editor. Promotion back to library is explicit and admin-reviewed. See `05-packet-canon.md`.
+**Why closed:** Resolved by bridge decision pack. Minor overrides (quantity, price, description) stay on the `QuoteLineItem`. Task-level structural changes (add/remove/reorder tasks) trigger a mandatory fork into a `QuoteLocalPacket`. The library packet is never modified from the quote editor. Promotion back to library is explicit. See `05-packet-canon.md`.
 
 **Impacts:** Compose errors, support, drift of “standard” packets.
 
 **MVP blocker?** **Medium** — need **guardrails** before **wide** release.
+
+**Amendment (interim promotion slice, canon):** The first promotion implementation epic uses an **interim one-step** estimator-driven flow (creates `ScopePacket` + a `DRAFT` `ScopePacketRevision` in one action; no admin queue). The deferred admin-review workflow remains canon for a later epic. See `05-packet-canon.md` ("Canon amendment — interim one-step promotion") and `docs/implementation/decision-packs/interim-packet-promotion-decision-pack.md`.
 
 ---
 

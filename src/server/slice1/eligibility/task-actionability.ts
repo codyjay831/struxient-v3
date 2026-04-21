@@ -7,13 +7,16 @@ export const TASK_ACTIONABILITY_SCHEMA_VERSION = 1 as const;
 export type TaskStartBlockReason =
   | "FLOW_NOT_ACTIVATED"
   | "TASK_ALREADY_COMPLETED"
-  | "TASK_ALREADY_STARTED";
+  | "TASK_ALREADY_ACCEPTED"
+  | "TASK_ALREADY_STARTED"
+  | "PAYMENT_GATE_UNSATISFIED";
 
 /** Blocking reasons for **completing** work. */
 export type TaskCompleteBlockReason =
   | "FLOW_NOT_ACTIVATED"
   | "TASK_NOT_STARTED"
-  | "TASK_ALREADY_COMPLETED";
+  | "TASK_ALREADY_COMPLETED"
+  | "TASK_ALREADY_ACCEPTED";
 
 export type TaskStartEligibility = {
   schemaVersion: typeof TASK_ACTIONABILITY_SCHEMA_VERSION;
@@ -48,16 +51,23 @@ export function toTaskActionabilityApiDto(a: TaskActionability): TaskActionabili
 function startEligibility(
   hasActivation: boolean,
   execution: RuntimeTaskExecutionSummary,
+  hasUnsatisfiedPaymentGate: boolean,
 ): TaskStartEligibility {
   const reasons: TaskStartBlockReason[] = [];
   if (!hasActivation) {
     reasons.push("FLOW_NOT_ACTIVATED");
+  }
+  if (execution.status === "accepted") {
+    reasons.push("TASK_ALREADY_ACCEPTED");
   }
   if (execution.status === "completed") {
     reasons.push("TASK_ALREADY_COMPLETED");
   }
   if (execution.status === "in_progress") {
     reasons.push("TASK_ALREADY_STARTED");
+  }
+  if (hasUnsatisfiedPaymentGate) {
+    reasons.push("PAYMENT_GATE_UNSATISFIED");
   }
   return {
     schemaVersion: TASK_ACTIONABILITY_SCHEMA_VERSION,
@@ -77,6 +87,9 @@ function completeEligibility(
   if (execution.status === "not_started") {
     reasons.push("TASK_NOT_STARTED");
   }
+  if (execution.status === "accepted") {
+    reasons.push("TASK_ALREADY_ACCEPTED");
+  }
   if (execution.status === "completed") {
     reasons.push("TASK_ALREADY_COMPLETED");
   }
@@ -94,9 +107,10 @@ function completeEligibility(
 export function evaluateRuntimeTaskActionability(
   hasActivation: boolean,
   execution: RuntimeTaskExecutionSummary,
+  hasUnsatisfiedPaymentGate: boolean,
 ): TaskActionability {
   return {
-    start: startEligibility(hasActivation, execution),
+    start: startEligibility(hasActivation, execution, hasUnsatisfiedPaymentGate),
     complete: completeEligibility(hasActivation, execution),
   };
 }
@@ -105,9 +119,10 @@ export function evaluateRuntimeTaskActionability(
 export function evaluateSkeletonTaskActionability(
   hasActivation: boolean,
   execution: RuntimeTaskExecutionSummary,
+  hasUnsatisfiedPaymentGate: boolean,
 ): TaskActionability {
   return {
-    start: startEligibility(hasActivation, execution),
+    start: startEligibility(hasActivation, execution, hasUnsatisfiedPaymentGate),
     complete: completeEligibility(hasActivation, execution),
   };
 }

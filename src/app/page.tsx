@@ -32,14 +32,14 @@ const HUB_SECTIONS: HubSection[] = [
   },
   {
     id: "create",
-    title: "2. Create commercial shell",
+    title: "2. Create",
     intent: "Create a new customer + flow group + quote shell, or attach to existing ones.",
     testFirst: "Use the form below to create a fresh shell, then jump straight into its workspace.",
     links: [
       {
         href: "/dev/new-quote-shell",
-        label: "New quote shell (office)",
-        description: "POST /api/commercial/quote-shell. Office_mutate required.",
+        label: "New quote shell",
+        description: "POST /api/commercial/quote-shell. office_mutate required.",
         state: "ready",
       },
     ],
@@ -53,19 +53,33 @@ const HUB_SECTIONS: HubSection[] = [
       {
         href: "/dev/quotes",
         label: "Quote list",
-        description: "All quotes for this tenant. Each row links into the quote workspace.",
+        description: "All quotes for this tenant. Each row links into its workspace.",
         state: "ready",
       },
       {
         href: "/dev/customers",
         label: "Customer list",
-        description: "Customers in this tenant. Useful for attach-mode quote-shell creation.",
+        description: "Customers in this tenant. Useful for attach-mode creation.",
         state: "ready",
       },
       {
         href: "/dev/flow-groups",
         label: "Flow group list",
-        description: "Flow groups (one per customer engagement). Source of jobIds after activation.",
+        description: "Flow groups (one per customer engagement). One Job per group.",
+        state: "ready",
+      },
+      {
+        href: "/dev/task-definitions",
+        label: "Task definition library",
+        description:
+          "Curated authored standards. Author completion requirements (notes, photos, checklists, measurements, identifiers, overall result) that flow into runtime validation.",
+        state: "ready",
+      },
+      {
+        href: "/dev/catalog-packets",
+        label: "Catalog packets (read-only)",
+        description:
+          "Inspect tenant-scoped scope packets, revisions, and packet task lines. Read-only — no authoring, promotion, or PacketTier surface yet.",
         state: "ready",
       },
     ],
@@ -74,7 +88,7 @@ const HUB_SECTIONS: HubSection[] = [
     id: "workspace",
     title: "4. Quote workspace",
     intent:
-      "The office workspace for a single quote: readiness, lifecycle steps (revise, select workflow, send, sign, activate), version history, and the execution bridge.",
+      "The office workspace for a single quote: readiness, lifecycle steps (select workflow, send, sign, activate), history, and the execution bridge.",
     testFirst:
       "Open a quote from the discovery list → click into its workspace → walk through the numbered steps.",
     links: [
@@ -82,14 +96,14 @@ const HUB_SECTIONS: HubSection[] = [
         href: "/dev/quote-scope",
         label: "Quote scope (seeded redirect)",
         description:
-          "Auto-opens the quote version from STRUXIENT_DEV_QUOTE_VERSION_ID. Falls back to instructions if env is not seeded.",
+          "Auto-opens the quote version from STRUXIENT_DEV_QUOTE_VERSION_ID.",
         state: "needs-seed",
       },
     ],
   },
   {
     id: "execution",
-    title: "5. Execution surfaces",
+    title: "5. Execution",
     intent: "Once a signed quote is activated, the workspace exposes a flow + job + work feed.",
     testFirst:
       "Open Activated flows to discover real tenant execution records — no env-seeded ids needed.",
@@ -98,14 +112,21 @@ const HUB_SECTIONS: HubSection[] = [
         href: "/dev/flows",
         label: "Activated flows (discovery)",
         description:
-          "Tenant-scoped list of every Flow row. Each row links to flow detail, work feed, and source quote workspace.",
+          "Tenant-scoped list of every Flow row. Each row links to flow detail and work feed.",
+        state: "ready",
+      },
+      {
+        href: "/dev/jobs",
+        label: "Jobs (discovery)",
+        description:
+          "Tenant-scoped list of Job records. Jobs are the stable anchors created at SIGN.",
         state: "ready",
       },
       {
         href: "/dev/flow",
         label: "Flow detail (seed shortcut)",
         description:
-          "Redirects to /dev/flow/<flowId> using STRUXIENT_DEV_FLOW_ID after npm run db:seed:activated. Prefer the discovery list above.",
+          "Redirects to /dev/flow/<flowId> using STRUXIENT_DEV_FLOW_ID. Prefer the discovery list above.",
         state: "needs-seed",
       },
       {
@@ -189,7 +210,7 @@ export default function HomePage() {
 
       <details className="mt-10 rounded-lg border border-dashed border-zinc-800 bg-zinc-950/30 p-4">
         <summary className="cursor-pointer text-xs font-medium text-zinc-400 hover:text-zinc-300">
-          API & route reference
+          Technical details
         </summary>
         <p className="mt-3 text-xs leading-relaxed text-zinc-500">
           Raw route references for direct API testing. The structured sections above are the recommended path for

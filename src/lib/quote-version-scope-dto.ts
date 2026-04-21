@@ -14,11 +14,15 @@ export type QuoteVersionScopeApiDto = {
     id: string;
     tenantId: string;
     flowGroupId: string;
+    quoteNumber: string;
+    customer: { id: string; name: string };
+    flowGroup: { id: string; name: string };
   };
   proposalGroups: Array<{ id: string; name: string; sortOrder: number }>;
   orderedLineItems: Array<{
     id: string;
     title: string;
+    proposalGroupId: string;
     sortOrder: number;
     executionMode: string;
     quantity: number;
@@ -51,6 +55,9 @@ export function toQuoteVersionScopeApiDto(model: QuoteVersionScopeReadModel): Qu
       id: model.quote.id,
       tenantId: model.quote.tenantId,
       flowGroupId: model.quote.flowGroupId,
+      quoteNumber: model.quote.quoteNumber,
+      customer: model.quote.customer,
+      flowGroup: model.quote.flowGroup,
     },
     proposalGroups: model.proposalGroups.map((g) => ({
       id: g.id,
@@ -60,6 +67,7 @@ export function toQuoteVersionScopeApiDto(model: QuoteVersionScopeReadModel): Qu
     orderedLineItems: model.orderedLineItems.map((line) => ({
       id: line.id,
       title: line.title,
+      proposalGroupId: line.proposalGroupId,
       sortOrder: line.sortOrder,
       executionMode: line.executionMode,
       quantity: line.quantity,

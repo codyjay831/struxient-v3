@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { InternalBreadcrumb } from "@/components/internal/internal-breadcrumb";
 import { useState } from "react";
 
 type CreatedShellTarget = {
@@ -10,7 +11,7 @@ type CreatedShellTarget = {
 };
 
 /**
- * Manual check: sign in as an office user, then POST the commercial shell (same cookie as other dev APIs).
+ * Manual check: sign in as an office user, then POST the commercial shell.
  */
 export default function DevNewQuoteShellPage() {
   const [customerName, setCustomerName] = useState("Dev Customer");
@@ -73,91 +74,128 @@ export default function DevNewQuoteShellPage() {
 
   return (
     <main className="mx-auto max-w-xl p-8 text-zinc-200">
-      <h1 className="mb-2 text-lg font-medium">New commercial quote shell (dev)</h1>
-      <p className="mb-4 text-sm text-zinc-400">
-        Office session only — <code className="text-zinc-300">POST /api/commercial/quote-shell</code>.{" "}
-        New customer: names below. Attach: fill <code className="text-zinc-400">customerId</code> — then
-        either <code className="text-zinc-400">flowGroupName</code> (new FG) or <code className="text-zinc-400">flowGroupId</code> (reuse
-        FG). Ids from <code className="text-zinc-400">GET /api/quotes</code> / create response.
-      </p>
-      <div className="space-y-3 text-sm">
-        <label className="block">
-          <span className="text-zinc-500">customerId (optional — when set, customerName is ignored)</span>
-          <input
-            className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1 font-mono text-xs"
-            value={customerId}
-            onChange={(e) => setCustomerId(e.target.value)}
-            placeholder="cuid…"
-          />
-        </label>
-        <label className="block">
-          <span className="text-zinc-500">flowGroupId (optional — when set with customerId, flowGroupName ignored)</span>
-          <input
-            className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1 font-mono text-xs"
-            value={flowGroupId}
-            onChange={(e) => setFlowGroupId(e.target.value)}
-            placeholder="cuid…"
-          />
-        </label>
-        <label className="block">
-          <span className="text-zinc-500">customerName</span>
-          <input
-            className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1"
-            value={customerName}
-            onChange={(e) => setCustomerName(e.target.value)}
-          />
-        </label>
-        <label className="block">
-          <span className="text-zinc-500">flowGroupName</span>
-          <input
-            className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1"
-            value={flowGroupName}
-            onChange={(e) => setFlowGroupName(e.target.value)}
-          />
-        </label>
-        <label className="block">
-          <span className="text-zinc-500">quoteNumber (optional; empty → AUTO-…)</span>
-          <input
-            className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1"
-            value={quoteNumber}
-            onChange={(e) => setQuoteNumber(e.target.value)}
-          />
-        </label>
+      <header className="mb-6 border-b border-zinc-800 pb-5">
+        <div className="flex flex-wrap items-start justify-between gap-3 text-sky-400">
+          <div>
+            <InternalBreadcrumb
+              category="Commercial"
+              segments={[{ label: "Quotes", href: "/dev/quotes" }, { label: "New shell" }]}
+            />
+            <h1 className="mt-2 text-xl font-semibold tracking-tight text-zinc-50">
+              New quote shell
+            </h1>
+            <p className="mt-2 max-w-xl text-xs leading-relaxed text-zinc-500">
+              Create a new customer, flow group, and quote shell, or attach to existing ones. Requires
+              an office session with elevated permissions.
+            </p>
+          </div>
+          <Link href="/" className="text-sm text-zinc-500 hover:text-zinc-400">
+            ← Hub
+          </Link>
+        </div>
+      </header>
+
+      <div className="space-y-4">
+        <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
+          <label className="block">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+              Customer name
+            </span>
+            <input
+              className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm"
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+              placeholder="e.g. Acme Corp"
+            />
+          </label>
+          <label className="block">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+              Flow group name
+            </span>
+            <input
+              className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm"
+              value={flowGroupName}
+              onChange={(e) => setFlowGroupName(e.target.value)}
+              placeholder="e.g. Spring 2026 HVAC"
+            />
+          </label>
+          <label className="block">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+              Quote number (optional)
+            </span>
+            <input
+              className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm"
+              value={quoteNumber}
+              onChange={(e) => setQuoteNumber(e.target.value)}
+              placeholder="AUTO-…"
+            />
+          </label>
+        </div>
+
+        <details className="rounded-lg border border-zinc-800 bg-zinc-900/20 p-3">
+          <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wider text-zinc-600 hover:text-zinc-500">
+            Advanced: Attach to existing
+          </summary>
+          <div className="mt-3 space-y-3">
+            <label className="block">
+              <span className="text-[11px] text-zinc-500">CustomerId (overrides name)</span>
+              <input
+                className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1 font-mono text-xs"
+                value={customerId}
+                onChange={(e) => setCustomerId(e.target.value)}
+                placeholder="cuid…"
+              />
+            </label>
+            <label className="block">
+              <span className="text-[11px] text-zinc-500">FlowGroupId (overrides FG name)</span>
+              <input
+                className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1 font-mono text-xs"
+                value={flowGroupId}
+                onChange={(e) => setFlowGroupId(e.target.value)}
+                placeholder="cuid…"
+              />
+            </label>
+          </div>
+        </details>
+
         <button
           type="button"
           disabled={busy}
           onClick={() => void submit()}
-          className="rounded bg-sky-700 px-3 py-1.5 text-white hover:bg-sky-600 disabled:opacity-50"
+          className="w-full rounded bg-sky-700 py-2 text-sm font-medium text-white hover:bg-sky-600 disabled:opacity-50 transition-colors"
         >
-          {busy ? "Creating…" : "Create shell"}
+          {busy ? "Creating…" : "Create quote shell"}
         </button>
       </div>
+
       {created ? (
-        <div className="mt-6 rounded-lg border border-emerald-900/60 bg-emerald-950/20 p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-300">Shell created</p>
-          <p className="mt-1 text-sm text-zinc-200">
+        <div className="mt-6 rounded-lg border border-emerald-900/60 bg-emerald-950/20 p-5 shadow-sm">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-300">
+            Shell created successfully
+          </p>
+          <p className="mt-1 text-sm text-zinc-200 leading-relaxed">
             Quote{" "}
-            <span className="font-medium text-zinc-50">
+            <span className="font-semibold text-zinc-50">
               {created.quoteNumber ?? created.quoteId.slice(0, 10) + "…"}
             </span>{" "}
-            is ready. Continue testing:
+            has been initialized. Continue to the workspace to select a workflow and add line items.
           </p>
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-4 flex flex-wrap gap-2">
             <Link
               href={`/dev/quotes/${created.quoteId}`}
-              className="rounded bg-sky-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-600"
+              className="rounded bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-600 transition-colors"
             >
               Open quote workspace
             </Link>
             <Link
               href={`/dev/quote-scope/${created.quoteVersionId}`}
-              className="rounded border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-800"
+              className="rounded border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-800 transition-colors"
             >
-              Open scope (read)
+              Open quote scope
             </Link>
             <Link
               href="/dev/quotes"
-              className="rounded border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800"
+              className="rounded border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 transition-colors"
             >
               All quotes
             </Link>
@@ -165,23 +203,21 @@ export default function DevNewQuoteShellPage() {
         </div>
       ) : null}
 
-      {out ? (
-        <details className="mt-4">
-          <summary className="cursor-pointer text-xs text-zinc-500 hover:text-zinc-400">
-            Raw response
-          </summary>
-          <pre className="mt-2 overflow-auto rounded border border-zinc-800 bg-zinc-950 p-3 text-xs text-zinc-300">
-            {out}
-          </pre>
-        </details>
-      ) : null}
-      <p className="mt-6 text-xs text-zinc-500">
-        Manual fallback: open <code className="text-zinc-400">/dev/quote-scope/&lt;quoteVersionId&gt;</code> using{" "}
-        <code className="text-zinc-400">data.quoteVersion.id</code> from the response above.
-      </p>
-      <Link href="/" className="mt-4 inline-block text-sm text-sky-400 hover:text-sky-300">
-        ← Testing hub
-      </Link>
+      <details className="mt-8 rounded-lg border border-dashed border-zinc-800 bg-zinc-950/30 p-4">
+        <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wider text-zinc-500 hover:text-zinc-400">
+          Technical details
+        </summary>
+        <div className="mt-3 space-y-3">
+          <div className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px]">
+            <code className="text-zinc-500">POST /api/commercial/quote-shell</code>
+          </div>
+          {out && (
+            <pre className="mt-2 overflow-auto rounded border border-zinc-800 bg-zinc-950 p-3 text-[11px] leading-snug text-zinc-400">
+              {out}
+            </pre>
+          )}
+        </div>
+      </details>
     </main>
   );
 }

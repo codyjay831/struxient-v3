@@ -83,6 +83,25 @@ Answer **yes** or **documented exception**:
 
 ---
 
+## 5a. Interim promotion slice — additional merge items (canon amendment)
+
+When implementing the first promotion epic per `docs/implementation/decision-packs/interim-packet-promotion-decision-pack.md`, the following schema changes are **canon-authorized** and must be merged:
+
+- [ ] `ScopePacketRevision.publishedAt` is **nullable** (`DateTime?`) — admits `DRAFT` revisions produced by the interim flow.
+- [ ] `PacketTaskLine.targetNodeKey` is a **top-level required `String`** column (parity with `QuoteLocalPacketItem.targetNodeKey`).
+- [ ] Backfill for `PacketTaskLine.targetNodeKey` documented: either extracted from `embeddedPayloadJson` or declared `NOT NULL` directly on seed-only datasets.
+- [ ] `ScopePacket.status` **not** added — explicitly deferred.
+- [ ] `QuoteLocalPromotionStatus` enum shape unchanged; interim flow uses only `NONE` → `COMPLETED`.
+
+**Must-not-regress for the interim slice:**
+
+- Do **not** publish the promoted revision automatically.
+- Do **not** surface `DRAFT` revisions in library pickers or quote line-item pickers.
+- Do **not** mutate the source `QuoteLocalPacket` beyond `promotionStatus` and `promotedScopePacketId`.
+- Do **not** widen `PacketTaskLine` with fields not called out in the mapping contract.
+
+---
+
 ## 6. Allowed staging (narrow)
 
 **OK to defer first migration** (only if product **does not** persist quote-local or pre-job yet):

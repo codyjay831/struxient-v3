@@ -87,10 +87,12 @@
 | `id` | PK | always | no | opaque | always |
 | `scopePacketId` | Parent | always | no | FK | always |
 | `revisionNumber` | Ordering | always | no | int ≥ 1, unique per packet | always |
-| `status` | Lifecycle | always | no* | enum: `published` only in Slice 1 seeds | always |
-| `publishedAt` | Pin trust | always | no | ISO-8601 | always |
+| `status` | Lifecycle | always | no* | enum: `DRAFT` \| `PUBLISHED`. Slice 1 seeds use `PUBLISHED` only; the interim promotion flow creates `DRAFT` rows. | always |
+| `publishedAt` | Pin trust | **required iff `status = PUBLISHED`; null for `DRAFT`** | no (once set) | ISO-8601; column is **nullable** (canon amendment for interim promotion slice) | set at publish |
 
 \* After publish: immutable row semantics (`04`).
+
+**Canon amendment (interim promotion slice):** `publishedAt` is **nullable** at the column level. A revision is created with `status = DRAFT` and `publishedAt = null` by the interim one-step promotion flow; it is set to an ISO-8601 timestamp only when a future admin-review epic publishes the revision. The previous spec (`publishedAt` always required) is superseded for the `DRAFT` case.
 
 ---
 
@@ -106,8 +108,13 @@
 | `lineKind` | EMBEDDED vs LIBRARY | always | no | enum | always |
 | `embeddedPayloadJson` | Copy payload when EMBEDDED | draft/always | no | required if `lineKind = EMBEDDED` | always |
 | `taskDefinitionId` | LIBRARY ref | optional | no | required if `lineKind = LIBRARY` | always |
+| **`targetNodeKey`** | Node placement into pinned workflow (parity with `QuoteLocalPacketItem`) | **always** | no | non-empty string; resolves against compatibility template set | always |
 
-**Slice 1 seeds:** Prefer `EMBEDDED` only to defer `TaskDefinition` table (`02`).
+**Canon amendment (interim promotion slice):** `targetNodeKey` is promoted to a **top-level required column** on `PacketTaskLine`. Rationale: enables the `QuoteLocalPacketItem` → `PacketTaskLine` 1:1 row-copy promotion contract (`docs/canon/05-packet-canon.md`) without reaching into `embeddedPayloadJson`.
+
+**Backfill expectation:** if pre-existing rows encoded `targetNodeKey` inside `embeddedPayloadJson`, the migration extracts that value; if no production `PacketTaskLine` rows exist (seed-only catalog at migration time), the column may be added directly as `NOT NULL`. Exact migration strategy is deferred to the implementation epic.
+
+**Slice 1 seeds:** Prefer `EMBEDDED` only to defer `TaskDefinition` table (`02`). Seeds must populate `targetNodeKey` as a top-level column value (same node key they would have put inside `embeddedPayloadJson`).
 
 ---
 

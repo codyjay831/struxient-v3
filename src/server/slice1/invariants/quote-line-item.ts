@@ -2,12 +2,43 @@ import { InvariantViolationError } from "../errors";
 import { assertManifestScopePinXor } from "./manifest-scope";
 import { assertQuoteLocalPacketTenantMatchesQuote } from "./quote-local-packet";
 
-import type { QuoteLineItemExecutionMode } from "@prisma/client";
+import type { QuoteLineItemExecutionMode, ScopePacketRevisionStatus } from "@prisma/client";
 
 type ScopeRevisionTenantSlice = {
   id: string;
+  status: ScopePacketRevisionStatus;
   scopePacket: { tenantId: string };
 } | null;
+
+/**
+ * Pure assertion: a `ScopePacketRevision` may only be pinned onto a
+ * `QuoteLineItem.scopePacketRevisionId` when its `status === "PUBLISHED"`.
+ *
+ * This enforces the canon picker contract at the server boundary so that
+ * neither a direct API caller nor a future picker bug can pin a DRAFT
+ * revision (notably one freshly produced by the interim one-step promotion
+ * flow) into quote scope.
+ *
+ * Canon refs:
+ *   - docs/canon/05-packet-canon.md ("PUBLISHED revision discipline for pickers")
+ *   - docs/implementation/decision-packs/interim-packet-promotion-decision-pack.md §7
+ */
+export function assertScopePacketRevisionIsPublishedForPin(params: {
+  scopePacketRevisionId: string;
+  status: ScopePacketRevisionStatus;
+  quoteLineItemId?: string;
+}): void {
+  if (params.status === "PUBLISHED") return;
+  throw new InvariantViolationError(
+    "LINE_SCOPE_REVISION_NOT_PUBLISHED",
+    "Pinned ScopePacketRevision must be PUBLISHED; only published revisions are valid quote-line scope.",
+    {
+      quoteLineItemId: params.quoteLineItemId,
+      scopePacketRevisionId: params.scopePacketRevisionId,
+      currentStatus: params.status,
+    },
+  );
+}
 
 type LocalPacketSlice = {
   id: string;
@@ -72,6 +103,11 @@ export function assertQuoteLineItemInvariants(params: {
         },
       );
     }
+    assertScopePacketRevisionIsPublishedForPin({
+      scopePacketRevisionId: params.scopePacketRevisionId,
+      status: params.scopePacketRevision.status,
+      quoteLineItemId: params.quoteLineItemId,
+    });
   }
 
   if (params.quoteLocalPacketId != null) {

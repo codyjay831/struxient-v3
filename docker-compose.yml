@@ -1,0 +1,15 @@
+services:
+  struxient-pg:
+    image: postgres:16
+    container_name: struxient-pg
+    environment:
+      POSTGRES_USER: struxient
+      POSTGRES_PASSWORD: struxient
+      POSTGRES_DB: struxient_v3
+    ports:
+      - "5432:5432"
+    volumes:
+      - struxient-pg-data:/var/lib/postgresql/data
+
+volumes:
+  struxient-pg-data:

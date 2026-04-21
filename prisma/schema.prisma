@@ -35,6 +35,7 @@ enum WorkflowVersionStatus {
 
 enum PacketTaskLineKind {
   EMBEDDED
+  LIBRARY
 }
 
 enum QuoteLineItemExecutionMode {
@@ -46,6 +47,41 @@ enum AuditEventType {
   QUOTE_VERSION_SENT
   QUOTE_VERSION_SIGNED
   QUOTE_VERSION_ACTIVATED
+  FLOW_SHARE_MANAGED
+  FLOW_SHARE_DELIVERED
+  PROJECT_SHARE_DELIVERED
+  PROJECT_SHARE_MANAGED
+}
+
+enum PublicShareDeliveryMethod {
+  EMAIL
+  SMS
+  MANUAL_LINK
+}
+
+enum PublicShareDeliveryStatus {
+  QUEUED
+  SENDING
+  SENT
+  FAILED
+}
+
+enum ChangeOrderStatus {
+  DRAFT
+  PENDING_CUSTOMER
+  READY_TO_APPLY
+  APPLIED
+  VOID
+}
+
+enum PublicShareStatus {
+  UNPUBLISHED
+  PUBLISHED
+}
+
+enum PaymentGateStatus {
+  UNSATISFIED
+  SATISFIED
 }
 
 enum TaskExecutionTaskKind {
@@ -56,6 +92,8 @@ enum TaskExecutionTaskKind {
 enum TaskExecutionEventType {
   STARTED
   COMPLETED
+  REVIEW_ACCEPTED
+  CORRECTION_REQUIRED
 }
 
 enum QuoteSignatureMethod {
@@ -126,6 +164,12 @@ model Tenant {
   activations       Activation[]
   runtimeTasks      RuntimeTask[]
   taskExecutions    TaskExecution[]
+  paymentGates      PaymentGate[]
+  changeOrders      ChangeOrder[]
+  completionProofs  CompletionProof[]
+  completionProofAttachments CompletionProofAttachment[]
+  flowShareDeliveries        FlowShareDelivery[]
+  projectShareDeliveries     ProjectShareDelivery[]
 }
 
 model User {
@@ -151,8 +195,17 @@ model User {
   preJobTasksAssigned PreJobTask[] @relation("PreJobTaskAssignee")
   preJobTasksCreated  PreJobTask[] @relation("PreJobTaskCreator")
 
+  paymentGatesSatisfied PaymentGate[] @relation("PaymentGateSatisfiedBy")
+
+  changeOrdersCreated   ChangeOrder[] @relation("ChangeOrderCreatedBy")
+  changeOrdersApplied   ChangeOrder[] @relation("ChangeOrderAppliedBy")
+
+  completionProofAttachments CompletionProofAttachment[] @relation("CompletionProofAttachmentCreatedBy")
+
   quoteLocalPacketsCreated QuoteLocalPacket[] @relation("QuoteLocalPacketCreatedBy")
   quoteLocalPacketsUpdated QuoteLocalPacket[] @relation("QuoteLocalPacketUpdatedBy")
+  flowShareDeliveries      FlowShareDelivery[]
+  projectShareDeliveries   ProjectShareDelivery[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -167,8 +220,22 @@ model TaskDefinition {
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
 
+  instructions             String?
+  /// Durable authored shape; see src/lib/task-definition-authored-requirements.ts.
+  /// Array of:
+  ///   { kind: 'checklist'   , label: string,                    required: boolean }
+  ///   { kind: 'measurement' , label: string, unit?: string,     required: boolean }
+  ///   { kind: 'identifier'  , label: string,                    required: boolean }
+  ///   { kind: 'result'      ,                                   required: boolean }   // singleton (overall PASS/FAIL)
+  ///   { kind: 'note'        ,                                   required: boolean }   // singleton (completion note)
+  ///   { kind: 'attachment'  ,                                   required: boolean }   // singleton (photo/evidence proof)
+  completionRequirementsJson Json?
+  /// Array of conditional rules that require additional evidence based on outcomes; see conditional-completion-rules-backbone-pass.md.
+  conditionalRulesJson       Json?
+
   tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   quoteLocalPacketItems QuoteLocalPacketItem[]
+  packetTaskLines       PacketTaskLine[]
 
   @@unique([tenantId, taskKey])
   @@index([tenantId])
@@ -178,6 +245,8 @@ model Customer {
   id                 String   @id @default(cuid())
   tenantId           String
   name               String
+  primaryEmail       String?
+  primaryPhone       String?
   billingAddressJson Json?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
@@ -189,6 +258,31 @@ model Customer {
   @@index([tenantId])
 }
 
+model FlowShareDelivery {
+  id              String                    @id @default(cuid())
+  tenantId        String
+  flowId          String
+  deliveredAt     DateTime                  @default(now())
+  deliveredById   String
+  deliveryMethod  PublicShareDeliveryMethod
+  recipientDetail String?                   // Email or phone number
+  shareToken      String                    // Snapshot of token at delivery time
+
+  providerStatus     PublicShareDeliveryStatus @default(QUEUED)
+  providerExternalId String?
+  providerError      String?
+  providerResponse   Json?
+  retryCount         Int                       @default(0)
+  isFollowUp         Boolean                   @default(false)
+
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  flow   Flow   @relation(fields: [flowId], references: [id], onDelete: Restrict)
+  deliveredBy User @relation(fields: [deliveredById], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([flowId])
+}
+
 model FlowGroup {
   id         String   @id @default(cuid())
   tenantId   String
@@ -196,11 +290,31 @@ model FlowGroup {
   name       String
   createdAt  DateTime @default(now())
 
+  publicShareToken           String?            @unique @default(cuid())
+  publicShareStatus          PublicShareStatus @default(UNPUBLISHED)
+  publicShareTokenGeneratedAt DateTime?
+  publicShareExpiresAt       DateTime?
+
+  publicShareFirstViewedAt DateTime?
+  publicShareLastViewedAt  DateTime?
+  publicShareViewCount     Int       @default(0)
+
+  publicShareReceiptAcknowledgedAt DateTime?
+
+  publicShareClarificationRequestedAt DateTime?
+  publicShareClarificationReason      String?
+  publicShareClarificationResolvedAt   DateTime?
+  publicShareClarificationResolutionNote String?
+  publicShareClarificationEscalatedAt   DateTime?
+
+  publicShareNotificationLastSeenAt DateTime?
+
   tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   customer    Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
   quotes      Quote[]
   preJobTasks PreJobTask[]
   job         Job?
+  deliveries  ProjectShareDelivery[]
 
   @@index([tenantId])
   @@index([customerId])
@@ -261,7 +375,10 @@ model ScopePacketRevision {
   scopePacketId  String
   revisionNumber Int
   status         ScopePacketRevisionStatus
-  publishedAt    DateTime
+  /// Nullable for DRAFT revisions produced by the interim one-step promotion flow.
+  /// Required for PUBLISHED rows; service-layer enforces the conditional.
+  /// Canon: docs/canon/05-packet-canon.md, docs/implementation/decision-packs/interim-packet-promotion-decision-pack.md.
+  publishedAt    DateTime?
 
   scopePacket     ScopePacket      @relation(fields: [scopePacketId], references: [id], onDelete: Restrict)
   packetTaskLines PacketTaskLine[]
@@ -282,8 +399,15 @@ model PacketTaskLine {
   sortOrder             Int
   lineKind              PacketTaskLineKind
   embeddedPayloadJson   Json
+  taskDefinitionId      String?
+
+  /// Top-level required column (canon amendment for interim promotion slice).
+  /// Mirrors QuoteLocalPacketItem.targetNodeKey to enable 1:1 promotion mapping.
+  /// Canon: docs/canon/05-packet-canon.md, docs/epics/16-packet-task-lines-epic.md §6 + §16a.
+  targetNodeKey         String
 
   scopePacketRevision ScopePacketRevision @relation(fields: [scopePacketRevisionId], references: [id], onDelete: Restrict)
+  taskDefinition      TaskDefinition?     @relation(fields: [taskDefinitionId], references: [id], onDelete: SetNull)
 
   @@unique([scopePacketRevisionId, lineKey])
   @@index([scopePacketRevisionId])
@@ -329,6 +453,8 @@ model Job {
   flowGroup FlowGroup @relation(fields: [flowGroupId], references: [id], onDelete: Restrict)
   flows     Flow[]
   activations Activation[]
+  paymentGates PaymentGate[]
+  changeOrders ChangeOrder[]
 
   @@index([tenantId])
 }
@@ -340,6 +466,28 @@ model Flow {
   workflowVersionId String
   quoteVersionId    String   @unique
   createdAt         DateTime @default(now())
+
+  publicShareToken           String?            @unique @default(cuid())
+  publicShareStatus          PublicShareStatus @default(UNPUBLISHED)
+  publicShareTokenGeneratedAt DateTime?
+
+  publicShareFirstViewedAt DateTime?
+  publicShareLastViewedAt  DateTime?
+  publicShareViewCount     Int       @default(0)
+  publicShareLastFollowUpSentAt DateTime?
+
+  publicShareReceiptAcknowledgedAt DateTime?
+  publicShareClarificationRequestedAt DateTime?
+  publicShareClarificationReason String?
+  publicShareClarificationResolvedAt DateTime?
+  publicShareClarificationResolutionNote String?
+
+  publicShareNotificationLastSeenAt DateTime?
+
+  publicShareExpiresAt DateTime?
+
+  auditEvents AuditEvent[]
+  deliveries  FlowShareDelivery[]
 
   tenant            Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   job               Job               @relation(fields: [jobId], references: [id], onDelete: Restrict)
@@ -370,7 +518,9 @@ model TaskExecution {
   actor       User         @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
   runtimeTask RuntimeTask? @relation(fields: [runtimeTaskId], references: [id], onDelete: Restrict)
 
-  @@unique([runtimeTaskId, eventType])
+  completionProof CompletionProof? @relation("TaskExecutionToCompletionProof")
+
+  @@index([runtimeTaskId])
   @@index([tenantId, flowId])
   @@index([flowId, createdAt])
 }
@@ -407,9 +557,26 @@ model RuntimeTask {
   displayTitle   String
   createdAt      DateTime @default(now())
 
+  /// Snapshot of TaskDefinition.completionRequirementsJson (or embedded payload) frozen at activation.
+  /// Same authored shape; see src/lib/task-definition-authored-requirements.ts.
+  completionRequirementsJson Json?
+  /// Snapshot of TaskDefinition.conditionalRulesJson frozen at activation.
+  conditionalRulesJson       Json?
+  /// Snapshot of TaskDefinition.instructions frozen at activation.
+  instructions               String?
+
+  changeOrderIdCreated    String?
+  changeOrderIdSuperseded String?
+
   tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   flow         Flow         @relation(fields: [flowId], references: [id], onDelete: Restrict)
-  quoteVersion   QuoteVersion      @relation(fields: [quoteVersionId], references: [id], onDelete: Restrict)
+  quoteVersion QuoteVersion @relation(fields: [quoteVersionId], references: [id], onDelete: Restrict)
+
+  changeOrderCreated    ChangeOrder? @relation("RuntimeTaskCreatedByCO", fields: [changeOrderIdCreated], references: [id], onDelete: SetNull)
+  changeOrderSuperseded ChangeOrder? @relation("RuntimeTaskSupersededByCO", fields: [changeOrderIdSuperseded], references: [id], onDelete: SetNull)
+
+  completionProofs CompletionProof[]
+
   taskExecutions TaskExecution[]
 
   @@unique([flowId, packageTaskId])
@@ -483,6 +650,8 @@ model QuoteVersion {
   flow                  Flow?
   activation            Activation?
   runtimeTasks          RuntimeTask[]
+  paymentGates          PaymentGate[]
+  changeOrderDrafts     ChangeOrder[] @relation("ChangeOrderDraftQuoteVersion")
 
   preJobTasks       PreJobTask[]
   quoteLocalPackets QuoteLocalPacket[]
@@ -588,15 +757,141 @@ model AuditEvent {
   id                   String         @id @default(cuid())
   tenantId             String
   eventType            AuditEventType
-  actorId              String
-  targetQuoteVersionId String
+  actorId              String?
+  targetQuoteVersionId String?
+  targetFlowId         String?
   payloadJson          Json?
   createdAt            DateTime       @default(now())
 
-  tenant             Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  actor              User         @relation(fields: [actorId], references: [id], onDelete: Restrict)
-  targetQuoteVersion QuoteVersion @relation(fields: [targetQuoteVersionId], references: [id], onDelete: Restrict)
+  tenant             Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  actor              User?         @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  targetQuoteVersion QuoteVersion? @relation(fields: [targetQuoteVersionId], references: [id], onDelete: Restrict)
+  targetFlow         Flow?         @relation(fields: [targetFlowId], references: [id], onDelete: Restrict)
 
   @@index([tenantId, createdAt])
   @@index([targetQuoteVersionId])
+  @@index([targetFlowId])
+}
+
+model PaymentGate {
+  id             String            @id @default(cuid())
+  tenantId       String
+  jobId          String
+  quoteVersionId String            @unique
+  status         PaymentGateStatus @default(UNSATISFIED)
+  title          String
+  satisfiedAt    DateTime?
+  satisfiedById  String?
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  job          Job          @relation(fields: [jobId], references: [id], onDelete: Restrict)
+  quoteVersion QuoteVersion @relation(fields: [quoteVersionId], references: [id], onDelete: Restrict)
+  satisfiedBy  User?        @relation("PaymentGateSatisfiedBy", fields: [satisfiedById], references: [id], onDelete: SetNull)
+  targets      PaymentGateTarget[]
+
+  @@index([tenantId])
+  @@index([jobId])
+}
+
+model PaymentGateTarget {
+  id            String                @id @default(cuid())
+  paymentGateId String
+  taskKind      TaskExecutionTaskKind
+  taskId        String // Either skeletonTaskId or RuntimeTask.id
+
+  paymentGate PaymentGate @relation(fields: [paymentGateId], references: [id], onDelete: Cascade)
+
+  @@index([paymentGateId])
+  @@index([taskId])
+}
+
+model ChangeOrder {
+  id                  String            @id @default(cuid())
+  tenantId            String
+  jobId               String
+  reason              String
+  status              ChangeOrderStatus @default(DRAFT)
+  draftQuoteVersionId String?           @unique
+  appliedAt           DateTime?
+  appliedById         String?
+  createdById         String
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  tenant            Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  job               Job           @relation(fields: [jobId], references: [id], onDelete: Restrict)
+  draftQuoteVersion QuoteVersion? @relation("ChangeOrderDraftQuoteVersion", fields: [draftQuoteVersionId], references: [id], onDelete: SetNull)
+  createdBy         User          @relation("ChangeOrderCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  appliedBy         User?         @relation("ChangeOrderAppliedBy", fields: [appliedById], references: [id], onDelete: SetNull)
+
+  addedTasks      RuntimeTask[] @relation("RuntimeTaskCreatedByCO")
+  supersededTasks RuntimeTask[] @relation("RuntimeTaskSupersededByCO")
+
+  @@index([tenantId])
+  @@index([jobId])
+}
+
+model CompletionProof {
+  id              String   @id @default(cuid())
+  tenantId        String
+  runtimeTaskId   String
+  taskExecutionId String   @unique
+  note            String?
+  createdAt       DateTime @default(now())
+
+  checklistJson    Json? // Array of { label: string, status: 'yes'|'no'|'na' }
+  measurementsJson Json? // Array of { label: string, value: string, unit?: string }
+  identifiersJson  Json? // Array of { label: string, value: string }
+  overallResult    String? // e.g. "PASS", "FAIL"
+
+  tenant         Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  runtimeTask    RuntimeTask                 @relation(fields: [runtimeTaskId], references: [id], onDelete: Restrict)
+  taskExecution  TaskExecution               @relation("TaskExecutionToCompletionProof", fields: [taskExecutionId], references: [id], onDelete: Restrict)
+  attachments    CompletionProofAttachment[]
+
+  @@index([tenantId])
+  @@index([runtimeTaskId])
+}
+
+model CompletionProofAttachment {
+  id                String   @id @default(cuid())
+  tenantId          String
+  completionProofId String
+  storageKey        String
+  fileName          String
+  fileSize          Int
+  contentType       String
+  createdById       String
+  createdAt         DateTime @default(now())
+
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  completionProof CompletionProof @relation(fields: [completionProofId], references: [id], onDelete: Cascade)
+  createdBy       User            @relation("CompletionProofAttachmentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([completionProofId])
+}
+
+model ProjectShareDelivery {
+  id              String                    @id @default(cuid())
+  tenantId        String
+  flowGroupId     String
+  deliveredAt     DateTime                  @default(now())
+  deliveredById   String
+  deliveryMethod  PublicShareDeliveryMethod
+  recipientDetail String?                   // Email or phone number
+  shareToken      String                    // Snapshot of token at delivery time
+
+  providerStatus     PublicShareDeliveryStatus @default(QUEUED)
+  providerExternalId String?
+  providerError      String?
+  providerResponse   Json?
+  retryCount         Int                       @default(0)
+
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  flowGroup   FlowGroup @relation(fields: [flowGroupId], references: [id], onDelete: Restrict)
+  deliveredBy User @relation(fields: [deliveredById], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([flowGroupId])
 }

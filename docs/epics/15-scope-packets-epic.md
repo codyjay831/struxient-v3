@@ -28,7 +28,7 @@ Define **scope packet** as the **reusable catalog template** for a **unit of tra
 
 ## 6. Primary object(s) affected
 
-- **ScopePacket** (`key`, `name`, `description`, `trade`, `status`, `publishedVersion`).
+- **ScopePacket** (`key`, `name`, `description`, `trade`, `status` — **deferred for the interim promotion slice; see §17**, `publishedVersion`).
 
 ## 7. Where it lives in the product
 
@@ -84,7 +84,9 @@ Define **scope packet** as the **reusable catalog template** for a **unit of tra
 
 ## 17. Status / lifecycle rules
 
-`draft` | `published` | `deprecated` | `archived`. Transitions: draft→published; published→deprecated (warn usage); any→archived.
+**Target canon (future):** `draft` | `published` | `deprecated` | `archived`. Transitions: draft→published; published→deprecated (warn usage); any→archived.
+
+**Interim promotion slice (authorized scope):** `ScopePacket.status` is **deferred** — not added to the Slice 1 schema as a column on `ScopePacket` itself. Lifecycle is expressed at the `ScopePacketRevision` level only (`DRAFT` | `PUBLISHED`) in the interim slice. The packet-level `status` enum remains canon for a later epic once deprecation/archive flows are built; preserving the deferred column avoids a churn migration when that epic lands.
 
 ## 18. Search / filter / sort behavior
 
@@ -138,11 +140,21 @@ See §9; filter **deprecated** inclusion default off in picker.
 
 ### Promotion to global library
 
-1. Estimator clicks **"Promote to Global Library"** on a `QuoteLocalPacket`.
-2. A new `ScopePacket` is created in `draft` status.
-3. Admin reviews task content, labor estimates, and node placement for general use.
-4. Admin publishes as a new `ScopePacketRevision`.
-5. The original `QuoteLocalPacket` remains unchanged on its quote (historical record).
+**Canon amendment — interim one-step promotion (first implementation slice).** The first promotion epic collapses the multi-step admin-review flow into a single estimator-driven step. The deferred admin-review workflow (`DRAFT` → `IN_REVIEW` → publish) remains canon for a later epic and is **not** withdrawn.
+
+**Interim flow (authorized for first implementation epic):**
+
+1. Estimator clicks **"Promote to Global Library"** on a `QuoteLocalPacket` and supplies a **`packetKey`** (slug, unique per tenant).
+2. Server **validates `packetKey` uniqueness** within the tenant (`@@unique([tenantId, packetKey])`). Duplicate key → **promotion rejected**.
+3. Server creates a new **`ScopePacket`** (tenant-scoped).
+4. Server creates a **first `ScopePacketRevision`** (`revisionNumber = 1`) in **`DRAFT`** status with `publishedAt = null`.
+5. Server copies `QuoteLocalPacketItem` rows → `PacketTaskLine` rows on the new revision per the mapping contract in `05-packet-canon.md` ("Canonical `QuoteLocalPacketItem` → `PacketTaskLine` mapping contract").
+6. Source `QuoteLocalPacket.promotionStatus` = **`COMPLETED`**, `promotedScopePacketId` set. Source packet otherwise unchanged.
+7. **No admin queue is implemented.** The new revision stays in `DRAFT` until the deferred admin-review epic lands.
+
+**Deferred (remains future canon):** admin queue UI, `IN_REVIEW` transition, publish workflow, tier-expansion review, cross-tenant sharing. The target multi-step publish canon stays on the roadmap; only the interim one-step compaction is authorized for the first slice.
+
+**Picker contract:** Library packet pickers and AI grounding sources **must filter to `ScopePacketRevision.status = PUBLISHED`**. Revisions produced by the interim promotion flow are `DRAFT` and must not appear as selectable library packets until the admin-review epic publishes them.
 
 ### Metadata ownership
 
@@ -164,3 +176,4 @@ See §9; filter **deprecated** inclusion default off in picker.
 ## 27. Open questions
 
 - **Effective dating** for price book linkage — if separate from packet revision.
+- **Admin-review workflow shape** (future epic): exact states, notifications, reviewer assignment, diff UX for promoted `DRAFT` revisions authored via the interim one-step flow.

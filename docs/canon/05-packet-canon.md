@@ -113,13 +113,84 @@ When AI drafts scope **during quoting** (from text, voice, or document intake), 
 
 ### Promotion to global library
 
-When an estimator creates a useful `QuoteLocalPacket`, they may click **"Promote to Global Library"**:
-1. A new `ScopePacket` is created in `draft` status.
-2. Admin reviews the task content, labor estimates, and placement for general use.
-3. Admin publishes as a new `ScopePacketRevision`.
-4. The original `QuoteLocalPacket` remains unchanged on its quote.
+**Canon amendment — interim one-step promotion (first implementation slice).** The first implementation epic of promotion collapses the original multi-step admin-review flow into a single estimator-driven step. A full admin-review queue remains **canon for a later epic** (see "Deferred admin-review workflow" below) but is explicitly **not** built in the first slice.
 
-**What not to do:** Allow estimators to edit the global `ScopePacketRevision` directly from the quote editor. Allow AI-drafted tasks to enter the library without human review.
+When an estimator creates a useful `QuoteLocalPacket`, they may click **"Promote to Global Library"**:
+
+1. Estimator supplies a **`packetKey`** (slug, unique per tenant). The server **validates uniqueness** and **rejects** the promotion if a `ScopePacket` with that key already exists on the tenant.
+2. The server creates a new **`ScopePacket`** under the estimator's tenant with the supplied `packetKey`.
+3. The server creates a **first `ScopePacketRevision`** (revisionNumber = 1) in **`DRAFT`** status. The revision's `publishedAt` is **null** (see schema amendment "`ScopePacketRevision.publishedAt` nullable" in `10-open-canon-decisions.md` O10 extension and the slice-1 schema planning docs).
+4. The server copies **`QuoteLocalPacketItem`** rows into **`PacketTaskLine`** rows on the new revision using the mapping contract in the next subsection.
+5. The source `QuoteLocalPacket.promotionStatus` is set to **`COMPLETED`**. The source `QuoteLocalPacket` itself is **not mutated otherwise** and remains the historical record on its quote version.
+6. **No admin-review queue** is materialized in this slice. The new revision stays in `DRAFT` until a future epic introduces the publish/review workflow.
+
+**What the interim flow does not do (deferred):**
+
+- No admin queue, assignment, or review UI.
+- No automatic transition to `PUBLISHED`.
+- No tier duplication beyond what the local packet already expresses.
+- No cross-tenant promotion.
+
+### Canonical `QuoteLocalPacketItem` → `PacketTaskLine` mapping contract
+
+**Canon:** Promotion performs a **deterministic field-level copy** from each `QuoteLocalPacketItem` row on the source packet into a new `PacketTaskLine` row on the newly created `ScopePacketRevision`. The mapping is a **1:1 row copy**; no merging, collapsing, or re-ordering.
+
+| `QuoteLocalPacketItem` (source) | `PacketTaskLine` (target) | Notes |
+|---|---|---|
+| `lineKey` | `lineKey` | Preserved verbatim; uniqueness guaranteed by source `@@unique([quoteLocalPacketId, lineKey])`. |
+| `sortOrder` | `sortOrder` | Preserved verbatim. |
+| `tierCode` | `tierCode` | Preserved verbatim (nullable). |
+| `lineKind` | `lineKind` | Enum value preserved (`EMBEDDED` → `EMBEDDED`, `LIBRARY` → `LIBRARY`). |
+| `embeddedPayloadJson` | `embeddedPayloadJson` | Deep-copied JSON; no transformation. |
+| `taskDefinitionId` | `taskDefinitionId` | Preserved if set; nullable. |
+| `targetNodeKey` | `targetNodeKey` | Preserved verbatim. **Required** on both sides per the schema amendment authorizing `PacketTaskLine.targetNodeKey` as a top-level column. |
+
+**Invariants:**
+
+- The new revision's `PacketTaskLine` set is a **faithful snapshot** of the source items at promotion time.
+- Later edits to the source `QuoteLocalPacket` (if product allows any on a draft quote version) **do not** retroactively update the promoted revision.
+- Later edits to the promoted revision (once revision editing UX exists) **do not** retroactively update the source `QuoteLocalPacket`.
+- Promotion is **idempotent per `QuoteLocalPacket`**: attempting a second promotion on a packet already in `COMPLETED` is rejected at the server boundary.
+
+### Deferred admin-review workflow
+
+**Canon (preserved, not deleted):** The eventual admin-review workflow — `DRAFT` → `IN_REVIEW` → approve → `PUBLISHED` as a new `ScopePacketRevision`, with explicit admin acceptance and library curation — **remains canon** for a future epic. It is explicitly **deferred**, not withdrawn. The interim one-step flow above is scoped to produce a `DRAFT` revision that a future admin-review epic can safely advance to `PUBLISHED`.
+
+### Canon amendment — interim publish authority (post-readiness)
+
+**Canon (interim slice):** Following the interim promotion amendment and the publish-readiness inspection epic, the `DRAFT` → `PUBLISHED` transition on `ScopePacketRevision` is authorized as a one-step office-user action, paralleling the interim promotion compaction. Full canon — including the deferred admin-review queue, `IN_REVIEW` / `REJECTED` transitions, and a dedicated `catalog.publish` capability (epic 15 §20) — **remains canon** for a future epic and is explicitly **deferred**, not withdrawn.
+
+**Authorized interim publish flow:**
+
+1. An office user (`office_mutate` capability) on the revision's tenant invokes the publish action against a specific `ScopePacketRevision`.
+2. Server asserts, in one transaction, that the revision belongs to the caller's tenant, has `status = DRAFT`, satisfies `evaluateScopePacketRevisionReadiness({ packetTaskLines })` with `isReady: true` (readiness is **mandatory, not advisory**), and that the parent `ScopePacket` currently has zero other revisions in `PUBLISHED`.
+3. Server writes exactly two field updates: `status = PUBLISHED` and `publishedAt = NOW()` (server transaction time). No other fields are touched. No new revision is created. No child rows are written.
+4. Re-publish of an already-`PUBLISHED` revision is rejected (not a no-op). A second publish on a packet with an existing `PUBLISHED` revision is rejected.
+
+**Locked invariants:**
+
+- **At most one `PUBLISHED` revision per `ScopePacket` at a time** in the interim slice. Aligns the writer with the singular `publishedVersion` pointer model in epic 15 §6 / §47 / §10. Supersede / un-publish / archive semantics for a future second published revision remain deferred.
+- **`PUBLISHED` ⇒ `publishedAt != null`.** The interim publish mutation is the single writer that establishes this invariant. The schema comment on `ScopePacketRevision.publishedAt` ("Required for PUBLISHED rows; service-layer enforces the conditional") is now backed by binding canon.
+- **Readiness is the canonical preflight.** The publish writer must not invent or skip any gate the readiness predicate covers, nor accept a publish that the predicate rejects.
+- **Sunset clause:** When the admin-review epic lands, the publish authority shifts from `office_mutate` to the dedicated `catalog.publish` capability (epic 15 §20). The interim authority is explicitly temporary — the same compaction-of-future-canon pattern as interim promotion.
+
+**What the interim publish authority does not do (deferred):**
+
+- No admin queue, reviewer assignment, notifications, or diff UX.
+- No background, scheduled, AI-initiated, or webhook-initiated publishing — publish is always a deliberate foreground office-user action.
+- No `un-publish`, `supersede`, `archive`, `deprecate`, or rollback semantics.
+- No catalog-side editing of DRAFT revisions (`PacketTaskLine` CRUD, packet metadata edits) — DRAFTs are publish-or-leave-as-snapshot in this slice.
+- No `publishedBy`, audit-trail row, or `packet.published` webhook (epic 15 §22 hint remains future canon).
+- No schema changes. No new column, no new enum value, no new index, no migration.
+- No `ScopePacket.status`, no `PacketTier`, no cross-tenant publish, no field-user publish.
+
+**Authority for this amendment:** `docs/implementation/decision-packs/interim-publish-authority-decision-pack.md`.
+
+### PUBLISHED revision discipline for pickers
+
+**Canon:** Future quote / catalog pickers (library packet selector, tier selector, AI grounding sources) **must filter to `ScopePacketRevision.status = PUBLISHED`**. Revisions produced by the interim promotion flow are `DRAFT` and must **not** appear as selectable library packets until a later epic publishes them. This preserves library hygiene during the interim slice.
+
+**What not to do:** Allow estimators to edit the global `ScopePacketRevision` directly from the quote editor. Allow AI-drafted tasks to enter the library without human review (the interim flow still requires an estimator action — AI alone cannot trigger promotion). Surface `DRAFT` revisions in consumer-facing pickers.
 
 ---
 
@@ -146,5 +217,6 @@ When an estimator creates a useful `QuoteLocalPacket`, they may click **"Promote
 | Does not contain | **Price**, **runtime truth**, **workflow graph** |
 | AI | **Draft only** until committed |
 | Quote-local fork? | **QuoteLocalPacket** for task-level mutations |
-| Promotion to library? | **Explicit**, admin-reviewed |
+| Promotion to library? | **Explicit**, estimator-driven one-step for interim slice (creates `ScopePacket` + `DRAFT` revision); full admin-reviewed publish **deferred** to a later epic |
+| Publish to library? | **Explicit**, office-user one-step for interim slice (DRAFT → PUBLISHED, readiness-gated, at most one `PUBLISHED` per packet, `publishedAt = NOW()`); full admin-review queue and dedicated `catalog.publish` capability **deferred** to a later epic |
 | Library philosophy | **Curated**, not a dumping ground |

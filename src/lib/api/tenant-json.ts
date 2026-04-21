@@ -78,7 +78,32 @@ export function jsonResponseForCaughtError(e: unknown): NextResponse | null {
 function invariantToHttpStatus(code: Slice1InvariantCode): number {
   switch (code) {
     case "QUOTE_VERSION_NOT_DRAFT":
+    case "TASK_DEFINITION_NOT_DRAFT":
+    case "TASK_DEFINITION_INVALID_STATUS_TRANSITION":
+    case "TASK_DEFINITION_TASK_KEY_TAKEN":
+    case "QUOTE_LOCAL_PACKET_HAS_PINNING_LINES":
+    case "QUOTE_LOCAL_PACKET_ITEM_LINE_KEY_TAKEN":
+    case "QUOTE_LOCAL_PACKET_PROMOTION_PACKET_KEY_TAKEN":
+    case "QUOTE_LOCAL_PACKET_PROMOTION_ALREADY_PROMOTED":
+    // Resource exists but is in the wrong lifecycle state for the requested
+    // pin action — semantically a Conflict, not a Bad Request.
+    case "LINE_SCOPE_REVISION_NOT_PUBLISHED":
+    // Interim publish action — DRAFT → PUBLISHED preflight conflicts. All three
+    // describe a state-conflict between the requested transition and current
+    // resource state, so 409 is the right semantic match.
+    // Canon: docs/implementation/decision-packs/interim-publish-authority-decision-pack.md.
+    case "SCOPE_PACKET_REVISION_PUBLISH_NOT_DRAFT":
+    case "SCOPE_PACKET_REVISION_PUBLISH_NOT_READY":
+    case "SCOPE_PACKET_REVISION_PUBLISH_PACKET_HAS_PUBLISHED":
+    // Quote-local fork from PUBLISHED ScopePacketRevision: source-state conflict.
+    // Canon: docs/canon/05-packet-canon.md §100-101, bridge-decision 03.
+    case "SCOPE_PACKET_REVISION_FORK_NOT_PUBLISHED":
       return 409;
+    case "TASK_DEFINITION_NOT_FOUND":
+    case "QUOTE_LOCAL_PACKET_NOT_FOUND":
+    case "QUOTE_LOCAL_PACKET_ITEM_NOT_FOUND":
+    case "QUOTE_LOCAL_PACKET_ITEM_TASK_DEFINITION_NOT_FOUND":
+      return 404;
     case "INVALID_PROPOSAL_GROUP_NAME":
     case "INVALID_LINE_QUANTITY":
     case "INVALID_LINE_SORT_ORDER":
@@ -86,9 +111,27 @@ function invariantToHttpStatus(code: Slice1InvariantCode): number {
     case "INVALID_LINE_DESCRIPTION":
     case "INVALID_LINE_MONEY":
     case "SCOPE_PACKET_REVISION_NOT_FOUND":
-    case "QUOTE_LOCAL_PACKET_NOT_FOUND":
     case "PINNED_WORKFLOW_VERSION_NOT_FOUND":
     case "PINNED_WORKFLOW_VERSION_NOT_PUBLISHED":
+    case "TASK_DEFINITION_TASK_KEY_INVALID":
+    case "TASK_DEFINITION_DISPLAY_NAME_INVALID":
+    case "TASK_DEFINITION_INSTRUCTIONS_TOO_LONG":
+    case "TASK_DEFINITION_REQUIREMENTS_INVALID":
+    case "TASK_DEFINITION_CONDITIONAL_RULES_INVALID":
+    case "QUOTE_LOCAL_PACKET_INVALID_DISPLAY_NAME":
+    case "QUOTE_LOCAL_PACKET_INVALID_DESCRIPTION":
+    case "QUOTE_LOCAL_PACKET_ITEM_INVALID_LINE_KEY":
+    case "QUOTE_LOCAL_PACKET_ITEM_INVALID_SORT_ORDER":
+    case "QUOTE_LOCAL_PACKET_ITEM_INVALID_TARGET_NODE_KEY":
+    case "QUOTE_LOCAL_PACKET_ITEM_INVALID_TIER_CODE":
+    case "QUOTE_LOCAL_PACKET_ITEM_INVALID_LINE_KIND":
+    case "QUOTE_LOCAL_PACKET_ITEM_INVALID_EMBEDDED_PAYLOAD":
+    case "QUOTE_LOCAL_PACKET_ITEM_LIBRARY_WITHOUT_DEFINITION":
+    case "QUOTE_LOCAL_PACKET_ITEM_EMBEDDED_WITHOUT_PAYLOAD":
+    case "QUOTE_LOCAL_PACKET_PROMOTION_INVALID_PACKET_KEY":
+    case "QUOTE_LOCAL_PACKET_PROMOTION_INVALID_DISPLAY_NAME":
+    case "QUOTE_LOCAL_PACKET_PROMOTION_SOURCE_HAS_NO_ITEMS":
+    case "SCOPE_PACKET_REVISION_FORK_SOURCE_HAS_NO_ITEMS":
       return 400;
     default:
       return 422;

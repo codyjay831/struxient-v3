@@ -11,21 +11,35 @@ export type JobShellRuntimeTaskRead = {
   displayTitle: string;
   createdAt: Date;
   execution: JobShellRuntimeTaskExecutionRead;
+  completionRequirementsJson?: any;
+  conditionalRulesJson?: any;
+  instructions?: string | null;
 };
 
 export type JobShellFlowRead = {
   id: string;
+  quoteId: string;
   quoteVersionId: string;
   workflowVersionId: string;
   createdAt: Date;
+  quoteNumber: string;
   activation: { id: string; activatedAt: Date } | null;
   runtimeTasks: JobShellRuntimeTaskRead[];
+};
+
+export type JobShellPaymentGateRead = {
+  id: string;
+  status: "UNSATISFIED" | "SATISFIED";
+  title: string;
+  targets: { taskId: string; taskKind: "RUNTIME" | "SKELETON" }[];
 };
 
 export type JobShellReadModel = {
   job: { id: string; createdAt: Date; flowGroupId: string; tenantId: string };
   flowGroup: { id: string; name: string; customerId: string };
+  customer: { id: string; name: string };
   flows: JobShellFlowRead[];
+  paymentGates: JobShellPaymentGateRead[];
 };
 
 /**
@@ -43,7 +57,12 @@ export async function getJobShellReadModel(
       flowGroupId: true,
       tenantId: true,
       flowGroup: {
-        select: { id: true, name: true, customerId: true },
+        select: {
+          id: true,
+          name: true,
+          customerId: true,
+          customer: { select: { id: true, name: true } },
+        },
       },
       flows: {
         select: {
@@ -51,10 +70,16 @@ export async function getJobShellReadModel(
           quoteVersionId: true,
           workflowVersionId: true,
           createdAt: true,
+          quoteVersion: {
+            select: {
+              quote: { select: { id: true, quoteNumber: true } },
+            },
+          },
           activation: {
             select: { id: true, activatedAt: true },
           },
           runtimeTasks: {
+            where: { changeOrderIdSuperseded: null },
             select: {
               id: true,
               packageTaskId: true,
@@ -62,9 +87,26 @@ export async function getJobShellReadModel(
               lineItemId: true,
               displayTitle: true,
               createdAt: true,
+              completionRequirementsJson: true,
+              conditionalRulesJson: true,
+              instructions: true,
               taskExecutions: {
                 where: { taskKind: "RUNTIME" },
-                select: { eventType: true, createdAt: true },
+                select: { 
+                  eventType: true, 
+                  createdAt: true,
+                  notes: true,
+                  completionProof: {
+                    select: {
+                      note: true,
+                      attachments: { select: { fileName: true, storageKey: true, contentType: true } },
+                      checklistJson: true,
+                      measurementsJson: true,
+                      identifiersJson: true,
+                      overallResult: true,
+                    }
+                  }
+                },
                 orderBy: { createdAt: "asc" },
               },
             },
@@ -72,6 +114,16 @@ export async function getJobShellReadModel(
           },
         },
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      },
+      paymentGates: {
+        select: {
+          id: true,
+          status: true,
+          title: true,
+          targets: {
+            select: { taskId: true, taskKind: true },
+          },
+        },
       },
     },
   });
@@ -87,12 +139,19 @@ export async function getJobShellReadModel(
       flowGroupId: row.flowGroupId,
       tenantId: row.tenantId,
     },
-    flowGroup: row.flowGroup,
+    flowGroup: {
+      id: row.flowGroup.id,
+      name: row.flowGroup.name,
+      customerId: row.flowGroup.customerId,
+    },
+    customer: row.flowGroup.customer,
     flows: row.flows.map((f) => ({
       id: f.id,
+      quoteId: f.quoteVersion.quote.id,
       quoteVersionId: f.quoteVersionId,
       workflowVersionId: f.workflowVersionId,
       createdAt: f.createdAt,
+      quoteNumber: f.quoteVersion.quote.quoteNumber,
       activation: f.activation,
       runtimeTasks: f.runtimeTasks.map((t) => ({
         id: t.id,
@@ -102,6 +161,18 @@ export async function getJobShellReadModel(
         displayTitle: t.displayTitle,
         createdAt: t.createdAt,
         execution: deriveRuntimeExecutionSummary(t.taskExecutions),
+        completionRequirementsJson: t.completionRequirementsJson,
+        conditionalRulesJson: t.conditionalRulesJson,
+        instructions: t.instructions,
+      })),
+    })),
+    paymentGates: row.paymentGates.map((g) => ({
+      id: g.id,
+      status: g.status as "UNSATISFIED" | "SATISFIED",
+      title: g.title,
+      targets: g.targets.map((tg) => ({
+        taskId: tg.taskId,
+        taskKind: tg.taskKind as "RUNTIME" | "SKELETON",
       })),
     })),
   };

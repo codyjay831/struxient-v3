@@ -32,6 +32,7 @@ export type QuoteHeadWorkspaceReadiness =
       status: string;
       checklist: ReadinessChecklistItem[];
       likelyNextSteps: string[];
+      recommendedStepIndex: number | null; // 1-indexed to match UI steps
       honestyNotes: string[];
     };
 
@@ -98,6 +99,7 @@ export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput 
   ];
 
   const likelyNextSteps: string[] = [];
+  let recommendedStepIndex: number | null = null;
   const honestyNotes: string[] = [
     "This summary uses workspace/history fields only. It does not embed scope, lifecycle, or freeze JSON.",
   ];
@@ -107,24 +109,28 @@ export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput 
       "Whether send will succeed is not fully knowable here: send re-runs compose server-side; run compose-preview for validation and staleness token.",
     );
     if (!head.hasPinnedWorkflow) {
+      recommendedStepIndex = 2; // Select workflow
       likelyNextSteps.push(
         "Set pinned workflow: PATCH /api/quote-versions/{id} with pinnedWorkflowVersionId (office_mutate).",
       );
+    } else {
+      recommendedStepIndex = 3; // Prepare & send proposal
+      likelyNextSteps.push("Validate scope: open scope dev page or GET …/scope.");
+      likelyNextSteps.push(
+        "When ready: run compose preview, then send (freeze) using the compose staleness token — see panel below.",
+      );
     }
-    likelyNextSteps.push("Validate scope: open scope dev page or GET …/scope.");
-    likelyNextSteps.push(
-      head.hasPinnedWorkflow ?
-        "When ready: run compose preview, then send (freeze) using the compose staleness token — see panel below."
-      : "After pin + scope work: compose preview, then send from the panel below.",
-    );
   } else if (status === "SENT") {
+    recommendedStepIndex = 4; // Record signature
     likelyNextSteps.push("Inspect artifacts: GET …/freeze and …/lifecycle for this version.");
     likelyNextSteps.push("Next lifecycle move: POST …/sign when business rules allow (body/actor requirements unchanged).");
   } else if (status === "SIGNED") {
-    likelyNextSteps.push("Inspect: GET …/lifecycle, …/freeze as needed.");
     if (!head.hasActivation) {
+      recommendedStepIndex = 5; // Activate execution
+      likelyNextSteps.push("Inspect: GET …/lifecycle, …/freeze as needed.");
       likelyNextSteps.push("If eligible: POST …/activate (separate prerequisites — see route docs).");
     } else {
+      recommendedStepIndex = null; // Done
       likelyNextSteps.push("Activation exists: follow runtime / flow-group execution reads (not shown in this workspace slice).");
     }
   } else {
@@ -138,6 +144,7 @@ export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput 
     status,
     checklist,
     likelyNextSteps,
+    recommendedStepIndex,
     honestyNotes,
   };
 }

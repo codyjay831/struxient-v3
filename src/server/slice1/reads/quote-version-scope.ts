@@ -18,7 +18,14 @@ export const quoteVersionScopeQueryArgs = Prisma.validator<Prisma.QuoteVersionDe
     versionNumber: true,
     quoteId: true,
     quote: {
-      select: { id: true, tenantId: true, flowGroupId: true },
+      select: {
+        id: true,
+        tenantId: true,
+        flowGroupId: true,
+        quoteNumber: true,
+        customer: { select: { id: true, name: true } },
+        flowGroup: { select: { id: true, name: true } },
+      },
     },
     proposalGroups: {
       orderBy: { sortOrder: "asc" },

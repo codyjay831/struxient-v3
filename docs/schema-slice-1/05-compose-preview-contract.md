@@ -79,6 +79,7 @@ Examples:
 | `COMMERCIAL_TOTAL_MISMATCH` | Sum of line totals ≠ displayed total (if UI computes) |
 | `MISSING_OPTIONAL_DESCRIPTION` | Line has empty description |
 | `PACKET_DEPRECATED` | Revision marked deprecated in metadata (if seeds add flag) |
+| `PACKET_ITEMS_FILTERED_BY_TIER` | Tier filter excluded **some, but not all** candidate packet rows for a manifest line. Diagnostic only — inclusion/exclusion behavior is unchanged. Surfaces silent tier-mismatch risk that today only manifests as a fully-empty expansion (`EXPANSION_EMPTY`). Details: `lineTierCode`, `includedCount`, `excludedCount`, `sampleExcludedTierCodes`, plus `scopePacketRevisionId` (library packet) or `quoteLocalPacketId` (quote-local packet). |
 
 **Slice 1 decision:** Server **returns** warnings; **optional** `acknowledgedWarningCodes` in send request — if product wants strict ack, send validates subset (**open** in `11` if not needed day one).
 

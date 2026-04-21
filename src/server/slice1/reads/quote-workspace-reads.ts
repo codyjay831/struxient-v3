@@ -27,6 +27,43 @@ export type QuoteVersionLineItemSummaryDto = {
   totalLineItemCents: number | null;
 };
 
+/** Compact visibility for one line item. */
+export type QuoteLineItemVisibilityDto = {
+  id: string;
+  title: string;
+  quantity: number;
+  lineTotalCents: number | null;
+  isLibraryBacked: boolean;
+  isQuoteLocal: boolean;
+};
+
+/** Compact visibility for a payment gate. */
+export type QuoteWorkspacePaymentGateDto = {
+  id: string;
+  status: "UNSATISFIED" | "SATISFIED";
+  title: string;
+  satisfiedAt: string | null;
+  targetCount: number;
+};
+
+/** Compact visibility for a change order. */
+export type QuoteWorkspaceChangeOrderDto = {
+  id: string;
+  status: "DRAFT" | "PENDING_CUSTOMER" | "READY_TO_APPLY" | "APPLIED" | "VOID";
+  reason: string;
+  appliedAt: string | null;
+  createdAt: string;
+};
+
+/** Compact visibility for media evidence. */
+export type QuoteWorkspaceEvidenceDto = {
+  storageKey: string;
+  fileName: string;
+  contentType: string;
+  taskTitle: string;
+  createdAt: string;
+};
+
 /** Static path patterns; clients substitute `:quoteId` / `:quoteVersionId`. */
 export type QuoteWorkspaceRouteHints = {
   quoteWorkspaceGet: "GET /api/quotes/:quoteId/workspace";
@@ -71,12 +108,20 @@ const ROUTE_HINTS: QuoteWorkspaceRouteHints = {
 export type QuoteWorkspaceDto = {
   quote: { id: string; quoteNumber: string; createdAt: string };
   customer: { id: string; name: string };
-  flowGroup: { id: string; name: string };
+  flowGroup: { id: string; name: string; jobId: string | null };
   versions: QuoteVersionHistoryItemDto[];
   /** First entry in `versions` (max `versionNumber`), or null if no versions. */
   latestQuoteVersionId: string | null;
   /** Summary data for the head version (versions[0]), if it exists. */
   headLineItemSummary: QuoteVersionLineItemSummaryDto | null;
+  /** Itemized list for visibility on the head version. */
+  headLineItems: QuoteLineItemVisibilityDto[];
+  /** Payment gates associated with the job/engagement. */
+  paymentGates: QuoteWorkspacePaymentGateDto[];
+  /** Change orders associated with the job. */
+  changeOrders: QuoteWorkspaceChangeOrderDto[];
+  /** Consolidated evidence from all tasks on the job. */
+  evidence: QuoteWorkspaceEvidenceDto[];
   routeHints: QuoteWorkspaceRouteHints;
 };
 
@@ -94,7 +139,13 @@ export async function getQuoteWorkspaceForTenant(
       quoteNumber: true,
       createdAt: true,
       customer: { select: { id: true, name: true } },
-      flowGroup: { select: { id: true, name: true } },
+      flowGroup: {
+        select: {
+          id: true,
+          name: true,
+          job: { select: { id: true } },
+        },
+      },
       versions: {
         orderBy: { versionNumber: "desc" },
         select: VERSION_SELECT,
@@ -106,15 +157,92 @@ export async function getQuoteWorkspaceForTenant(
     return null;
   }
 
+  const paymentGates: QuoteWorkspacePaymentGateDto[] = [];
+  const changeOrders: QuoteWorkspaceChangeOrderDto[] = [];
+  const evidence: QuoteWorkspaceEvidenceDto[] = [];
+  if (row.flowGroup.job) {
+    const gates = await prisma.paymentGate.findMany({
+      where: { jobId: row.flowGroup.job.id, tenantId: params.tenantId },
+      select: {
+        id: true,
+        status: true,
+        title: true,
+        satisfiedAt: true,
+        _count: { select: { targets: true } },
+      },
+    });
+    for (const g of gates) {
+      paymentGates.push({
+        id: g.id,
+        status: g.status as "UNSATISFIED" | "SATISFIED",
+        title: g.title,
+        satisfiedAt: g.satisfiedAt?.toISOString() ?? null,
+        targetCount: g._count.targets,
+      });
+    }
+
+    const cos = await prisma.changeOrder.findMany({
+      where: { jobId: row.flowGroup.job.id, tenantId: params.tenantId },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        status: true,
+        reason: true,
+        appliedAt: true,
+        createdAt: true,
+      },
+    });
+    for (const co of cos) {
+      changeOrders.push({
+        id: co.id,
+        status: co.status as any,
+        reason: co.reason,
+        appliedAt: co.appliedAt?.toISOString() ?? null,
+        createdAt: co.createdAt.toISOString(),
+      });
+    }
+
+    const attachments = await prisma.completionProofAttachment.findMany({
+      where: { tenantId: params.tenantId, completionProof: { runtimeTask: { flow: { jobId: row.flowGroup.job.id } } } },
+      orderBy: { createdAt: "desc" },
+      select: {
+        storageKey: true,
+        fileName: true,
+        contentType: true,
+        createdAt: true,
+        completionProof: {
+          select: {
+            runtimeTask: { select: { displayTitle: true } }
+          }
+        }
+      }
+    });
+
+    for (const a of attachments) {
+      evidence.push({
+        storageKey: a.storageKey,
+        fileName: a.fileName,
+        contentType: a.contentType,
+        taskTitle: a.completionProof.runtimeTask.displayTitle,
+        createdAt: a.createdAt.toISOString(),
+      });
+    }
+  }
+
   const versions = row.versions.map(mapQuoteVersionRowToHistoryItem);
   const headVersion = row.versions[0];
   const latestQuoteVersionId = headVersion?.id ?? null;
 
   let headLineItemSummary: QuoteVersionLineItemSummaryDto | null = null;
+  let headLineItems: QuoteLineItemVisibilityDto[] = [];
   if (headVersion) {
     const headLines = await prisma.quoteLineItem.findMany({
       where: { quoteVersionId: headVersion.id },
+      orderBy: { sortOrder: "asc" },
       select: {
+        id: true,
+        title: true,
+        quantity: true,
         scopePacketRevisionId: true,
         quoteLocalPacketId: true,
         lineTotalCents: true,
@@ -128,6 +256,14 @@ export async function getQuoteWorkspaceForTenant(
         localLineItemCount: headLines.filter((l) => l.quoteLocalPacketId != null).length,
         totalLineItemCents: headLines.reduce((acc, l) => acc + (l.lineTotalCents ?? 0), 0),
       };
+      headLineItems = headLines.map((l) => ({
+        id: l.id,
+        title: l.title,
+        quantity: l.quantity,
+        lineTotalCents: l.lineTotalCents,
+        isLibraryBacked: l.scopePacketRevisionId != null,
+        isQuoteLocal: l.quoteLocalPacketId != null,
+      }));
     } else {
       headLineItemSummary = {
         lineItemCount: 0,
@@ -145,10 +281,17 @@ export async function getQuoteWorkspaceForTenant(
       createdAt: row.createdAt.toISOString(),
     },
     customer: row.customer,
-    flowGroup: row.flowGroup,
+    flowGroup: {
+      ...row.flowGroup,
+      jobId: row.flowGroup.job?.id ?? null,
+    },
     versions,
     latestQuoteVersionId,
     headLineItemSummary,
+    headLineItems,
+    paymentGates,
+    changeOrders,
+    evidence,
     routeHints: ROUTE_HINTS,
   };
 }

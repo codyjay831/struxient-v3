@@ -269,3 +269,52 @@ When `QuoteVersion.status = sent`:
 - No **RuntimeTask** or **TaskExecution** rows for PreJobTask.  
 - No **promotion** implementation — only **columns** for workflow.  
 - No replacement of JSON snapshots with normalized plan tables.
+
+---
+
+## Addendum — interim promotion slice (canon amendment)
+
+**Status:** Canon-authorized schema changes for the next implementation epic ("Interim one-step promotion for `QuoteLocalPacket`"). Source decisions: `docs/canon/05-packet-canon.md` ("Canon amendment — interim one-step promotion"), `docs/epics/15-scope-packets-epic.md` §25a, `docs/implementation/decision-packs/quotelocalpacket-schema-decision-pack.md` ("Interim one-step promotion flow").
+
+**Schema changes authorized (only these; no widening):**
+
+1. **`ScopePacketRevision.publishedAt` becomes nullable.** Required to admit `DRAFT` revisions produced by the interim promotion flow. Existing `PUBLISHED` rows keep a non-null `publishedAt`; the nullability is additive and does not require backfill of existing data. Prisma diff: `publishedAt DateTime` → `publishedAt DateTime?`.
+2. **`PacketTaskLine.targetNodeKey` becomes a top-level required column.** Parity with `QuoteLocalPacketItem.targetNodeKey`; enables the 1:1 row-copy promotion contract without reaching into `embeddedPayloadJson`. Prisma diff: add `targetNodeKey String` on `PacketTaskLine`.
+
+**Backfill expectation for `PacketTaskLine.targetNodeKey`:** For any pre-existing `PacketTaskLine` rows where `targetNodeKey` was previously represented inside `embeddedPayloadJson`, the migration must extract that value into the new top-level column. If product evidence confirms that no production `PacketTaskLine` rows exist yet (e.g. seed-only catalog at migration time), the migration may declare the column `NOT NULL` directly without a data backfill step; otherwise the migration should add the column as nullable, backfill from `embeddedPayloadJson`, then tighten to `NOT NULL`. **Exact backfill policy is deferred to the implementation epic**; the canon pass fixes only that the new column is required in the final shape.
+
+**Schema changes explicitly NOT authorized in this pass:**
+
+- `ScopePacket.status` — deferred. No column added.
+- `PacketTier` dimension — deferred.
+- Admin-review queue tables or state — deferred.
+- Any change to `QuoteLocalPacket.promotionStatus` enum shape — interim flow uses only `NONE → COMPLETED` of the existing values; no new enum members.
+
+**`promotionStatus` enum usage in the interim slice:**
+
+- Entry state: `NONE`.
+- Terminal state after interim promotion: `COMPLETED`.
+- `REQUESTED`, `IN_REVIEW`, `REJECTED` remain enum-legal and reserved for the deferred admin-review epic. The interim slice does not write them.
+
+**`QuoteLocalPacketItem` → `PacketTaskLine` transform contract (normative copy of the canon mapping, for schema implementers):**
+
+| Source column | Target column | Rule |
+|---|---|---|
+| `lineKey` | `lineKey` | verbatim |
+| `sortOrder` | `sortOrder` | verbatim |
+| `tierCode` | `tierCode` | verbatim (nullable) |
+| `lineKind` | `lineKind` | enum value preserved (`EMBEDDED` / `LIBRARY`) |
+| `embeddedPayloadJson` | `embeddedPayloadJson` | deep copy |
+| `taskDefinitionId` | `taskDefinitionId` | verbatim (nullable) |
+| `targetNodeKey` | `targetNodeKey` | verbatim — **requires the new top-level column on `PacketTaskLine`** |
+
+No other fields are written on `PacketTaskLine` during promotion.
+
+**`packetKey` policy for the interim slice:**
+
+- Estimator-supplied at promotion time (not auto-derived).
+- Server-validated for uniqueness per tenant (existing `@@unique([tenantId, packetKey])` on `ScopePacket`).
+- Duplicate key → promotion rejected; no partial write.
+- Immutable once the `ScopePacket` row exists.
+
+**Consumer-side invariant for pickers:** Any future library packet picker, quote line picker, or AI grounding source reading `ScopePacketRevision` rows **must filter on `status = PUBLISHED`**. `DRAFT` revisions created by the interim flow are not selectable until the deferred admin-review epic publishes them.

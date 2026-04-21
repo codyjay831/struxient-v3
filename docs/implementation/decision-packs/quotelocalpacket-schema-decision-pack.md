@@ -74,12 +74,53 @@ Do **not** stop at a parent row only.
 
 | Field / concept | **Decision** |
 |-----------------|--------------|
-| Promotion state | `promotionStatus`: `NONE` \| `REQUESTED` \| `IN_REVIEW` \| `REJECTED` \| `COMPLETED` (or equivalent). |
+| Promotion state | `promotionStatus`: `NONE` \| `REQUESTED` \| `IN_REVIEW` \| `REJECTED` \| `COMPLETED`. **Interim slice uses only `NONE` → `COMPLETED`**; `REQUESTED` / `IN_REVIEW` / `REJECTED` remain enum-legal and reserved for the deferred admin-review epic. |
 | Target | On **COMPLETED**, store **`promotedScopePacketId`** (and optionally initial draft revision id) for audit. |
 | Original local packet | **Unchanged** on the quote version (historical record). |
-| Who acts | **Estimator** requests; **Admin / catalog author** approves and publishes library row (epic 15). |
+| Who acts | **Estimator** requests; in the interim slice the estimator action **is** the one-step promotion. The deferred admin-review epic will reintroduce admin / catalog-author approval as a separate step. |
 
 **No automatic promotion** from AI or from frequency heuristics in v3 canon.
+
+### Interim one-step promotion flow (canon amendment)
+
+**Status:** Authorized for the first promotion implementation epic. Preserves — does not delete — the deferred admin-review canon.
+
+**Flow:**
+
+1. Estimator triggers "Promote to Global Library" on a `QuoteLocalPacket` and supplies a **`packetKey`** (slug).
+2. Server validates **`packetKey` uniqueness** on the tenant (`@@unique([tenantId, packetKey])` on `ScopePacket`). Duplicate → reject with a structured error; no partial state written.
+3. Server creates `ScopePacket` with the supplied `packetKey` under the estimator's tenant.
+4. Server creates a **first** `ScopePacketRevision` (`revisionNumber = 1`) in **`DRAFT`** with `publishedAt = null` (requires the `ScopePacketRevision.publishedAt` nullability amendment below).
+5. Server copies `QuoteLocalPacketItem` rows → `PacketTaskLine` rows on the new revision per the `05-packet-canon.md` mapping contract (1:1 copy of `lineKey`, `sortOrder`, `tierCode`, `lineKind`, `embeddedPayloadJson`, `taskDefinitionId`, `targetNodeKey`).
+6. Server sets `QuoteLocalPacket.promotionStatus = COMPLETED` and `promotedScopePacketId = <new ScopePacket.id>`.
+7. No admin queue row is created. No `IN_REVIEW` transition occurs. No publish happens in this slice.
+
+**Idempotency:** A `QuoteLocalPacket` already in `COMPLETED` cannot be promoted again. Idempotency key scheme is epic-level (implementation detail); the decision pack fixes the **state** rule only.
+
+**Invariants preserved:**
+
+- Source packet is **not deleted, not mutated beyond `promotionStatus` + `promotedScopePacketId`**.
+- Items on the source packet are **not moved** — they are **copied**.
+- The new revision is `DRAFT`, not `PUBLISHED`. Consumer pickers must filter on `PUBLISHED`.
+
+### `packetKey` policy for promotion
+
+- **Source:** estimator-supplied at promotion time (not auto-generated from `QuoteLocalPacket.displayName`).
+- **Validation:** server-validated for **uniqueness per tenant**; regex rule matches existing `ScopePacket.packetKey` validation (slug-like per existing epic 15 / schema field definitions).
+- **Collision handling:** promotion is **rejected** on duplicate key; the UI is expected to prompt the estimator to pick a different key. No auto-suffixing.
+- **Immutability after promotion:** once the `ScopePacket` exists, its `packetKey` is **immutable** (existing canon — key renames forbidden after publish; the interim slice extends this to "after promotion" since a `DRAFT` revision is still tenant-visible by key).
+
+### Schema amendment — `ScopePacketRevision.publishedAt` nullability
+
+The interim one-step promotion flow produces a `DRAFT` revision that has **no publish timestamp**. Canon is amended to make **`ScopePacketRevision.publishedAt` nullable**. The field remains non-null for every revision that ever reaches `PUBLISHED` (set at publish time by the deferred admin-review epic). Existing `PUBLISHED` rows are unaffected; the nullability is required only to admit the new `DRAFT` rows created by the interim flow.
+
+### Deferred (explicitly preserved)
+
+- Admin-review queue, assignment, and UI.
+- `IN_REVIEW` / `REJECTED` state transitions.
+- `DRAFT` → `PUBLISHED` publish workflow for revisions produced by the interim flow.
+- `ScopePacket.status` as a top-level column (see epic 15 §17).
+- `PacketTier` normalized dimension on promoted revisions.
 
 ---
 

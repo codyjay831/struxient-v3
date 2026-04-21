@@ -85,6 +85,7 @@
 | **Indexes** | `tenantId` |
 | **Relations** | `tenant`, `revisions` |
 | **Delete** | **Restrict** if revisions/lines referenced by line items (app); FK from `ScopePacketRevision` |
+| **`status` column** | **Deferred** — not added in Slice 1 / interim promotion slice. Lifecycle is expressed at `ScopePacketRevision` level only. Canon target retains a packet-level `status` enum for a future admin-review epic; preserving it as deferred avoids a churn migration when that epic lands. |
 
 ---
 
@@ -93,12 +94,13 @@
 | Item | Specification |
 |------|----------------|
 | **Model** | `ScopePacketRevision` |
-| **Fields** | `id`, `scopePacketId`, `revisionNumber`, `status` (enum), `publishedAt` |
+| **Fields** | `id`, `scopePacketId`, `revisionNumber`, `status` (enum: `DRAFT` \| `PUBLISHED`), **`publishedAt?` (nullable — canon amendment for interim promotion slice)** |
 | **Unique** | `@@unique([scopePacketId, revisionNumber])` |
 | **Indexes** | `scopePacketId`, `@@index([status])` |
 | **Relations** | `scopePacket`, `packetTaskLines`, `quoteLineItems` (reverse) |
 | **Update** | After `PUBLISHED`, treat as **immutable** in app (no Prisma-level enforcement) |
 | **Delete** | **Restrict** if any `QuoteLineItem` references |
+| **`publishedAt` rule** | Null when `status = DRAFT` (interim promotion flow writes this). Required (ISO-8601) when `status = PUBLISHED`. Application enforces the conditional requirement; Prisma declares the column **nullable**. |
 
 ---
 
@@ -107,12 +109,13 @@
 | Item | Specification |
 |------|----------------|
 | **Model** | `PacketTaskLine` |
-| **Fields** | `id`, `scopePacketRevisionId`, `lineKey`, `tierCode?`, `sortOrder`, `lineKind` (enum), `embeddedPayloadJson` |
-| **Codepack default** | **EMBEDDED-only:** seeds and app **must** set `lineKind = EMBEDDED` and non-null `embeddedPayloadJson`. **No** `TaskDefinition` / `taskDefinitionId` in Slice 1 schema. |
+| **Fields** | `id`, `scopePacketRevisionId`, `lineKey`, `tierCode?`, `sortOrder`, `lineKind` (enum), `embeddedPayloadJson`, `taskDefinitionId?`, **`targetNodeKey` (top-level `String`, required — canon amendment for interim promotion slice)** |
+| **Codepack default** | **EMBEDDED-only:** seeds and app **must** set `lineKind = EMBEDDED` and non-null `embeddedPayloadJson`. **No** `TaskDefinition` / `taskDefinitionId` in Slice 1 seeds (enum widens when library lines ship). |
 | **Unique** | `@@unique([scopePacketRevisionId, lineKey])` |
 | **Indexes** | `scopePacketRevisionId` |
 | **Relations** | `scopePacketRevision` |
 | **Immutability** | Immutable under published revision (app) |
+| **`targetNodeKey` rule** | Top-level required column (not nested in `embeddedPayloadJson`). Parity with `QuoteLocalPacketItem.targetNodeKey`; enables the 1:1 `QuoteLocalPacketItem → PacketTaskLine` promotion row-copy contract (`docs/canon/05-packet-canon.md`). Backfill expectation: extract from `embeddedPayloadJson` when pre-existing rows exist; seed-only catalog may add `NOT NULL` directly. |
 
 ---
 

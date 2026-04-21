@@ -71,36 +71,81 @@ export async function listFlowsForTenant(
     where: { tenantId: params.tenantId },
     orderBy: { createdAt: "desc" },
     take: params.limit,
-    select: {
-      id: true,
-      jobId: true,
-      createdAt: true,
-      activation: {
-        select: { id: true, activatedAt: true },
-      },
-      workflowVersion: {
-        select: { id: true, versionNumber: true },
-      },
-      quoteVersion: {
-        select: {
-          id: true,
-          versionNumber: true,
-          status: true,
-          quote: {
-            select: {
-              id: true,
-              quoteNumber: true,
-              customer: { select: { id: true, name: true } },
-              flowGroup: { select: { id: true, name: true } },
-            },
-          },
-        },
-      },
-      _count: { select: { runtimeTasks: true } },
-    },
+    select: FLOW_DISCOVERY_SELECT,
   });
 
-  return rows.map((row) => ({
+  return rows.map(mapDiscoveryRow);
+}
+
+/**
+ * Tenant-scoped single-flow lookup, same shape as `listFlowsForTenant`.
+ *
+ * Used by the flow detail and work-feed pages to surface commercial context
+ * (quote / customer / flow group / activated time) without extending the
+ * focused execution read model.
+ */
+export async function getFlowDiscoveryItemForTenant(
+  prisma: PrismaClient,
+  params: { tenantId: string; flowId: string },
+): Promise<FlowDiscoveryItemDto | null> {
+  const row = await prisma.flow.findFirst({
+    where: { id: params.flowId, tenantId: params.tenantId },
+    select: FLOW_DISCOVERY_SELECT,
+  });
+  if (!row) return null;
+  return mapDiscoveryRow(row);
+}
+
+const FLOW_DISCOVERY_SELECT = {
+  id: true,
+  jobId: true,
+  createdAt: true,
+  activation: {
+    select: { id: true, activatedAt: true },
+  },
+  workflowVersion: {
+    select: { id: true, versionNumber: true },
+  },
+  quoteVersion: {
+    select: {
+      id: true,
+      versionNumber: true,
+      status: true,
+      quote: {
+        select: {
+          id: true,
+          quoteNumber: true,
+          customer: { select: { id: true, name: true } },
+          flowGroup: { select: { id: true, name: true } },
+        },
+      },
+    },
+  },
+  _count: { select: { runtimeTasks: true } },
+} as const;
+
+type FlowDiscoveryRow = {
+  id: string;
+  jobId: string;
+  createdAt: Date;
+  activation: { id: string; activatedAt: Date } | null;
+  workflowVersion: { id: string; versionNumber: number };
+  quoteVersion: {
+    id: string;
+    versionNumber: number;
+    status: QuoteVersionStatus;
+    quote: {
+      id: string;
+      quoteNumber: string;
+      customer: { id: string; name: string };
+      flowGroup: { id: string; name: string };
+    };
+  };
+  _count: { runtimeTasks: number };
+};
+
+function mapDiscoveryRow(row: FlowDiscoveryRow): FlowDiscoveryItemDto {
+  return {
     flow: {
       id: row.id,
       jobId: row.jobId,
@@ -128,5 +173,5 @@ export async function listFlowsForTenant(
       versionNumber: row.workflowVersion.versionNumber,
     },
     runtimeTaskCount: row._count.runtimeTasks,
-  }));
+  };
 }

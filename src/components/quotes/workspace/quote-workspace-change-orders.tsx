@@ -1,0 +1,123 @@
+"use client";
+import { QuoteWorkspaceChangeOrderDto } from "@/server/slice1/reads/quote-workspace-reads";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { InternalActionResult } from "@/components/internal/internal-action-result";
+
+type Props = {
+  quoteId: string;
+  jobId: string | null;
+  changeOrders: QuoteWorkspaceChangeOrderDto[];
+  canOfficeMutate: boolean;
+};
+
+export function QuoteWorkspaceChangeOrders({ quoteId, jobId, changeOrders, canOfficeMutate }: Props) {
+  const router = useRouter();
+  const [isCreating, setIsCreating] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  const createCO = async () => {
+    if (!jobId) return;
+    setIsCreating(true);
+    setResult(null);
+    try {
+      const res = await fetch(`/api/jobs/${jobId}/change-orders`, {
+        method: "POST",
+        body: JSON.stringify({ reason: "Manual Change Order" }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setResult({ ok: true, message: "Change Order created. Redirecting to draft..." });
+        // In a real app, we'd redirect to the scope editor for the new version.
+        // For now, just refresh the workspace.
+        setTimeout(() => {
+            router.refresh();
+            setResult(null);
+        }, 1500);
+      } else {
+        setResult({ ok: false, message: `Failed: ${data.kind}` });
+      }
+    } catch (e) {
+      setResult({ ok: false, message: "Error creating Change Order" });
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const applyCO = async (coId: string) => {
+    setResult(null);
+    try {
+      const res = await fetch(`/api/change-orders/${coId}/apply`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setResult({ ok: true, message: "Change Order applied successfully!" });
+        router.refresh();
+      } else {
+        setResult({ ok: false, message: `Apply failed: ${data.kind}${data.unsatisfiedGateIds ? ` (Unsatisfied Gates: ${data.unsatisfiedGateIds.join(", ")})` : ""}` });
+      }
+    } catch (e) {
+      setResult({ ok: false, message: "Error applying Change Order" });
+    }
+  };
+
+  if (!jobId && changeOrders.length === 0) return null;
+
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
+      <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-800/50 flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-zinc-100">Change Orders</h3>
+        {canOfficeMutate && jobId && (
+          <button
+            onClick={createCO}
+            disabled={isCreating || changeOrders.some(co => co.status === "DRAFT")}
+            className="text-xs bg-zinc-100 text-zinc-900 px-2 py-1 rounded font-medium hover:bg-zinc-200 disabled:opacity-50"
+          >
+            {isCreating ? "Creating..." : "New CO"}
+          </button>
+        )}
+      </div>
+
+      <div className="p-4 space-y-4">
+        {result && <InternalActionResult result={result} />}
+
+        {changeOrders.length === 0 ? (
+          <p className="text-xs text-zinc-500 italic">No change orders recorded for this job.</p>
+        ) : (
+          <div className="space-y-3">
+            {changeOrders.map((co) => (
+              <div key={co.id} className="text-xs border border-zinc-800 rounded p-2 bg-zinc-950/50">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-mono text-[10px] text-zinc-500">{co.id.slice(-8)}</span>
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
+                    co.status === "APPLIED" ? "bg-emerald-500/10 text-emerald-400" :
+                    co.status === "VOID" ? "bg-zinc-500/10 text-zinc-400" :
+                    "bg-blue-500/10 text-blue-400"
+                  }`}>
+                    {co.status}
+                  </span>
+                </div>
+                <p className="text-zinc-300 mb-2">{co.reason}</p>
+                <div className="flex items-center justify-between text-[10px] text-zinc-500">
+                  <span>Created {new Date(co.createdAt).toLocaleDateString()}</span>
+                  {co.status !== "APPLIED" && co.status !== "VOID" && canOfficeMutate && (
+                    <button
+                      onClick={() => applyCO(co.id)}
+                      className="text-blue-400 hover:text-blue-300 font-medium"
+                    >
+                      Apply Now
+                    </button>
+                  )}
+                  {co.status === "APPLIED" && (
+                    <span>Applied {new Date(co.appliedAt!).toLocaleDateString()}</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

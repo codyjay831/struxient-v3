@@ -20,12 +20,25 @@ export type FlowExecutionRuntimeTaskApiDto = {
   displayTitle: string;
   createdAt: string;
   execution: {
-    status: "not_started" | "in_progress" | "completed";
+    status: "not_started" | "in_progress" | "completed" | "accepted" | "correction_required";
     startedAt: string | null;
     completedAt: string | null;
+    reviewedAt: string | null;
+    correctionFeedback: string | null;
+    completionProof?: {
+      note: string | null;
+      attachments: { fileName: string; storageKey: string; contentType: string }[];
+      checklist: { label: string; status: "yes" | "no" | "na" }[];
+      measurements: { label: string; value: string; unit?: string }[];
+      identifiers: { label: string; value: string }[];
+      overallResult: string | null;
+    } | null;
   };
   /** Central MVP actionability (`epic 30` shell) — matches start/complete route gates. */
   actionability: TaskActionabilityApiDto;
+  completionRequirementsJson?: any;
+  conditionalRulesJson?: any;
+  instructions?: string | null;
 };
 
 /** Merged feed: skeleton rows (per node, template order) then runtime tasks on that node (epic 36 / Phase 8 prep). */
@@ -48,6 +61,9 @@ export type FlowWorkItemApiDto =
       createdAt: string;
       execution: FlowExecutionRuntimeTaskApiDto["execution"];
       actionability: TaskActionabilityApiDto;
+      completionRequirementsJson?: any;
+      conditionalRulesJson?: any;
+      instructions?: string | null;
     };
 
 export type FlowExecutionApiDto = {
@@ -57,7 +73,33 @@ export type FlowExecutionApiDto = {
     quoteVersionId: string;
     workflowVersionId: string;
     createdAt: string;
+    publicShareToken: string | null;
+    publicShareStatus: "UNPUBLISHED" | "PUBLISHED";
+    publicShareTokenGeneratedAt: string | null;
+    publicShareFirstViewedAt: string | null;
+    publicShareLastViewedAt: string | null;
+    publicShareViewCount: number;
+    publicShareLastFollowUpSentAt: string | null;
+    publicShareReceiptAcknowledgedAt: string | null;
+    publicShareClarificationRequestedAt: string | null;
+    publicShareClarificationReason: string | null;
+    publicShareClarificationResolvedAt: string | null;
+    publicShareClarificationResolutionNote: string | null;
+    publicShareNotificationLastSeenAt: string | null;
+    publicShareExpiresAt: string | null;
   };
+  customer: { id: string; name: string; email: string | null; phone: string | null };
+  project: { id: string; name: string };
+  tenant: { id: string; name: string };
+  deliveries: {
+    id: string;
+    deliveredAt: string;
+    deliveryMethod: string;
+    recipientDetail: string | null;
+    shareToken: string;
+    providerStatus: string;
+    providerError: string | null;
+  }[];
   activation: { id: string; activatedAt: string } | null;
   workflowVersion: { id: string; versionNumber: number; status: string };
   workflowNodeOrder: string[];
@@ -114,6 +156,10 @@ function buildWorkItems(m: FlowExecutionReadModel): FlowWorkItemApiDto[] {
   const items: FlowWorkItemApiDto[] = [];
   for (const nodeId of nodeOrder) {
     for (const sk of skeletonTasksForNode(m.skeletonTasks, nodeId)) {
+      const hasUnsatisfiedPaymentGate = m.paymentGates.some(g => 
+        g.status === "UNSATISFIED" && 
+        g.targets.some(tg => tg.taskId === sk.skeletonTaskId && tg.taskKind === "SKELETON")
+      );
       items.push({
         kind: "SKELETON",
         nodeId: sk.nodeId,
@@ -123,13 +169,20 @@ function buildWorkItems(m: FlowExecutionReadModel): FlowWorkItemApiDto[] {
           status: sk.execution.status,
           startedAt: sk.execution.startedAt?.toISOString() ?? null,
           completedAt: sk.execution.completedAt?.toISOString() ?? null,
+          reviewedAt: sk.execution.reviewedAt?.toISOString() ?? null,
+          correctionFeedback: sk.execution.correctionFeedback,
+          completionProof: sk.execution.completionProof,
         },
         actionability: toTaskActionabilityApiDto(
-          evaluateSkeletonTaskActionability(hasActivation, sk.execution),
+          evaluateSkeletonTaskActionability(hasActivation, sk.execution, hasUnsatisfiedPaymentGate),
         ),
       });
     }
     for (const rt of runtimeTasksForNode(m.runtimeTasks, nodeId)) {
+      const hasUnsatisfiedPaymentGate = m.paymentGates.some(g => 
+        g.status === "UNSATISFIED" && 
+        g.targets.some(tg => tg.taskId === rt.id && tg.taskKind === "RUNTIME")
+      );
       items.push({
         kind: "RUNTIME",
         runtimeTaskId: rt.id,
@@ -142,10 +195,16 @@ function buildWorkItems(m: FlowExecutionReadModel): FlowWorkItemApiDto[] {
           status: rt.execution.status,
           startedAt: rt.execution.startedAt?.toISOString() ?? null,
           completedAt: rt.execution.completedAt?.toISOString() ?? null,
+          reviewedAt: rt.execution.reviewedAt?.toISOString() ?? null,
+          correctionFeedback: rt.execution.correctionFeedback,
+          completionProof: rt.execution.completionProof,
         },
         actionability: toTaskActionabilityApiDto(
-          evaluateRuntimeTaskActionability(hasActivation, rt.execution),
+          evaluateRuntimeTaskActionability(hasActivation, rt.execution, hasUnsatisfiedPaymentGate),
         ),
+        completionRequirementsJson: rt.completionRequirementsJson,
+        conditionalRulesJson: rt.conditionalRulesJson,
+        instructions: rt.instructions,
       });
     }
   }
@@ -162,41 +221,88 @@ export function toFlowExecutionApiDto(m: FlowExecutionReadModel): FlowExecutionA
       quoteVersionId: m.flow.quoteVersionId,
       workflowVersionId: m.flow.workflowVersionId,
       createdAt: m.flow.createdAt.toISOString(),
+      publicShareToken: m.flow.publicShareToken,
+      publicShareStatus: m.flow.publicShareStatus as "UNPUBLISHED" | "PUBLISHED",
+      publicShareTokenGeneratedAt: m.flow.publicShareTokenGeneratedAt?.toISOString() || null,
+      publicShareFirstViewedAt: m.flow.publicShareFirstViewedAt?.toISOString() || null,
+      publicShareLastViewedAt: m.flow.publicShareLastViewedAt?.toISOString() || null,
+      publicShareViewCount: m.flow.publicShareViewCount,
+      publicShareLastFollowUpSentAt: m.flow.publicShareLastFollowUpSentAt?.toISOString() || null,
+      publicShareReceiptAcknowledgedAt: m.flow.publicShareReceiptAcknowledgedAt?.toISOString() || null,
+      publicShareClarificationRequestedAt: m.flow.publicShareClarificationRequestedAt?.toISOString() || null,
+      publicShareClarificationReason: m.flow.publicShareClarificationReason,
+      publicShareClarificationResolvedAt: m.flow.publicShareClarificationResolvedAt?.toISOString() || null,
+      publicShareClarificationResolutionNote: m.flow.publicShareClarificationResolutionNote,
+      publicShareNotificationLastSeenAt: m.flow.publicShareNotificationLastSeenAt?.toISOString() || null,
+      publicShareExpiresAt: m.flow.publicShareExpiresAt?.toISOString() || null,
     },
+    customer: m.customer,
+    project: m.project,
+    tenant: m.tenant,
+    deliveries: m.deliveries.map((d) => ({
+      id: d.id,
+      deliveredAt: d.deliveredAt.toISOString(),
+      deliveryMethod: d.deliveryMethod,
+      recipientDetail: d.recipientDetail,
+      shareToken: d.shareToken,
+      providerStatus: d.providerStatus,
+      providerError: d.providerError,
+    })),
     activation: m.activation
       ? { id: m.activation.id, activatedAt: m.activation.activatedAt.toISOString() }
       : null,
     workflowVersion: m.workflowVersion,
     workflowNodeOrder: m.workflowNodeOrder,
-    skeletonTasks: m.skeletonTasks.map((sk) => ({
-      nodeId: sk.nodeId,
-      skeletonTaskId: sk.skeletonTaskId,
-      displayTitle: sk.displayTitle,
-      execution: {
-        status: sk.execution.status,
-        startedAt: sk.execution.startedAt?.toISOString() ?? null,
-        completedAt: sk.execution.completedAt?.toISOString() ?? null,
-      },
-      actionability: toTaskActionabilityApiDto(
-        evaluateSkeletonTaskActionability(hasActivation, sk.execution),
-      ),
-    })),
-    runtimeTasks: m.runtimeTasks.map((t) => ({
-      id: t.id,
-      packageTaskId: t.packageTaskId,
-      nodeId: t.nodeId,
-      lineItemId: t.lineItemId,
-      displayTitle: t.displayTitle,
-      createdAt: t.createdAt.toISOString(),
-      execution: {
-        status: t.execution.status,
-        startedAt: t.execution.startedAt?.toISOString() ?? null,
-        completedAt: t.execution.completedAt?.toISOString() ?? null,
-      },
-      actionability: toTaskActionabilityApiDto(
-        evaluateRuntimeTaskActionability(hasActivation, t.execution),
-      ),
-    })),
+    skeletonTasks: m.skeletonTasks.map((sk) => {
+      const hasUnsatisfiedPaymentGate = m.paymentGates.some(g => 
+        g.status === "UNSATISFIED" && 
+        g.targets.some(tg => tg.taskId === sk.skeletonTaskId && tg.taskKind === "SKELETON")
+      );
+      return {
+        nodeId: sk.nodeId,
+        skeletonTaskId: sk.skeletonTaskId,
+        displayTitle: sk.displayTitle,
+        execution: {
+          status: sk.execution.status,
+          startedAt: sk.execution.startedAt?.toISOString() ?? null,
+          completedAt: sk.execution.completedAt?.toISOString() ?? null,
+          reviewedAt: sk.execution.reviewedAt?.toISOString() ?? null,
+          correctionFeedback: sk.execution.correctionFeedback,
+          completionProof: sk.execution.completionProof,
+        },
+        actionability: toTaskActionabilityApiDto(
+          evaluateSkeletonTaskActionability(hasActivation, sk.execution, hasUnsatisfiedPaymentGate),
+        ),
+      };
+    }),
+    runtimeTasks: m.runtimeTasks.map((t) => {
+      const hasUnsatisfiedPaymentGate = m.paymentGates.some(g => 
+        g.status === "UNSATISFIED" && 
+        g.targets.some(tg => tg.taskId === t.id && tg.taskKind === "RUNTIME")
+      );
+      return {
+        id: t.id,
+        packageTaskId: t.packageTaskId,
+        nodeId: t.nodeId,
+        lineItemId: t.lineItemId,
+        displayTitle: t.displayTitle,
+        createdAt: t.createdAt.toISOString(),
+        execution: {
+          status: t.execution.status,
+          startedAt: t.execution.startedAt?.toISOString() ?? null,
+          completedAt: t.execution.completedAt?.toISOString() ?? null,
+          reviewedAt: t.execution.reviewedAt?.toISOString() ?? null,
+          correctionFeedback: t.execution.correctionFeedback,
+          completionProof: t.execution.completionProof,
+        },
+        actionability: toTaskActionabilityApiDto(
+          evaluateRuntimeTaskActionability(hasActivation, t.execution, hasUnsatisfiedPaymentGate),
+        ),
+        completionRequirementsJson: t.completionRequirementsJson,
+        conditionalRulesJson: t.conditionalRulesJson,
+        instructions: t.instructions,
+      };
+    }),
     workItems: buildWorkItems(m),
   };
 }

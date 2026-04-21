@@ -20,7 +20,8 @@ export type StartSkeletonTaskResult =
   | { ok: false; kind: "invalid_actor" }
   | { ok: false; kind: "unknown_skeleton_task" }
   | { ok: false; kind: "already_completed" }
-  | { ok: false; kind: "flow_not_activated" };
+  | { ok: false; kind: "flow_not_activated" }
+  | { ok: false; kind: "payment_gate_unsatisfied" };
 
 export type CompleteSkeletonTaskResult =
   | { ok: true; data: SkeletonTaskExecutionEventDto }
@@ -71,6 +72,7 @@ export async function startSkeletonTaskForTenant(
       select: {
         id: true,
         tenantId: true,
+        jobId: true,
         workflowVersion: { select: { snapshotJson: true } },
       },
     });
@@ -87,6 +89,20 @@ export async function startSkeletonTaskForTenant(
       select: { id: true },
     });
 
+    const hasUnsatisfiedPaymentGate = await tx.paymentGate.findFirst({
+      where: {
+        jobId: flow.jobId,
+        status: "UNSATISFIED",
+        targets: {
+          some: {
+            taskId: skeletonTaskId,
+            taskKind: "SKELETON",
+          },
+        },
+      },
+      select: { id: true },
+    });
+
     const skEvents = await tx.taskExecution.findMany({
       where: {
         flowId: flow.id,
@@ -97,12 +113,19 @@ export async function startSkeletonTaskForTenant(
       orderBy: { createdAt: "asc" },
     });
     const execution = deriveRuntimeExecutionSummary(skEvents);
-    const actionability = evaluateSkeletonTaskActionability(activation != null, execution);
+    const actionability = evaluateSkeletonTaskActionability(
+      activation != null,
+      execution,
+      hasUnsatisfiedPaymentGate != null,
+    );
     if (actionability.start.reasons.includes("TASK_ALREADY_COMPLETED")) {
       return { ok: false, kind: "already_completed" };
     }
     if (actionability.start.reasons.includes("FLOW_NOT_ACTIVATED")) {
       return { ok: false, kind: "flow_not_activated" };
+    }
+    if (actionability.start.reasons.includes("PAYMENT_GATE_UNSATISFIED")) {
+      return { ok: false, kind: "payment_gate_unsatisfied" };
     }
 
     const actor = await tx.user.findFirst({
@@ -229,7 +252,7 @@ export async function completeSkeletonTaskForTenant(
       orderBy: { createdAt: "asc" },
     });
     const execution = deriveRuntimeExecutionSummary(skEvents);
-    const actionability = evaluateSkeletonTaskActionability(activation != null, execution);
+    const actionability = evaluateSkeletonTaskActionability(activation != null, execution, false);
     if (actionability.complete.reasons.includes("FLOW_NOT_ACTIVATED")) {
       return { ok: false, kind: "flow_not_activated" };
     }

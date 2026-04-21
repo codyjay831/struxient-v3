@@ -6,6 +6,8 @@ export type CommercialQuoteShellLatestVersionDto = {
   versionNumber: number;
   status: QuoteVersionStatus;
   proposalGroupCount: number;
+  hasActivation: boolean;
+  flowId: string | null;
 };
 
 export type CommercialQuoteShellSummaryDto = {
@@ -40,6 +42,8 @@ function mapRow(row: {
     versionNumber: number;
     status: QuoteVersionStatus;
     _count: { proposalGroups: number };
+    activation: { id: string } | null;
+    flow: { id: string } | null;
   }[];
 }): CommercialQuoteShellSummaryDto {
   const v0 = row.versions[0];
@@ -57,6 +61,8 @@ function mapRow(row: {
           versionNumber: v0.versionNumber,
           status: v0.status,
           proposalGroupCount: v0._count.proposalGroups,
+          hasActivation: v0.activation != null,
+          flowId: v0.flow?.id ?? null,
         }
       : null,
   };
@@ -84,6 +90,8 @@ export async function listCommercialQuoteShellsForTenant(
           versionNumber: true,
           status: true,
           _count: { select: { proposalGroups: true } },
+          activation: { select: { id: true } },
+          flow: { select: { id: true } },
         },
       },
     },
@@ -112,6 +120,8 @@ export async function getCommercialQuoteShellForTenant(
           versionNumber: true,
           status: true,
           _count: { select: { proposalGroups: true } },
+          activation: { select: { id: true } },
+          flow: { select: { id: true } },
         },
       },
     },

@@ -9,6 +9,9 @@ export type ActivationPackageSlot = {
   lineItemId: string;
   planTaskIds: string[];
   displayTitle: string;
+  completionRequirementsJson?: any;
+  conditionalRulesJson?: any;
+  instructions?: string | null;
 };
 
 function isSkeletonPackageSlot(r: Record<string, unknown>): boolean {
@@ -93,11 +96,15 @@ export function parseExecutionPackageSnapshotV0ForActivation(json: unknown): Par
       return { ok: false, code: "INVALID_PACKAGE", message: `slots[${i}] missing lineItemIds[0] or lineItemId.` };
     }
 
+    const completionRequirementsJson = r.completionRequirementsJson;
+    const conditionalRulesJson = r.conditionalRulesJson;
+    const instructions = typeof r.instructions === "string" ? r.instructions : null;
+
     if (packageTaskId == null || nodeId == null) {
       return { ok: false, code: "INVALID_PACKAGE", message: `slots[${i}] missing packageTaskId or nodeId.` };
     }
 
-    slots.push({ packageTaskId, nodeId, lineItemId, planTaskIds, displayTitle });
+    slots.push({ packageTaskId, nodeId, lineItemId, planTaskIds, displayTitle, completionRequirementsJson, conditionalRulesJson, instructions });
   }
 
   return { ok: true, pinnedWorkflowVersionId: pinned, slots, skippedSkeletonSlotCount };

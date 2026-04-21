@@ -1,3 +1,4 @@
+import { summarizeTierPartialExclusion } from "@/lib/compose-tier-filter-diagnostics";
 import type { QuoteVersionScopeDb, QuoteVersionScopeReadModel } from "../reads/quote-version-scope";
 import {
   computePackageTaskId,
@@ -38,6 +39,9 @@ export type ComposePackageSlotDto = {
   skeletonTaskId: null;
   displayTitle: string;
   lineItemId: string;
+  completionRequirementsJson?: any;
+  conditionalRulesJson?: any;
+  instructions?: string | null;
 };
 
 export type ComposeEngineResult = {
@@ -68,6 +72,9 @@ function readEmbeddedScopeFields(embedded: unknown): {
   targetNodeKey?: string;
   title?: string;
   taskKind?: string;
+  completionRequirementsJson?: any;
+  conditionalRulesJson?: any;
+  instructions?: string | null;
 } {
   if (embedded === null || typeof embedded !== "object" || Array.isArray(embedded)) {
     return {};
@@ -76,7 +83,10 @@ function readEmbeddedScopeFields(embedded: unknown): {
   const targetNodeKey = typeof o.targetNodeKey === "string" ? o.targetNodeKey : undefined;
   const title = typeof o.title === "string" ? o.title : undefined;
   const taskKind = typeof o.taskKind === "string" ? o.taskKind : undefined;
-  return { targetNodeKey, title, taskKind };
+  const completionRequirementsJson = o.completionRequirementsJson;
+  const conditionalRulesJson = o.conditionalRulesJson;
+  const instructions = typeof o.instructions === "string" ? o.instructions : undefined;
+  return { targetNodeKey, title, taskKind, completionRequirementsJson, conditionalRulesJson, instructions };
 }
 
 function tierFilterInclude(lineTier: string | null, packetLineTier: string | null): boolean {
@@ -184,6 +194,7 @@ export async function runComposeFromReadModel(
       revisionIds.length > 0
         ? await prisma.packetTaskLine.findMany({
             where: { scopePacketRevisionId: { in: revisionIds } },
+            include: { taskDefinition: { select: { completionRequirementsJson: true, conditionalRulesJson: true, instructions: true } } },
             orderBy: [{ scopePacketRevisionId: "asc" }, { sortOrder: "asc" }, { lineKey: "asc" }],
           })
         : [];
@@ -192,6 +203,7 @@ export async function runComposeFromReadModel(
       localPacketIds.length > 0
         ? await prisma.quoteLocalPacketItem.findMany({
             where: { quoteLocalPacketId: { in: localPacketIds } },
+            include: { taskDefinition: { select: { completionRequirementsJson: true, conditionalRulesJson: true, instructions: true } } },
             orderBy: [{ quoteLocalPacketId: "asc" }, { sortOrder: "asc" }, { lineKey: "asc" }],
           })
         : [];
@@ -228,14 +240,40 @@ export async function runComposeFromReadModel(
           });
           continue;
         }
+        const partialExclusion = summarizeTierPartialExclusion({ candidates, filtered });
+        if (partialExclusion) {
+          warnings.push({
+            code: "PACKET_ITEMS_FILTERED_BY_TIER",
+            message:
+              "Tier filter excluded some catalog packet task lines for this manifest line; verify line tierCode matches packet authoring.",
+            lineItemId: line.id,
+            details: {
+              scopePacketRevisionId: line.scopePacketRevisionId,
+              lineTierCode: line.tierCode,
+              includedCount: partialExclusion.includedCount,
+              excludedCount: partialExclusion.excludedCount,
+              sampleExcludedTierCodes: partialExclusion.sampleExcludedTierCodes,
+            },
+          });
+        }
 
         for (const pl of filtered) {
           const embedded = readEmbeddedScopeFields(pl.embeddedPayloadJson);
-          const targetNodeKey = embedded.targetNodeKey;
+          // Prefer top-level PacketTaskLine.targetNodeKey (canon amendment for the
+          // interim promotion slice). Fall back to embeddedPayloadJson.targetNodeKey
+          // for legacy rows that pre-date the column. The migration sentinel
+          // ('__missing__') is treated as missing so behavior matches pre-migration
+          // for rows that never carried a target.
+          const topLevelTarget =
+            typeof pl.targetNodeKey === "string" && pl.targetNodeKey !== "" && pl.targetNodeKey !== "__missing__"
+              ? pl.targetNodeKey
+              : undefined;
+          const targetNodeKey = topLevelTarget ?? embedded.targetNodeKey;
           if (!targetNodeKey) {
             errors.push({
               code: "PACKAGE_BIND_FAILED",
-              message: "Packet task line is missing targetNodeKey in embeddedPayloadJson.",
+              message:
+                "Packet task line is missing targetNodeKey (top-level column and embeddedPayloadJson fallback both empty).",
               lineItemId: line.id,
               details: { packetLineKey: pl.lineKey },
             });
@@ -253,6 +291,9 @@ export async function runComposeFromReadModel(
 
           const title = embedded.title ?? pl.lineKey;
           const taskKind = embedded.taskKind ?? "UNKNOWN";
+          const requirements = pl.taskDefinition?.completionRequirementsJson ?? embedded.completionRequirementsJson;
+          const conditionalRules = pl.taskDefinition?.conditionalRulesJson ?? embedded.conditionalRulesJson;
+          const instructions = pl.taskDefinition?.instructions ?? embedded.instructions;
 
           for (let quantityIndex = 0; quantityIndex < line.quantity; quantityIndex++) {
             const planTaskId = computePlanTaskIdLibrary({
@@ -289,6 +330,9 @@ export async function runComposeFromReadModel(
               skeletonTaskId: null,
               displayTitle: title,
               lineItemId: line.id,
+              completionRequirementsJson: requirements,
+              conditionalRulesJson: conditionalRules,
+              instructions,
             });
           }
         }
@@ -303,6 +347,22 @@ export async function runComposeFromReadModel(
             details: { quoteLocalPacketId: line.quoteLocalPacketId },
           });
           continue;
+        }
+        const partialExclusion = summarizeTierPartialExclusion({ candidates, filtered });
+        if (partialExclusion) {
+          warnings.push({
+            code: "PACKET_ITEMS_FILTERED_BY_TIER",
+            message:
+              "Tier filter excluded some quote-local packet items for this manifest line; verify line tierCode matches packet authoring.",
+            lineItemId: line.id,
+            details: {
+              quoteLocalPacketId: line.quoteLocalPacketId,
+              lineTierCode: line.tierCode,
+              includedCount: partialExclusion.includedCount,
+              excludedCount: partialExclusion.excludedCount,
+              sampleExcludedTierCodes: partialExclusion.sampleExcludedTierCodes,
+            },
+          });
         }
 
         for (const li of filtered) {
@@ -320,6 +380,9 @@ export async function runComposeFromReadModel(
 
           const title = embedded.title ?? li.lineKey;
           const taskKind = embedded.taskKind ?? "UNKNOWN";
+          const requirements = li.taskDefinition?.completionRequirementsJson ?? embedded.completionRequirementsJson;
+          const conditionalRules = li.taskDefinition?.conditionalRulesJson ?? embedded.conditionalRulesJson;
+          const instructions = li.taskDefinition?.instructions ?? embedded.instructions;
 
           for (let quantityIndex = 0; quantityIndex < line.quantity; quantityIndex++) {
             const planTaskId = computePlanTaskIdLocal({
@@ -356,6 +419,9 @@ export async function runComposeFromReadModel(
               skeletonTaskId: null,
               displayTitle: title,
               lineItemId: line.id,
+              completionRequirementsJson: requirements,
+              conditionalRulesJson: conditionalRules,
+              instructions,
             });
           }
         }

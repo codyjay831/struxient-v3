@@ -211,6 +211,9 @@ export async function activateQuoteVersionInTransaction(
         lineItemId: s.lineItemId,
         planTaskIds: s.planTaskIds,
         displayTitle: s.displayTitle,
+        completionRequirementsJson: s.completionRequirementsJson,
+        conditionalRulesJson: s.conditionalRulesJson,
+        instructions: s.instructions,
       },
     });
   }

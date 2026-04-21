@@ -25,7 +25,9 @@ Define **packet task lines**: rows inside a **scope packet** with **default node
 
 ## 6. Primary object(s) affected
 
-- **PacketTaskLine** (`packetRevisionId`, `kind`, `definitionId?`, `embeddedPayload?`, `targetNodeId`, `overrides`).
+- **PacketTaskLine** (`packetRevisionId`, `lineKey`, `sortOrder`, `tierCode?`, `lineKind`, `definitionId?`, `embeddedPayload?`, **`targetNodeKey`** — top-level column, required, `overrides`).
+
+**Canon amendment (authorized for first promotion slice):** `targetNodeKey` is promoted to a **top-level column** on `PacketTaskLine` (not an embedded JSON field). This brings catalog packet lines to structural parity with `QuoteLocalPacketItem.targetNodeKey` and enables the direct row-copy promotion contract. Historically `targetNodeId` / `targetNodeKey` was tolerated as either a top-level column or an embedded JSON field inside `embeddedPayloadJson`; the interim promotion slice settles on the top-level column.
 
 ## 7. Where it lives in the product
 
@@ -64,8 +66,11 @@ Define **packet task lines**: rows inside a **scope packet** with **default node
 
 | Field | Type | Why |
 |-------|------|-----|
-| `targetNodeId` (stable id in template) | string | Compose placement (`06`). |
-| Line meaning | embedded OR definition ref | Work identity. |
+| `lineKey` | string | Stable identity within the revision; unique per `scopePacketRevisionId`. |
+| `sortOrder` | int | Deterministic expansion order. |
+| `lineKind` | enum (`EMBEDDED` \| `LIBRARY`) | Meaning source. |
+| **`targetNodeKey`** (top-level column, stable node key in pinned template) | string | Compose placement (`06`). Promoted to top-level per interim promotion slice for parity with `QuoteLocalPacketItem`. |
+| Line meaning | embedded payload OR definition ref | Work identity. |
 
 ## 15. Optional fields
 
@@ -73,8 +78,24 @@ Define **packet task lines**: rows inside a **scope packet** with **default node
 
 ## 16. Field definitions and validations
 
-- **targetNodeId** must exist on **compatibility template** set or **warn** at publish.
+- **`targetNodeKey`** must exist on **compatibility template** set or **warn** at publish. Stored as a **top-level string column** on `PacketTaskLine` (not nested in `embeddedPayloadJson`).
 - Overrides max lengths match definition caps.
+
+## 16a. Promotion mapping contract (QuoteLocalPacketItem → PacketTaskLine)
+
+**Canon (authorized for first promotion slice, sourced from `05-packet-canon.md`):** When a `QuoteLocalPacket` is promoted, each `QuoteLocalPacketItem` is copied 1:1 into a `PacketTaskLine` on the newly created `DRAFT` `ScopePacketRevision`:
+
+| `QuoteLocalPacketItem` | `PacketTaskLine` | Rule |
+|---|---|---|
+| `lineKey` | `lineKey` | verbatim |
+| `sortOrder` | `sortOrder` | verbatim |
+| `tierCode` | `tierCode` | verbatim (nullable) |
+| `lineKind` | `lineKind` | enum value preserved |
+| `embeddedPayloadJson` | `embeddedPayloadJson` | deep copy |
+| `taskDefinitionId` | `taskDefinitionId` | verbatim (nullable) |
+| `targetNodeKey` | `targetNodeKey` | verbatim — required on both |
+
+**No field transformation, no merging, no reordering.** The new revision is a faithful snapshot of the source items at promotion time.
 
 ## 17. Status / lifecycle rules
 

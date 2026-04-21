@@ -1,4 +1,8 @@
-import type { PrismaClient, QuoteLineItemExecutionMode } from "@prisma/client";
+import type {
+  PrismaClient,
+  QuoteLineItemExecutionMode,
+  ScopePacketRevisionStatus,
+} from "@prisma/client";
 import { InvariantViolationError } from "../errors";
 import { assertQuoteLineItemInvariants } from "../invariants/quote-line-item";
 import { assertQuoteVersionDraft } from "../invariants/quote-version";
@@ -94,15 +98,23 @@ async function loadScopeAndLocalForInvariant(
   scopePacketRevisionId: string | null,
   quoteLocalPacketId: string | null,
 ) {
+  // `status` is required by `assertScopePacketRevisionIsPublishedForPin` so the
+  // line-item invariant can enforce the canon picker contract (PUBLISHED-only).
+  // Same query, one extra column.
   let scopePacketRevision: {
     id: string;
+    status: ScopePacketRevisionStatus;
     scopePacket: { tenantId: string; id: string };
   } | null = null;
 
   if (scopePacketRevisionId) {
     const row = await client.scopePacketRevision.findFirst({
       where: { id: scopePacketRevisionId },
-      select: { id: true, scopePacket: { select: { tenantId: true, id: true } } },
+      select: {
+        id: true,
+        status: true,
+        scopePacket: { select: { tenantId: true, id: true } },
+      },
     });
     if (!row) {
       throw new InvariantViolationError(

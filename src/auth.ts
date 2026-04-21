@@ -7,6 +7,7 @@ import { getPrisma } from "@/server/db/prisma";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
+  secret: process.env.AUTH_SECRET,
   session: { strategy: "jwt", maxAge: 60 * 60 * 24 * 14 },
   providers: [
     Credentials({

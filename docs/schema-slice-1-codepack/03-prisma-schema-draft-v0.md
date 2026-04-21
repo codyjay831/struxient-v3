@@ -18,6 +18,13 @@
 
 **`QuoteLineItem.quoteLocalPacketId` in the block below:** The column and index are **intentional**. Prisma **`@relation` to `QuoteLocalPacket` is omitted here** because the **parent model is defined in the extension doc** — this is **staged syntax**, not an undecided FK. When you add `QuoteLocalPacket`, add `quoteLocalPacket QuoteLocalPacket? @relation(...)` on `QuoteLineItem` and the reverse field on `QuoteLocalPacket`. **Semantic direction** (version-scoped local packet, XOR with `scopePacketRevisionId`) is **already settled** (`04-slice-1-relations-and-invariants.md`, decision packs).
 
+**Canon amendment pending in the block below (interim promotion slice, authorized for next implementation epic):**
+
+- `ScopePacketRevision.publishedAt` must become **nullable** (`DateTime?`). The block currently shows `DateTime`; implementers applying this slice should change to `DateTime?` in `schema.prisma`.
+- `PacketTaskLine` must add a **top-level required** `targetNodeKey String` column. The block below does not yet list it; add it to `schema.prisma` when the interim promotion slice is built.
+
+Both are authorized by `docs/canon/05-packet-canon.md` ("Canon amendment — interim one-step promotion"), `docs/epics/15-scope-packets-epic.md`, `docs/epics/16-packet-task-lines-epic.md`, and the extension doc's addendum. The v0 code block is **deliberately left unchanged** in this pass to keep the base paste minimal; the outline file and field definitions are the authoritative spec.
+
 ---
 
 ## Notes before paste

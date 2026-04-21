@@ -107,6 +107,7 @@ async function main() {
       lineKey: "t1",
       sortOrder: 0,
       lineKind: "EMBEDDED",
+      targetNodeKey: "node-roof",
       embeddedPayloadJson: {
         targetNodeKey: "node-roof",
         title: "Catalog task",

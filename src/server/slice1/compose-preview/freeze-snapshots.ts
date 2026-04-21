@@ -49,7 +49,7 @@ function planRowToFrozenJson(r: ComposePlanRowDto): Record<string, unknown> {
 }
 
 function packageSlotToFrozenJson(s: ComposePackageSlotDto): Record<string, unknown> {
-  return {
+  const base: Record<string, unknown> = {
     packageTaskId: s.packageTaskId,
     nodeId: s.nodeId,
     source: s.source,
@@ -58,6 +58,16 @@ function packageSlotToFrozenJson(s: ComposePackageSlotDto): Record<string, unkno
     lineItemIds: [s.lineItemId],
     displayTitle: s.displayTitle,
   };
+  if (s.completionRequirementsJson) {
+    base.completionRequirementsJson = s.completionRequirementsJson;
+  }
+  if (s.conditionalRulesJson) {
+    base.conditionalRulesJson = s.conditionalRulesJson;
+  }
+  if (s.instructions != null && s.instructions !== "") {
+    base.instructions = s.instructions;
+  }
+  return base;
 }
 
 function validationToDiagnostic(v: ComposeValidationItem): Record<string, unknown> {
