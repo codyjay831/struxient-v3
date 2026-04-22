@@ -7,11 +7,14 @@ export type VersionRowForSign = {
   id: string;
   versionNumber: number;
   status: string;
+  portalQuoteShareToken?: string | null;
 };
 
 export type SentSignTarget = {
   quoteVersionId: string;
   versionNumber: number;
+  /** Present after Epic 54 send; build `/portal/quotes/{token}`. */
+  portalQuoteShareToken: string | null;
 };
 
 /**
@@ -26,5 +29,9 @@ export function deriveNewestSentSignTarget(
   if (!row) {
     return null;
   }
-  return { quoteVersionId: row.id, versionNumber: row.versionNumber };
+  return {
+    quoteVersionId: row.id,
+    versionNumber: row.versionNumber,
+    portalQuoteShareToken: row.portalQuoteShareToken ?? null,
+  };
 }

@@ -21,7 +21,12 @@ function head(over: Partial<QuoteVersionHistoryItemDto> = {}): QuoteVersionHisto
     hasPinnedWorkflow: false,
     hasFrozenArtifacts: false,
     proposalGroupCount: 1,
+    lineItemCount: 0,
     hasActivation: false,
+    portalQuoteShareToken: null,
+    voidedAt: null,
+    voidReason: null,
+    compareToPrior: null,
     ...over,
   };
 }

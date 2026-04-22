@@ -10,6 +10,7 @@ import {
   type QuoteHeadReadinessInput 
 } from "@/lib/workspace/derive-quote-head-workspace-readiness";
 import { redirect } from "next/navigation";
+import { deriveAppOrigin } from "@/lib/http/derive-app-origin";
 
 // Shared components
 import { QuoteWorkspaceActions } from "@/components/quotes/workspace/quote-workspace-actions";
@@ -24,6 +25,7 @@ import { QuoteWorkspaceActivateSigned } from "@/components/quotes/workspace/quot
 import { QuoteWorkspaceExecutionBridge, type ExecutionBridgeData } from "@/components/quotes/workspace/quote-workspace-execution-bridge";
 import { QuoteWorkspaceVersionHistory } from "@/components/quotes/workspace/quote-workspace-version-history";
 import { QuoteWorkspacePipelineStep } from "@/components/quotes/workspace/quote-workspace-pipeline-step";
+import { QuoteWorkspacePreJobTasks } from "@/components/quotes/workspace/quote-workspace-pre-job-tasks";
 import { QuoteWorkspacePaymentGates } from "@/components/quotes/workspace/quote-workspace-payment-gates";
 import { QuoteWorkspaceChangeOrders } from "@/components/quotes/workspace/quote-workspace-change-orders";
 import { QuoteWorkspaceEvidence } from "@/components/quotes/workspace/quote-workspace-evidence";
@@ -64,8 +66,10 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
     redirect("/quotes");
   }
 
+  const appOrigin = await deriveAppOrigin();
+
   const head = ws.versions[0] ?? null;
-  const headLineItemCount = ws.headLineItemSummary?.lineItemCount ?? 0;
+  const headLineItemCount = head?.lineItemCount ?? ws.headLineItemSummary?.lineItemCount ?? 0;
   const readiness = deriveQuoteHeadWorkspaceReadiness(
     head ? toReadinessInput(head, headLineItemCount) : null,
   );
@@ -214,7 +218,11 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
                   hint="Capture customer approval to move this version to SIGNED."
                   isRecommended={recommendedStep === 4}
                 >
-                  <QuoteWorkspaceSignSent signTarget={sentSignTarget} canOfficeMutate={canOfficeMutate} />
+                  <QuoteWorkspaceSignSent
+                    signTarget={sentSignTarget}
+                    canOfficeMutate={canOfficeMutate}
+                    appOrigin={appOrigin}
+                  />
                 </QuoteWorkspacePipelineStep>
               </div>
 
@@ -238,7 +246,9 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
         <div className="space-y-8">
           <div className="sticky top-24 space-y-8">
             <QuoteWorkspaceHeadReadiness head={head} headLineItemCount={headLineItemCount} />
-            
+
+            <QuoteWorkspacePreJobTasks flowGroupName={ws.flowGroup.name} tasks={ws.preJobTasks} />
+
             <QuoteWorkspacePaymentGates quoteId={quoteId} gates={ws.paymentGates} canOfficeMutate={canOfficeMutate} />
             
             <QuoteWorkspaceChangeOrders quoteId={quoteId} jobId={ws.flowGroup.jobId} changeOrders={ws.changeOrders} canOfficeMutate={canOfficeMutate} />
@@ -247,7 +257,7 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
 
             <QuoteWorkspaceExecutionBridge data={executionBridgeData} />
             
-            <QuoteWorkspaceVersionHistory quoteId={quoteId} versions={ws.versions} />
+            <QuoteWorkspaceVersionHistory quoteId={quoteId} versions={ws.versions} canOfficeMutate={canOfficeMutate} />
 
             <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-6">
                <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500 mb-4">Support & Metadata</h3>

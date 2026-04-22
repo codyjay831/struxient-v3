@@ -2,27 +2,74 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { InternalActionResult } from "@/components/internal/internal-action-result";
+import type { SentSignTarget } from "@/lib/workspace/derive-workspace-sent-sign-target";
 
-export type SentSignTarget = {
-  quoteVersionId: string;
-  versionNumber: number;
+export type { SentSignTarget };
+
+type DeliveryRow = {
+  id: string;
+  deliveredAtIso: string;
+  deliveryMethod: string;
+  recipientDetail: string | null;
+  shareTokenPreview: string;
+  providerStatus: string;
+  isFollowUp: boolean;
 };
 
 type Props = {
   signTarget: SentSignTarget | null;
   canOfficeMutate: boolean;
+  /** Public site origin for copy + email links (e.g. `https://app.example.com`). */
+  appOrigin: string;
 };
 
 /**
  * Office sign for the **newest SENT** row in workspace history (see `deriveNewestSentSignTarget`).
  * `POST /api/quote-versions/:id/sign` — body unused; actor from session.
+ * Portal share: copy / email via comms / manual audit / regenerate token (Epic 54 follow-up).
  */
-export function QuoteWorkspaceSignSent({ signTarget, canOfficeMutate }: Props) {
+export function QuoteWorkspaceSignSent({ signTarget, canOfficeMutate, appOrigin }: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ kind: "success" | "error"; title: string; message?: string; technicalDetails?: string } | null>(null);
+  const [deliveries, setDeliveries] = useState<DeliveryRow[] | null>(null);
+  const [shareBusy, setShareBusy] = useState<string | null>(null);
+  const [recipientEmail, setRecipientEmail] = useState("");
+  const [recipientSms, setRecipientSms] = useState("");
+
+  const portalUrl =
+    signTarget?.portalQuoteShareToken ?
+      `${appOrigin.replace(/\/$/, "")}/portal/quotes/${encodeURIComponent(signTarget.portalQuoteShareToken)}`
+    : "";
+
+  const loadDeliveries = useCallback(async () => {
+    if (!signTarget?.quoteVersionId) {
+      setDeliveries(null);
+      return;
+    }
+    try {
+      const res = await fetch(
+        `/api/quote-versions/${encodeURIComponent(signTarget.quoteVersionId)}/portal-share/deliveries`,
+        { credentials: "include" },
+      );
+      const body = (await res.json().catch(() => ({}))) as {
+        data?: { deliveries?: DeliveryRow[] };
+      };
+      if (res.ok && body.data?.deliveries) {
+        setDeliveries(body.data.deliveries);
+      } else {
+        setDeliveries([]);
+      }
+    } catch {
+      setDeliveries([]);
+    }
+  }, [signTarget?.quoteVersionId]);
+
+  useEffect(() => {
+    void loadDeliveries();
+  }, [loadDeliveries]);
 
   async function runSign() {
     if (!signTarget || !canOfficeMutate) return;
@@ -63,6 +110,194 @@ export function QuoteWorkspaceSignSent({ signTarget, canOfficeMutate }: Props) {
     }
   }
 
+  async function copyPortalUrl() {
+    if (!portalUrl) return;
+    setShareBusy("copy");
+    try {
+      await navigator.clipboard.writeText(portalUrl);
+      setResult({
+        kind: "success",
+        title: "Copied",
+        message: "Full customer portal URL copied to clipboard.",
+      });
+    } catch {
+      setResult({
+        kind: "error",
+        title: "Copy failed",
+        message: "Clipboard unavailable; copy the path from the monospace line below.",
+      });
+    } finally {
+      setShareBusy(null);
+    }
+  }
+
+  async function sendPortalEmail() {
+    if (!signTarget || !canOfficeMutate) return;
+    const to = recipientEmail.trim();
+    if (!to) {
+      setResult({ kind: "error", title: "Email required", message: "Enter a customer email address." });
+      return;
+    }
+    setShareBusy("email");
+    setResult(null);
+    try {
+      const res = await fetch(
+        `/api/quote-versions/${encodeURIComponent(signTarget.quoteVersionId)}/portal-share/deliver`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            method: "EMAIL",
+            recipientDetail: to,
+            baseUrl: appOrigin.replace(/\/$/, ""),
+          }),
+        },
+      );
+      const body = (await res.json().catch(() => ({}))) as { error?: { message?: string; code?: string } };
+      if (!res.ok) {
+        setResult({
+          kind: "error",
+          title: "Send failed",
+          message: body.error?.message ?? "Could not record/send portal link delivery.",
+          technicalDetails: body.error?.code,
+        });
+        return;
+      }
+      setResult({
+        kind: "success",
+        title: "Delivery queued",
+        message:
+          "A delivery row was created and the configured comms provider was invoked (mock in dev). Check recent deliveries below.",
+      });
+      await loadDeliveries();
+      router.refresh();
+    } finally {
+      setShareBusy(null);
+    }
+  }
+
+  async function sendPortalSms() {
+    if (!signTarget || !canOfficeMutate) return;
+    const to = recipientSms.trim();
+    if (!to) {
+      setResult({ kind: "error", title: "Phone required", message: "Enter a customer phone number (E.164 if possible)." });
+      return;
+    }
+    setShareBusy("sms");
+    setResult(null);
+    try {
+      const res = await fetch(
+        `/api/quote-versions/${encodeURIComponent(signTarget.quoteVersionId)}/portal-share/deliver`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            method: "SMS",
+            recipientDetail: to,
+            baseUrl: appOrigin.replace(/\/$/, ""),
+          }),
+        },
+      );
+      const body = (await res.json().catch(() => ({}))) as { error?: { message?: string; code?: string } };
+      if (!res.ok) {
+        setResult({
+          kind: "error",
+          title: "SMS send failed",
+          message: body.error?.message ?? "Could not record/send portal link via SMS.",
+          technicalDetails: body.error?.code,
+        });
+        return;
+      }
+      setResult({
+        kind: "success",
+        title: "SMS delivery queued",
+        message:
+          "A delivery row was created and the configured comms provider was invoked (mock in dev). Check recent deliveries below.",
+      });
+      await loadDeliveries();
+      router.refresh();
+    } finally {
+      setShareBusy(null);
+    }
+  }
+
+  async function logManualHandoff() {
+    if (!signTarget || !canOfficeMutate) return;
+    setShareBusy("manual");
+    setResult(null);
+    try {
+      const res = await fetch(
+        `/api/quote-versions/${encodeURIComponent(signTarget.quoteVersionId)}/portal-share/deliver`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            method: "MANUAL_LINK",
+            recipientDetail: "manual",
+            baseUrl: appOrigin.replace(/\/$/, ""),
+          }),
+        },
+      );
+      const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+      if (!res.ok) {
+        setResult({
+          kind: "error",
+          title: "Log failed",
+          message: body.error?.message ?? "Could not record manual handoff.",
+        });
+        return;
+      }
+      setResult({
+        kind: "success",
+        title: "Manual handoff logged",
+        message: "Recorded MANUAL_LINK delivery for audit (no email/SMS sent).",
+      });
+      await loadDeliveries();
+    } finally {
+      setShareBusy(null);
+    }
+  }
+
+  async function regenerateToken() {
+    if (!signTarget || !canOfficeMutate) return;
+    if (
+      !window.confirm(
+        "Regenerate the customer portal link? Any previously shared URLs will stop working. You must re-share the new link.",
+      )
+    ) {
+      return;
+    }
+    setShareBusy("regen");
+    setResult(null);
+    try {
+      const res = await fetch(
+        `/api/quote-versions/${encodeURIComponent(signTarget.quoteVersionId)}/portal-share/regenerate`,
+        { method: "POST", credentials: "include" },
+      );
+      const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+      if (!res.ok) {
+        setResult({
+          kind: "error",
+          title: "Regenerate failed",
+          message: body.error?.message ?? "Could not rotate portal token.",
+        });
+        return;
+      }
+      setResult({
+        kind: "success",
+        title: "Portal link rotated",
+        message: "A new customer portal token is active. Re-copy or re-email the link.",
+      });
+      await loadDeliveries();
+      router.refresh();
+    } finally {
+      setShareBusy(null);
+    }
+  }
+
   if (!signTarget) {
     return (
       <section className="mb-6 rounded border border-zinc-800 bg-zinc-950/30 p-4 text-sm">
@@ -78,6 +313,120 @@ export function QuoteWorkspaceSignSent({ signTarget, canOfficeMutate }: Props) {
     <section className="mb-6 rounded border border-zinc-800 bg-zinc-950/30 p-4 text-sm border-violet-900/20 bg-violet-950/5">
       <h2 className="mb-1 text-sm font-medium text-zinc-200">Record signature</h2>
       <p className="text-xs text-zinc-500">Formal customer approval for v{signTarget.versionNumber}.</p>
+
+      {signTarget.portalQuoteShareToken ? (
+        <div className="mt-3 rounded border border-sky-900/40 bg-sky-950/20 px-3 py-2 text-xs text-sky-100/90">
+          <p className="font-medium text-sky-200/95">Customer portal (review + accept)</p>
+          <p className="mt-1 text-sky-100/70">
+            Share this read-only link with your customer. Portal acceptance is stored as{" "}
+            <span className="font-mono text-[10px]">CUSTOMER_PORTAL_ACCEPTED</span>. Delivery uses the same comms
+            abstraction as flow/project shares (provider may be mock in dev).
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={!!shareBusy}
+              onClick={() => void copyPortalUrl()}
+              className="rounded border border-sky-800/60 bg-sky-950/40 px-2 py-1 text-[11px] font-medium text-sky-200 hover:bg-sky-900/50 disabled:opacity-50"
+            >
+              {shareBusy === "copy" ? "Copying…" : "Copy full URL"}
+            </button>
+            <button
+              type="button"
+              disabled={!!shareBusy || !canOfficeMutate}
+              onClick={() => void logManualHandoff()}
+              className="rounded border border-zinc-600 bg-zinc-900/60 px-2 py-1 text-[11px] font-medium text-zinc-300 hover:bg-zinc-800/80 disabled:opacity-50"
+            >
+              {shareBusy === "manual" ? "Logging…" : "Log manual handoff"}
+            </button>
+            <button
+              type="button"
+              disabled={!!shareBusy || !canOfficeMutate}
+              onClick={() => void regenerateToken()}
+              className="rounded border border-amber-900/50 bg-amber-950/30 px-2 py-1 text-[11px] font-medium text-amber-200/90 hover:bg-amber-900/40 disabled:opacity-50"
+            >
+              {shareBusy === "regen" ? "Rotating…" : "Regenerate link"}
+            </button>
+          </div>
+          <p className="mt-2">
+            <Link
+              href={`/portal/quotes/${encodeURIComponent(signTarget.portalQuoteShareToken)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[11px] font-medium text-sky-300 hover:text-sky-200 underline"
+            >
+              Open customer portal (new tab)
+            </Link>
+          </p>
+          <p className="mt-1 font-mono text-[10px] break-all text-sky-200/70">{portalUrl}</p>
+
+          {canOfficeMutate ? (
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+              <label className="block flex-1 text-[11px]">
+                <span className="text-sky-200/80">Email portal link</span>
+                <input
+                  type="email"
+                  value={recipientEmail}
+                  onChange={(e) => setRecipientEmail(e.target.value)}
+                  placeholder="customer@example.com"
+                  disabled={!!shareBusy}
+                  className="mt-1 w-full rounded border border-sky-900/50 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-100"
+                />
+              </label>
+              <button
+                type="button"
+                disabled={!!shareBusy}
+                onClick={() => void sendPortalEmail()}
+                className="rounded bg-sky-800 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-sky-700 disabled:opacity-50 sm:shrink-0"
+              >
+                {shareBusy === "email" ? "Sending…" : "Send email"}
+              </button>
+            </div>
+          ) : null}
+
+          {canOfficeMutate ? (
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end">
+              <label className="block flex-1 text-[11px]">
+                <span className="text-sky-200/80">SMS portal link</span>
+                <input
+                  type="tel"
+                  value={recipientSms}
+                  onChange={(e) => setRecipientSms(e.target.value)}
+                  placeholder="+15551234567"
+                  disabled={!!shareBusy}
+                  className="mt-1 w-full rounded border border-sky-900/50 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-100"
+                />
+              </label>
+              <button
+                type="button"
+                disabled={!!shareBusy}
+                onClick={() => void sendPortalSms()}
+                className="rounded border border-sky-800/60 bg-sky-950/50 px-3 py-1.5 text-[11px] font-medium text-sky-100 hover:bg-sky-900/50 disabled:opacity-50 sm:shrink-0"
+              >
+                {shareBusy === "sms" ? "Sending…" : "Send SMS"}
+              </button>
+            </div>
+          ) : null}
+
+          {deliveries && deliveries.length > 0 ? (
+            <div className="mt-3 border-t border-sky-900/30 pt-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-sky-300/80">Recent deliveries</p>
+              <ul className="mt-1 space-y-1 text-[10px] text-sky-100/70">
+                {deliveries.map((d) => (
+                  <li key={d.id} className="font-mono">
+                    {d.deliveredAtIso} · {d.deliveryMethod} · {d.providerStatus}
+                    {d.recipientDetail ? ` · ${d.recipientDetail}` : ""} · token {d.shareTokenPreview}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <p className="mt-3 text-[11px] text-zinc-500">
+          No portal link on file for this sent version (re-send after upgrade, or open lifecycle JSON to confirm).
+        </p>
+      )}
 
       {!canOfficeMutate ? (
         <p className="mt-3 text-xs text-zinc-500">
@@ -95,21 +444,17 @@ export function QuoteWorkspaceSignSent({ signTarget, canOfficeMutate }: Props) {
           </button>
           <p className="mt-2 text-[11px] text-zinc-500">
             Confirming the signature will move v{signTarget.versionNumber} to{" "}
-            <span className="text-zinc-400 font-medium">SIGNED</span> and allow for execution
-            activation.
+            <span className="text-zinc-400 font-medium">SIGNED</span> and allow for execution activation.
           </p>
         </div>
       )}
 
       <div className="mt-4 border-t border-zinc-800/40 pt-3">
         <details className="text-[10px] text-zinc-600">
-          <summary className="cursor-pointer font-medium hover:text-zinc-500">
-            Technical details
-          </summary>
+          <summary className="cursor-pointer font-medium hover:text-zinc-500">Technical details</summary>
           <div className="mt-2 space-y-2">
             <p>
-              Target: v{signTarget.versionNumber} ·{" "}
-              <span className="font-mono">{signTarget.quoteVersionId}</span>
+              Target: v{signTarget.versionNumber} · <span className="font-mono">{signTarget.quoteVersionId}</span>
             </p>
             <div className="flex flex-wrap gap-x-3 gap-y-1 font-mono">
               <code className="text-zinc-500">POST …/sign</code>
@@ -138,11 +483,7 @@ export function QuoteWorkspaceSignSent({ signTarget, canOfficeMutate }: Props) {
           title={result.title}
           message={result.message}
           technicalDetails={result.technicalDetails}
-          nextStep={
-            result.kind === "success" 
-              ? { label: "Activate execution", href: "#step-5" } 
-              : undefined
-          }
+          nextStep={result.kind === "success" ? { label: "Activate execution", href: "#step-5" } : undefined}
         />
       )}
     </section>

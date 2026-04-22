@@ -7,6 +7,7 @@ export type QuoteVersionLifecycleApiDto = {
     sentAt: string | null;
     signedAt: string | null;
     signedById: string | null;
+    portalQuoteShareToken: string | null;
   };
   quote: { id: string; flowGroupId: string };
   job: { id: string; createdAt: string; flowGroupId: string } | null;
@@ -14,7 +15,8 @@ export type QuoteVersionLifecycleApiDto = {
     id: string;
     signedAt: string;
     method: string;
-    recordedById: string;
+    recordedById: string | null;
+    portalSignerLabel: string | null;
   } | null;
   flow: {
     id: string;
@@ -38,6 +40,7 @@ export function toQuoteVersionLifecycleApiDto(m: QuoteVersionLifecycleReadModel)
       sentAt: m.quoteVersion.sentAt?.toISOString() ?? null,
       signedAt: m.quoteVersion.signedAt?.toISOString() ?? null,
       signedById: m.quoteVersion.signedById,
+      portalQuoteShareToken: m.quoteVersion.portalQuoteShareToken,
     },
     quote: m.quote,
     job: m.job
@@ -49,6 +52,7 @@ export function toQuoteVersionLifecycleApiDto(m: QuoteVersionLifecycleReadModel)
           signedAt: m.quoteSignature.signedAt.toISOString(),
           method: m.quoteSignature.method,
           recordedById: m.quoteSignature.recordedById,
+          portalSignerLabel: m.quoteSignature.portalSignerLabel,
         }
       : null,
     flow: m.flow

@@ -121,6 +121,32 @@ function parseCreateBody(body: unknown): { ok: true; value: CreateLineBodyFields
     };
   }
 
+  const paymentBeforeWork = o.paymentBeforeWork;
+  if (paymentBeforeWork !== undefined && typeof paymentBeforeWork !== "boolean") {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: { code: "INVALID_FIELD", message: "paymentBeforeWork must be a boolean when provided" } },
+        { status: 400 },
+      ),
+    };
+  }
+
+  const paymentGateTitleOverride = o.paymentGateTitleOverride;
+  if (
+    paymentGateTitleOverride !== undefined &&
+    paymentGateTitleOverride !== null &&
+    typeof paymentGateTitleOverride !== "string"
+  ) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: { code: "INVALID_FIELD", message: "paymentGateTitleOverride must be a string or null" } },
+        { status: 400 },
+      ),
+    };
+  }
+
   return {
     ok: true,
     value: {
@@ -135,6 +161,11 @@ function parseCreateBody(body: unknown): { ok: true; value: CreateLineBodyFields
       quoteLocalPacketId: quoteLocalPacketId === undefined ? null : (quoteLocalPacketId as string | null),
       unitPriceCents: unitPriceCents === undefined ? null : (unitPriceCents as number | null),
       lineTotalCents: lineTotalCents === undefined ? null : (lineTotalCents as number | null),
+      paymentBeforeWork: paymentBeforeWork === true,
+      paymentGateTitleOverride:
+        paymentGateTitleOverride === undefined
+          ? null
+          : (paymentGateTitleOverride as string | null),
     },
   };
 }

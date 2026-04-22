@@ -144,6 +144,30 @@ function parsePatchBody(body: unknown): { ok: true; value: QuoteLineItemPatch } 
     }
     patch.proposalGroupId = o.proposalGroupId.trim();
   }
+  if ("paymentBeforeWork" in o) {
+    if (typeof o.paymentBeforeWork !== "boolean") {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { error: { code: "INVALID_FIELD", message: "paymentBeforeWork must be a boolean" } },
+          { status: 400 },
+        ),
+      };
+    }
+    patch.paymentBeforeWork = o.paymentBeforeWork;
+  }
+  if ("paymentGateTitleOverride" in o) {
+    if (o.paymentGateTitleOverride !== null && typeof o.paymentGateTitleOverride !== "string") {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { error: { code: "INVALID_FIELD", message: "paymentGateTitleOverride must be a string or null" } },
+          { status: 400 },
+        ),
+      };
+    }
+    patch.paymentGateTitleOverride = o.paymentGateTitleOverride as string | null;
+  }
 
   return { ok: true, value: patch };
 }

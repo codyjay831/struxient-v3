@@ -21,6 +21,7 @@ describe("deriveNewestSentSignTarget", () => {
     expect(deriveNewestSentSignTarget(rows)).toEqual({
       quoteVersionId: "qv2",
       versionNumber: 2,
+      portalQuoteShareToken: null,
     });
   });
 
@@ -32,6 +33,7 @@ describe("deriveNewestSentSignTarget", () => {
     expect(deriveNewestSentSignTarget(rows)).toEqual({
       quoteVersionId: "qv2",
       versionNumber: 2,
+      portalQuoteShareToken: null,
     });
   });
 

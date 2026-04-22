@@ -34,6 +34,7 @@ import {
   toQuoteHeadReadinessInput,
   type WorkspaceLoadErrorInput,
 } from "./quote-workspace-page-state";
+import { deriveAppOrigin } from "@/lib/http/derive-app-origin";
 
 type PageProps = { params: Promise<{ quoteId: string }> };
 
@@ -93,8 +94,10 @@ export default async function DevQuoteWorkspacePage({ params }: PageProps) {
     );
   }
 
+  const appOrigin = await deriveAppOrigin();
+
   const head = ws.versions[0] ?? null;
-  const headLineItemCount = ws.headLineItemSummary?.lineItemCount ?? 0;
+  const headLineItemCount = head?.lineItemCount ?? ws.headLineItemSummary?.lineItemCount ?? 0;
   const readiness = deriveQuoteHeadWorkspaceReadiness(
     head ? toQuoteHeadReadinessInput(head, headLineItemCount) : null,
   );
@@ -219,7 +222,11 @@ export default async function DevQuoteWorkspacePage({ params }: PageProps) {
               hint="Capture customer approval to move this version to SIGNED."
               isRecommended={recommendedStep === 4}
             >
-              <QuoteWorkspaceSignSent signTarget={sentSignTarget} canOfficeMutate={canOfficeMutate} />
+              <QuoteWorkspaceSignSent
+                signTarget={sentSignTarget}
+                canOfficeMutate={canOfficeMutate}
+                appOrigin={appOrigin}
+              />
             </QuoteWorkspacePipelineStep>
           </div>
 
@@ -243,7 +250,7 @@ export default async function DevQuoteWorkspacePage({ params }: PageProps) {
         <QuoteWorkspaceExecutionBridge data={executionBridgeData} />
       </div>
 
-      <QuoteWorkspaceVersionHistory quoteId={quoteId} versions={ws.versions} />
+      <QuoteWorkspaceVersionHistory quoteId={quoteId} versions={ws.versions} canOfficeMutate={canOfficeMutate} />
 
       <details className="mt-10 rounded-lg border border-dashed border-zinc-800 bg-zinc-950/30 p-4 text-sm text-zinc-500">
         <summary className="cursor-pointer text-xs font-medium text-zinc-400 hover:text-zinc-300">

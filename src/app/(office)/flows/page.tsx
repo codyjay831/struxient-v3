@@ -50,6 +50,10 @@ function getQuoteVersionLabel(status: QuoteVersionStatus): string {
       return "Sent";
     case "SIGNED":
       return "Signed";
+    case "VOID":
+      return "Voided";
+    case "SUPERSEDED":
+      return "Superseded";
     default:
       return status;
   }

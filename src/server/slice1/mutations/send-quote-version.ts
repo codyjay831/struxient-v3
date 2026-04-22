@@ -1,6 +1,8 @@
+import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 import type { ComposeValidationItem } from "../compose-preview/compose-engine";
 import { runComposeFromReadModel } from "../compose-preview/compose-engine";
+import { derivePaymentGateIntentForFreeze } from "../compose-preview/derive-payment-gate-intent-for-freeze";
 import {
   buildExecutionPackageSnapshotV0,
   buildGeneratedPlanSnapshotV0,
@@ -21,6 +23,8 @@ export type SendQuoteVersionSuccessDto = {
   planSnapshotSha256: string;
   packageSnapshotSha256: string;
   idempotentReplay: boolean;
+  /** Customer portal review URL uses `/portal/quotes/{portalQuoteShareToken}` (Epic 54). */
+  portalQuoteShareToken: string | null;
 };
 
 export type SendQuoteVersionResult =
@@ -66,6 +70,7 @@ export async function sendQuoteVersionForTenant(
           sentAt: true,
           planSnapshotSha256: true,
           packageSnapshotSha256: true,
+          portalQuoteShareToken: true,
         },
       });
 
@@ -95,6 +100,7 @@ export async function sendQuoteVersionForTenant(
               planSnapshotSha256: locked.planSnapshotSha256!,
               packageSnapshotSha256: locked.packageSnapshotSha256!,
               idempotentReplay: true,
+              portalQuoteShareToken: locked.portalQuoteShareToken ?? null,
             },
           };
           return;
@@ -104,6 +110,18 @@ export async function sendQuoteVersionForTenant(
           kind: "idempotency_conflict",
           message:
             "Quote version is already SENT. Retry with the same sendClientRequestId, or use a new quote version.",
+        };
+        return;
+      }
+
+      if (locked.status !== "DRAFT") {
+        outcome = {
+          ok: false,
+          kind: "idempotency_conflict",
+          message:
+            locked.status === "VOID" || locked.status === "SUPERSEDED"
+              ? `This quote version is ${locked.status.toLowerCase()} and cannot be sent. Open a draft revision or review version history.`
+              : `Quote version status ${locked.status} cannot be sent; only draft rows are sendable.`,
         };
         return;
       }
@@ -174,6 +192,20 @@ export async function sendQuoteVersionForTenant(
         return;
       }
 
+      const gateDerived = derivePaymentGateIntentForFreeze({
+        orderedLineItems: model.orderedLineItems.map((l) => ({
+          id: l.id,
+          title: l.title,
+          paymentBeforeWork: l.paymentBeforeWork,
+          paymentGateTitleOverride: l.paymentGateTitleOverride,
+        })),
+        packageSlots: compose.packageSlots,
+      });
+      if (!gateDerived.ok) {
+        outcome = { ok: false, kind: "compose_blocked", errors: gateDerived.errors };
+        return;
+      }
+
       const actor = await tx.user.findFirst({
         where: { id: sentByUserId, tenantId: params.tenantId },
         select: { id: true },
@@ -196,12 +228,14 @@ export async function sendQuoteVersionForTenant(
         composedAtIso: generatedAtIso,
         packageSlots: compose.packageSlots,
         diagnostics: { errors: [], warnings: compose.warnings },
+        paymentGateIntent: gateDerived.intent,
       });
 
       const planHash = sha256HexUtf8(canonicalStringify(planJson));
       const pkgHash = sha256HexUtf8(canonicalStringify(pkgJson));
 
       const sentAt = new Date();
+      const portalQuoteShareToken = locked.portalQuoteShareToken ?? randomUUID();
 
       await tx.quoteVersion.update({
         where: { id: locked.id },
@@ -215,8 +249,37 @@ export async function sendQuoteVersionForTenant(
           generatedPlanSnapshot: planJson,
           executionPackageSnapshot: pkgJson,
           composePreviewStalenessToken: null,
+          portalQuoteShareToken,
         },
       });
+
+      const priorSent = await tx.quoteVersion.findMany({
+        where: {
+          quoteId: model.quoteId,
+          id: { not: locked.id },
+          status: "SENT",
+          versionNumber: { lt: model.versionNumber },
+        },
+        select: { id: true },
+      });
+      if (priorSent.length > 0) {
+        await tx.quoteVersion.updateMany({
+          where: { id: { in: priorSent.map((r) => r.id) } },
+          data: { status: "SUPERSEDED" },
+        });
+        await tx.auditEvent.create({
+          data: {
+            tenantId: model.quote.tenantId,
+            eventType: "QUOTE_VERSION_SUPERSEDED",
+            actorId: actor.id,
+            targetQuoteVersionId: locked.id,
+            payloadJson: {
+              supersededQuoteVersionIds: priorSent.map((r) => r.id),
+              newSentQuoteVersionId: locked.id,
+            },
+          },
+        });
+      }
 
       await tx.auditEvent.create({
         data: {
@@ -228,6 +291,7 @@ export async function sendQuoteVersionForTenant(
             planSnapshotSha256: planHash,
             packageSnapshotSha256: pkgHash,
             sendClientRequestId: sendKey,
+            supersededQuoteVersionIds: priorSent.map((r) => r.id),
           },
         },
       });
@@ -241,6 +305,7 @@ export async function sendQuoteVersionForTenant(
           planSnapshotSha256: planHash,
           packageSnapshotSha256: pkgHash,
           idempotentReplay: false,
+          portalQuoteShareToken,
         },
       };
     },

@@ -21,6 +21,10 @@ enum QuoteVersionStatus {
   DRAFT
   SENT
   SIGNED
+  /// Withdrawn by office; frozen payloads retained; not signable (Epic 14).
+  VOID
+  /// Prior sent proposal replaced when a newer version was sent; portal link inactive (Epic 14).
+  SUPERSEDED
 }
 
 enum ScopePacketRevisionStatus {
@@ -32,6 +36,8 @@ enum ScopePacketRevisionStatus {
 enum WorkflowVersionStatus {
   DRAFT
   PUBLISHED
+  /// Prior published row demoted when a newer version is published (Epic 23 lifecycle).
+  SUPERSEDED
 }
 
 enum PacketTaskLineKind {
@@ -52,6 +58,10 @@ enum AuditEventType {
   FLOW_SHARE_DELIVERED
   PROJECT_SHARE_DELIVERED
   PROJECT_SHARE_MANAGED
+  QUOTE_PORTAL_SHARE_DELIVERED
+  QUOTE_PORTAL_LINK_REGENERATED
+  QUOTE_VERSION_VOIDED
+  QUOTE_VERSION_SUPERSEDED
 }
 
 enum PublicShareDeliveryMethod {
@@ -99,6 +109,8 @@ enum TaskExecutionEventType {
 
 enum QuoteSignatureMethod {
   OFFICE_RECORDED
+  /// Customer self-service acceptance via `QuoteVersion.portalQuoteShareToken` (Epic 54).
+  CUSTOMER_PORTAL_ACCEPTED
 }
 
 enum PreJobTaskStatus {
@@ -108,6 +120,21 @@ enum PreJobTaskStatus {
   BLOCKED
   DONE
   CANCELLED
+}
+
+/// Epic 04 foundation — person record on a Customer (office-scoped; not polymorphic yet).
+enum CustomerContactRole {
+  BILLING
+  SITE
+  OWNER
+  OTHER
+}
+
+enum CustomerContactMethodType {
+  EMAIL
+  PHONE
+  MOBILE
+  OTHER
 }
 
 enum QuoteLocalPacketOrigin {
@@ -145,68 +172,75 @@ enum TenantMemberRole {
 }
 
 model Tenant {
-  id        String   @id @default(cuid())
-  name      String
+  id                 String   @id @default(cuid())
+  name               String
   /// When true, successful POST …/sign (non-replay) runs activation in the same transaction (`epic 33`).
   autoActivateOnSign Boolean  @default(false)
-  createdAt DateTime @default(now())
+  createdAt          DateTime @default(now())
 
-  users             User[]
-  customers         Customer[]
-  flowGroups        FlowGroup[]
-  scopePackets      ScopePacket[]
-  workflowTemplates WorkflowTemplate[]
-  quotes            Quote[]
-  auditEvents       AuditEvent[]
-  taskDefinitions   TaskDefinition[]
-  jobs              Job[]
-  quoteSignatures   QuoteSignature[]
-  flows             Flow[]
-  activations       Activation[]
-  runtimeTasks      RuntimeTask[]
-  taskExecutions    TaskExecution[]
-  paymentGates      PaymentGate[]
-  changeOrders      ChangeOrder[]
-  completionProofs  CompletionProof[]
+  users                      User[]
+  customers                  Customer[]
+  flowGroups                 FlowGroup[]
+  scopePackets               ScopePacket[]
+  workflowTemplates          WorkflowTemplate[]
+  quotes                     Quote[]
+  auditEvents                AuditEvent[]
+  taskDefinitions            TaskDefinition[]
+  jobs                       Job[]
+  quoteSignatures            QuoteSignature[]
+  flows                      Flow[]
+  activations                Activation[]
+  runtimeTasks               RuntimeTask[]
+  taskExecutions             TaskExecution[]
+  paymentGates               PaymentGate[]
+  changeOrders               ChangeOrder[]
+  completionProofs           CompletionProof[]
   completionProofAttachments CompletionProofAttachment[]
   flowShareDeliveries        FlowShareDelivery[]
   projectShareDeliveries     ProjectShareDelivery[]
+  quotePortalShareDeliveries QuotePortalShareDelivery[]
+  customerContacts           CustomerContact[]
+  customerNotes              CustomerNote[]
 }
 
 model User {
-  id          String   @id @default(cuid())
-  tenantId    String
-  email       String
-  displayName String?
+  id           String           @id @default(cuid())
+  tenantId     String
+  email        String
+  displayName  String?
   /// bcrypt hash for credentials auth; null until set (e.g. legacy rows).
   passwordHash String?
   role         TenantMemberRole @default(OFFICE_ADMIN)
-  createdAt   DateTime @default(now())
+  createdAt    DateTime         @default(now())
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
-  quoteVersionsCreated QuoteVersion[] @relation("QuoteVersionCreatedBy")
-  quoteVersionsSent    QuoteVersion[] @relation("QuoteVersionSentBy")
-  quoteVersionsSigned  QuoteVersion[] @relation("QuoteVersionSignedBy")
+  quoteVersionsCreated    QuoteVersion[]   @relation("QuoteVersionCreatedBy")
+  quoteVersionsSent       QuoteVersion[]   @relation("QuoteVersionSentBy")
+  quoteVersionsSigned     QuoteVersion[]   @relation("QuoteVersionSignedBy")
   quoteSignaturesRecorded QuoteSignature[] @relation("QuoteSignatureRecordedBy")
-  auditEvents          AuditEvent[]
-  activationsActivated Activation[] @relation("ActivationActivatedBy")
-  taskExecutions       TaskExecution[]
+  auditEvents             AuditEvent[]
+  activationsActivated    Activation[]     @relation("ActivationActivatedBy")
+  taskExecutions          TaskExecution[]
 
   preJobTasksAssigned PreJobTask[] @relation("PreJobTaskAssignee")
   preJobTasksCreated  PreJobTask[] @relation("PreJobTaskCreator")
 
   paymentGatesSatisfied PaymentGate[] @relation("PaymentGateSatisfiedBy")
 
-  changeOrdersCreated   ChangeOrder[] @relation("ChangeOrderCreatedBy")
-  changeOrdersApplied   ChangeOrder[] @relation("ChangeOrderAppliedBy")
+  changeOrdersCreated ChangeOrder[] @relation("ChangeOrderCreatedBy")
+  changeOrdersApplied ChangeOrder[] @relation("ChangeOrderAppliedBy")
 
   completionProofAttachments CompletionProofAttachment[] @relation("CompletionProofAttachmentCreatedBy")
 
-  quoteLocalPacketsCreated QuoteLocalPacket[] @relation("QuoteLocalPacketCreatedBy")
-  quoteLocalPacketsUpdated QuoteLocalPacket[] @relation("QuoteLocalPacketUpdatedBy")
+  quoteLocalPacketsCreated QuoteLocalPacket[]     @relation("QuoteLocalPacketCreatedBy")
+  quoteLocalPacketsUpdated QuoteLocalPacket[]     @relation("QuoteLocalPacketUpdatedBy")
+  quotePortalShareDeliveries QuotePortalShareDelivery[] @relation("QuotePortalShareDeliveredBy")
+  quoteVersionsVoided      QuoteVersion[]             @relation("QuoteVersionVoidedBy")
   flowShareDeliveries      FlowShareDelivery[]
   projectShareDeliveries   ProjectShareDelivery[]
+
+  customerNotesCreated CustomerNote[] @relation("CustomerNoteCreatedBy")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -221,7 +255,7 @@ model TaskDefinition {
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
 
-  instructions             String?
+  instructions               String?
   /// Durable authored shape; see src/lib/task-definition-authored-requirements.ts.
   /// Array of:
   ///   { kind: 'checklist'   , label: string,                    required: boolean }
@@ -255,8 +289,95 @@ model Customer {
   tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   flowGroups FlowGroup[]
   quotes     Quote[]
+  contacts   CustomerContact[]
+  notes      CustomerNote[]
 
   @@index([tenantId])
+}
+
+/// Office-authored note on a Customer (not `AuditEvent`; not a merged timeline yet).
+model CustomerNote {
+  id          String    @id @default(cuid())
+  tenantId    String
+  customerId  String
+  body        String
+  archivedAt  DateTime?
+  createdById String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  customer  Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  createdBy User     @relation("CustomerNoteCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, customerId])
+  @@index([customerId, createdAt])
+}
+
+/// Person + methods anchored to a Customer (tenant matches Customer.tenantId).
+model CustomerContact {
+  id          String    @id @default(cuid())
+  tenantId    String
+  customerId  String
+  displayName String
+  role        CustomerContactRole?
+  notes       String?
+  archivedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  methods  CustomerContactMethod[]
+
+  @@index([tenantId, customerId])
+  @@index([customerId])
+}
+
+model CustomerContactMethod {
+  id        String                     @id @default(cuid())
+  contactId String
+  type      CustomerContactMethodType
+  value     String
+  /// Customer-wide per `type`; mutations demote other primaries on all contacts for that customer (Epic 04).
+  isPrimary Boolean                    @default(false)
+  okToSms   Boolean                    @default(false)
+  okToEmail Boolean                    @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  contact CustomerContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([contactId])
+}
+
+/// Office-initiated delivery of a **quote** customer-portal link (Epic 54); mirrors `FlowShareDelivery` shape.
+model QuotePortalShareDelivery {
+  id              String                    @id @default(cuid())
+  tenantId        String
+  quoteVersionId  String
+  deliveredAt     DateTime                  @default(now())
+  deliveredById   String
+  deliveryMethod  PublicShareDeliveryMethod
+  recipientDetail String?
+  shareToken      String
+
+  providerStatus     PublicShareDeliveryStatus @default(QUEUED)
+  providerExternalId String?
+  providerError      String?
+  providerResponse   Json?
+  retryCount         Int                       @default(0)
+  isFollowUp         Boolean                   @default(false)
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  quoteVersion QuoteVersion @relation(fields: [quoteVersionId], references: [id], onDelete: Cascade)
+  deliveredBy  User         @relation("QuotePortalShareDeliveredBy", fields: [deliveredById], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([quoteVersionId])
 }
 
 model FlowShareDelivery {
@@ -266,8 +387,8 @@ model FlowShareDelivery {
   deliveredAt     DateTime                  @default(now())
   deliveredById   String
   deliveryMethod  PublicShareDeliveryMethod
-  recipientDetail String?                   // Email or phone number
-  shareToken      String                    // Snapshot of token at delivery time
+  recipientDetail String? // Email or phone number
+  shareToken      String // Snapshot of token at delivery time
 
   providerStatus     PublicShareDeliveryStatus @default(QUEUED)
   providerExternalId String?
@@ -277,8 +398,8 @@ model FlowShareDelivery {
   isFollowUp         Boolean                   @default(false)
 
   tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  flow   Flow   @relation(fields: [flowId], references: [id], onDelete: Restrict)
-  deliveredBy User @relation(fields: [deliveredById], references: [id], onDelete: Restrict)
+  flow        Flow   @relation(fields: [flowId], references: [id], onDelete: Restrict)
+  deliveredBy User   @relation(fields: [deliveredById], references: [id], onDelete: Restrict)
 
   @@index([tenantId])
   @@index([flowId])
@@ -291,10 +412,10 @@ model FlowGroup {
   name       String
   createdAt  DateTime @default(now())
 
-  publicShareToken           String?            @unique @default(cuid())
-  publicShareStatus          PublicShareStatus @default(UNPUBLISHED)
+  publicShareToken            String?           @unique @default(cuid())
+  publicShareStatus           PublicShareStatus @default(UNPUBLISHED)
   publicShareTokenGeneratedAt DateTime?
-  publicShareExpiresAt       DateTime?
+  publicShareExpiresAt        DateTime?
 
   publicShareFirstViewedAt DateTime?
   publicShareLastViewedAt  DateTime?
@@ -302,16 +423,16 @@ model FlowGroup {
 
   publicShareReceiptAcknowledgedAt DateTime?
 
-  publicShareClarificationRequestedAt DateTime?
-  publicShareClarificationReason      String?
-  publicShareClarificationResolvedAt   DateTime?
+  publicShareClarificationRequestedAt    DateTime?
+  publicShareClarificationReason         String?
+  publicShareClarificationResolvedAt     DateTime?
   publicShareClarificationResolutionNote String?
-  publicShareClarificationEscalatedAt   DateTime?
+  publicShareClarificationEscalatedAt    DateTime?
 
   publicShareNotificationLastSeenAt DateTime?
 
-  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  customer    Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  tenant      Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  customer    Customer               @relation(fields: [customerId], references: [id], onDelete: Restrict)
   quotes      Quote[]
   preJobTasks PreJobTask[]
   job         Job?
@@ -405,7 +526,7 @@ model PacketTaskLine {
   /// Top-level required column (canon amendment for interim promotion slice).
   /// Mirrors QuoteLocalPacketItem.targetNodeKey to enable 1:1 promotion mapping.
   /// Canon: docs/canon/05-packet-canon.md, docs/epics/16-packet-task-lines-epic.md §6 + §16a.
-  targetNodeKey         String
+  targetNodeKey String
 
   scopePacketRevision ScopePacketRevision @relation(fields: [scopePacketRevisionId], references: [id], onDelete: Restrict)
   taskDefinition      TaskDefinition?     @relation(fields: [taskDefinitionId], references: [id], onDelete: SetNull)
@@ -432,16 +553,23 @@ model WorkflowVersion {
   workflowTemplateId String
   versionNumber      Int
   status             WorkflowVersionStatus
-  publishedAt        DateTime
+  /// Set when status is PUBLISHED or SUPERSEDED; null for honest DRAFT rows (Epic 23).
+  publishedAt        DateTime?
   snapshotJson       Json
+  /// When this DRAFT was created via fork-from-published/superseded; immutable lineage pointer (Epic 23).
+  forkedFromWorkflowVersionId String?
 
   workflowTemplate    WorkflowTemplate @relation(fields: [workflowTemplateId], references: [id], onDelete: Restrict)
   pinnedQuoteVersions QuoteVersion[]
   flows               Flow[]
 
+  forkedFromWorkflowVersion WorkflowVersion?  @relation("WorkflowVersionForkLineage", fields: [forkedFromWorkflowVersionId], references: [id], onDelete: SetNull)
+  forkLineageChildren       WorkflowVersion[] @relation("WorkflowVersionForkLineage")
+
   @@unique([workflowTemplateId, versionNumber])
   @@index([workflowTemplateId])
   @@index([status])
+  @@index([forkedFromWorkflowVersionId])
 }
 
 model Job {
@@ -450,10 +578,10 @@ model Job {
   flowGroupId String   @unique
   createdAt   DateTime @default(now())
 
-  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  flowGroup FlowGroup @relation(fields: [flowGroupId], references: [id], onDelete: Restrict)
-  flows     Flow[]
-  activations Activation[]
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  flowGroup    FlowGroup     @relation(fields: [flowGroupId], references: [id], onDelete: Restrict)
+  flows        Flow[]
+  activations  Activation[]
   paymentGates PaymentGate[]
   changeOrders ChangeOrder[]
 
@@ -468,19 +596,19 @@ model Flow {
   quoteVersionId    String   @unique
   createdAt         DateTime @default(now())
 
-  publicShareToken           String?            @unique @default(cuid())
-  publicShareStatus          PublicShareStatus @default(UNPUBLISHED)
+  publicShareToken            String?           @unique @default(cuid())
+  publicShareStatus           PublicShareStatus @default(UNPUBLISHED)
   publicShareTokenGeneratedAt DateTime?
 
-  publicShareFirstViewedAt DateTime?
-  publicShareLastViewedAt  DateTime?
-  publicShareViewCount     Int       @default(0)
+  publicShareFirstViewedAt      DateTime?
+  publicShareLastViewedAt       DateTime?
+  publicShareViewCount          Int       @default(0)
   publicShareLastFollowUpSentAt DateTime?
 
-  publicShareReceiptAcknowledgedAt DateTime?
-  publicShareClarificationRequestedAt DateTime?
-  publicShareClarificationReason String?
-  publicShareClarificationResolvedAt DateTime?
+  publicShareReceiptAcknowledgedAt       DateTime?
+  publicShareClarificationRequestedAt    DateTime?
+  publicShareClarificationReason         String?
+  publicShareClarificationResolvedAt     DateTime?
   publicShareClarificationResolutionNote String?
 
   publicShareNotificationLastSeenAt DateTime?
@@ -490,29 +618,29 @@ model Flow {
   auditEvents AuditEvent[]
   deliveries  FlowShareDelivery[]
 
-  tenant            Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  job               Job               @relation(fields: [jobId], references: [id], onDelete: Restrict)
-  workflowVersion   WorkflowVersion   @relation(fields: [workflowVersionId], references: [id], onDelete: Restrict)
-  quoteVersion      QuoteVersion      @relation(fields: [quoteVersionId], references: [id], onDelete: Restrict)
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  job             Job             @relation(fields: [jobId], references: [id], onDelete: Restrict)
+  workflowVersion WorkflowVersion @relation(fields: [workflowVersionId], references: [id], onDelete: Restrict)
+  quoteVersion    QuoteVersion    @relation(fields: [quoteVersionId], references: [id], onDelete: Restrict)
   activation      Activation?
-  runtimeTasks     RuntimeTask[]
-  taskExecutions   TaskExecution[]
+  runtimeTasks    RuntimeTask[]
+  taskExecutions  TaskExecution[]
 
   @@index([tenantId])
   @@index([jobId])
 }
 
 model TaskExecution {
-  id              String                  @id @default(cuid())
-  tenantId        String
-  flowId          String
-  taskKind        TaskExecutionTaskKind
-  runtimeTaskId   String?
-  skeletonTaskId  String?
-  eventType       TaskExecutionEventType
-  actorUserId     String
-  notes           String?
-  createdAt       DateTime                @default(now())
+  id             String                 @id @default(cuid())
+  tenantId       String
+  flowId         String
+  taskKind       TaskExecutionTaskKind
+  runtimeTaskId  String?
+  skeletonTaskId String?
+  eventType      TaskExecutionEventType
+  actorUserId    String
+  notes          String?
+  createdAt      DateTime               @default(now())
 
   tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   flow        Flow         @relation(fields: [flowId], references: [id], onDelete: Restrict)
@@ -610,11 +738,16 @@ model QuoteSignature {
   quoteVersionId String               @unique
   method         QuoteSignatureMethod
   signedAt       DateTime             @default(now())
-  recordedById   String
+  /// Office-recorded sign requires a tenant user; null when `method` is `CUSTOMER_PORTAL_ACCEPTED`.
+  recordedById String?
+  /// Human-readable signer snapshot for portal acceptance (e.g. name + email).
+  portalSignerLabel String?
+  /// Structured acceptance payload (legal toggles, etc.); optional for future templates.
+  portalAcceptPayloadJson Json?
 
-  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  quoteVersion QuoteVersion @relation(fields: [quoteVersionId], references: [id], onDelete: Restrict)
-  recordedBy   User         @relation("QuoteSignatureRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  quoteVersion QuoteVersion  @relation(fields: [quoteVersionId], references: [id], onDelete: Restrict)
+  recordedBy   User?         @relation("QuoteSignatureRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
 
   @@index([tenantId])
 }
@@ -636,14 +769,20 @@ model QuoteVersion {
   generatedPlanSnapshot        Json?
   executionPackageSnapshot     Json?
   composePreviewStalenessToken String?
+  /// Opaque customer portal link token; issued on first successful send (Epic 54).
+  portalQuoteShareToken String? @unique
   signedAt                     DateTime?
   signedById                   String?
 
-  quote                 Quote             @relation(fields: [quoteId], references: [id], onDelete: Restrict)
-  pinnedWorkflowVersion WorkflowVersion?  @relation(fields: [pinnedWorkflowVersionId], references: [id], onDelete: Restrict)
-  createdBy             User              @relation("QuoteVersionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  sentBy                User?             @relation("QuoteVersionSentBy", fields: [sentById], references: [id], onDelete: Restrict)
-  signedBy              User?             @relation("QuoteVersionSignedBy", fields: [signedById], references: [id], onDelete: SetNull)
+  quote                 Quote            @relation(fields: [quoteId], references: [id], onDelete: Restrict)
+  pinnedWorkflowVersion WorkflowVersion? @relation(fields: [pinnedWorkflowVersionId], references: [id], onDelete: Restrict)
+  createdBy             User             @relation("QuoteVersionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  sentBy                User?            @relation("QuoteVersionSentBy", fields: [sentById], references: [id], onDelete: Restrict)
+  signedBy              User?            @relation("QuoteVersionSignedBy", fields: [signedById], references: [id], onDelete: SetNull)
+  voidedAt              DateTime?
+  voidedById            String?
+  voidReason            String?
+  voidedBy              User?            @relation("QuoteVersionVoidedBy", fields: [voidedById], references: [id], onDelete: SetNull)
   proposalGroups        ProposalGroup[]
   quoteLineItems        QuoteLineItem[]
   auditEvents           AuditEvent[]
@@ -652,10 +791,11 @@ model QuoteVersion {
   activation            Activation?
   runtimeTasks          RuntimeTask[]
   paymentGates          PaymentGate[]
-  changeOrderDrafts     ChangeOrder[] @relation("ChangeOrderDraftQuoteVersion")
+  changeOrderDrafts     ChangeOrder[]    @relation("ChangeOrderDraftQuoteVersion")
 
   preJobTasks       PreJobTask[]
   quoteLocalPackets QuoteLocalPacket[]
+  portalShareDeliveries QuotePortalShareDelivery[]
 
   @@unique([quoteId, versionNumber])
   @@index([quoteId])
@@ -742,6 +882,10 @@ model QuoteLineItem {
   description           String?
   unitPriceCents        Int?
   lineTotalCents        Int?
+  /// When true, send/freeze derives `paymentGateIntent.v0` targeting manifest package slots for this line (Epic 47).
+  paymentBeforeWork Boolean @default(false)
+  /// Optional gate title override (trimmed server-side); only consulted when `paymentBeforeWork` is true at send.
+  paymentGateTitleOverride String?
 
   quoteVersion        QuoteVersion         @relation(fields: [quoteVersionId], references: [id], onDelete: Cascade)
   proposalGroup       ProposalGroup        @relation(fields: [proposalGroupId], references: [id], onDelete: Restrict)
@@ -784,10 +928,10 @@ model PaymentGate {
   satisfiedAt    DateTime?
   satisfiedById  String?
 
-  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  job          Job          @relation(fields: [jobId], references: [id], onDelete: Restrict)
-  quoteVersion QuoteVersion @relation(fields: [quoteVersionId], references: [id], onDelete: Restrict)
-  satisfiedBy  User?        @relation("PaymentGateSatisfiedBy", fields: [satisfiedById], references: [id], onDelete: SetNull)
+  tenant       Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  job          Job                 @relation(fields: [jobId], references: [id], onDelete: Restrict)
+  quoteVersion QuoteVersion        @relation(fields: [quoteVersionId], references: [id], onDelete: Restrict)
+  satisfiedBy  User?               @relation("PaymentGateSatisfiedBy", fields: [satisfiedById], references: [id], onDelete: SetNull)
   targets      PaymentGateTarget[]
 
   @@index([tenantId])
@@ -845,10 +989,10 @@ model CompletionProof {
   identifiersJson  Json? // Array of { label: string, value: string }
   overallResult    String? // e.g. "PASS", "FAIL"
 
-  tenant         Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  runtimeTask    RuntimeTask                 @relation(fields: [runtimeTaskId], references: [id], onDelete: Restrict)
-  taskExecution  TaskExecution               @relation("TaskExecutionToCompletionProof", fields: [taskExecutionId], references: [id], onDelete: Restrict)
-  attachments    CompletionProofAttachment[]
+  tenant        Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  runtimeTask   RuntimeTask                 @relation(fields: [runtimeTaskId], references: [id], onDelete: Restrict)
+  taskExecution TaskExecution               @relation("TaskExecutionToCompletionProof", fields: [taskExecutionId], references: [id], onDelete: Restrict)
+  attachments   CompletionProofAttachment[]
 
   @@index([tenantId])
   @@index([runtimeTaskId])
@@ -880,8 +1024,8 @@ model ProjectShareDelivery {
   deliveredAt     DateTime                  @default(now())
   deliveredById   String
   deliveryMethod  PublicShareDeliveryMethod
-  recipientDetail String?                   // Email or phone number
-  shareToken      String                    // Snapshot of token at delivery time
+  recipientDetail String? // Email or phone number
+  shareToken      String // Snapshot of token at delivery time
 
   providerStatus     PublicShareDeliveryStatus @default(QUEUED)
   providerExternalId String?
@@ -889,9 +1033,9 @@ model ProjectShareDelivery {
   providerResponse   Json?
   retryCount         Int                       @default(0)
 
-  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   flowGroup   FlowGroup @relation(fields: [flowGroupId], references: [id], onDelete: Restrict)
-  deliveredBy User @relation(fields: [deliveredById], references: [id], onDelete: Restrict)
+  deliveredBy User      @relation(fields: [deliveredById], references: [id], onDelete: Restrict)
 
   @@index([tenantId])
   @@index([flowGroupId])

@@ -7,6 +7,7 @@ export type QuoteVersionLifecycleReadModel = {
     sentAt: Date | null;
     signedAt: Date | null;
     signedById: string | null;
+    portalQuoteShareToken: string | null;
   };
   quote: { id: string; flowGroupId: string };
   job: { id: string; createdAt: Date; flowGroupId: string } | null;
@@ -14,7 +15,8 @@ export type QuoteVersionLifecycleReadModel = {
     id: string;
     signedAt: Date;
     method: string;
-    recordedById: string;
+    recordedById: string | null;
+    portalSignerLabel: string | null;
   } | null;
   flow: {
     id: string;
@@ -46,6 +48,7 @@ export async function getQuoteVersionLifecycleReadModel(
       sentAt: true,
       signedAt: true,
       signedById: true,
+      portalQuoteShareToken: true,
       quote: {
         select: {
           id: true,
@@ -58,7 +61,7 @@ export async function getQuoteVersionLifecycleReadModel(
         },
       },
       quoteSignature: {
-        select: { id: true, signedAt: true, method: true, recordedById: true },
+        select: { id: true, signedAt: true, method: true, recordedById: true, portalSignerLabel: true },
       },
       flow: {
         select: {
@@ -93,10 +96,19 @@ export async function getQuoteVersionLifecycleReadModel(
       sentAt: row.sentAt,
       signedAt: row.signedAt,
       signedById: row.signedById,
+      portalQuoteShareToken: row.portalQuoteShareToken,
     },
     quote: { id: row.quote.id, flowGroupId: row.quote.flowGroupId },
     job: job ? { id: job.id, createdAt: job.createdAt, flowGroupId: job.flowGroupId } : null,
-    quoteSignature: row.quoteSignature,
+    quoteSignature: row.quoteSignature
+      ? {
+          id: row.quoteSignature.id,
+          signedAt: row.quoteSignature.signedAt,
+          method: row.quoteSignature.method,
+          recordedById: row.quoteSignature.recordedById,
+          portalSignerLabel: row.quoteSignature.portalSignerLabel,
+        }
+      : null,
     flow: flow
       ? {
           id: flow.id,

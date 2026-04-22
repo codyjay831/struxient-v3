@@ -38,6 +38,8 @@ export type QuoteVersionScopeApiDto = {
       id: string;
       displayName: string;
     };
+    paymentBeforeWork: boolean;
+    paymentGateTitleOverride: string | null;
   }>;
 };
 
@@ -87,6 +89,8 @@ export function toQuoteVersionScopeApiDto(model: QuoteVersionScopeReadModel): Qu
             displayName: line.quoteLocalPacket.displayName,
           }
         : null,
+      paymentBeforeWork: line.paymentBeforeWork,
+      paymentGateTitleOverride: line.paymentGateTitleOverride,
     })),
   };
 }

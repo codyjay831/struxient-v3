@@ -174,6 +174,16 @@ export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput 
       recommendedStepIndex = null; // Done
       likelyNextSteps.push("Activation exists: follow runtime / flow-group execution reads (not shown in this workspace slice).");
     }
+  } else if (status === "VOID") {
+    recommendedStepIndex = null;
+    honestyNotes.push("This revision was voided (withdrawn). Frozen payloads are retained for audit; it is not signable.");
+    likelyNextSteps.push("Use version history: create or open a non-void draft to continue commercial work.");
+  } else if (status === "SUPERSEDED") {
+    recommendedStepIndex = null;
+    honestyNotes.push(
+      "This revision was superseded when a newer version was sent. It is not the active customer proposal.",
+    );
+    likelyNextSteps.push("Open the newest SENT or draft row in revision history for current work.");
   } else {
     likelyNextSteps.push("Unknown status — treat lifecycle reads as source of truth.");
   }

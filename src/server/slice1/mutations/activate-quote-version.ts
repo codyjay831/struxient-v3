@@ -28,7 +28,8 @@ export type ActivateQuoteVersionResult =
   | { ok: false; kind: "package_hash_mismatch" }
   | { ok: false; kind: "invalid_package"; code: string; message: string }
   | { ok: false; kind: "invalid_activated_by" }
-  | { ok: false; kind: "workflow_pin_mismatch"; message: string };
+  | { ok: false; kind: "workflow_pin_mismatch"; message: string }
+  | { ok: false; kind: "payment_gate_materialization_failed"; message: string };
 
 export type ActivateQuoteFailure = Extract<ActivateQuoteVersionResult, { ok: false }>;
 
@@ -200,8 +201,9 @@ export async function activateQuoteVersionInTransaction(
     select: { id: true },
   });
 
+  const runtimeTaskIdByPackageTaskId = new Map<string, string>();
   for (const s of parsed.slots) {
-    await tx.runtimeTask.create({
+    const rt = await tx.runtimeTask.create({
       data: {
         tenantId: locked.quote.tenantId,
         flowId: flow.id,
@@ -215,7 +217,41 @@ export async function activateQuoteVersionInTransaction(
         conditionalRulesJson: s.conditionalRulesJson,
         instructions: s.instructions,
       },
+      select: { id: true },
     });
+    runtimeTaskIdByPackageTaskId.set(s.packageTaskId, rt.id);
+  }
+
+  if (parsed.paymentGateIntent) {
+    const existingGate = await tx.paymentGate.findFirst({
+      where: { quoteVersionId: locked.id },
+      select: { id: true },
+    });
+    if (!existingGate) {
+      const intent = parsed.paymentGateIntent;
+      const targetCreates: { taskKind: "RUNTIME"; taskId: string }[] = [];
+      for (const pkg of intent.targetPackageTaskIds) {
+        const taskId = runtimeTaskIdByPackageTaskId.get(pkg);
+        if (!taskId) {
+          return {
+            ok: false,
+            kind: "payment_gate_materialization_failed",
+            message: `Frozen paymentGateIntent references packageTaskId "${pkg}" with no created runtime task.`,
+          };
+        }
+        targetCreates.push({ taskKind: "RUNTIME", taskId });
+      }
+      await tx.paymentGate.create({
+        data: {
+          tenantId: locked.quote.tenantId,
+          jobId: job.id,
+          quoteVersionId: locked.id,
+          title: intent.title,
+          status: "UNSATISFIED",
+          targets: { create: targetCreates },
+        },
+      });
+    }
   }
 
   const activation = await tx.activation.create({

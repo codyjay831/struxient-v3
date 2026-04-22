@@ -3,7 +3,7 @@ import type { QuoteVersionFreezeReadModel } from "@/server/slice1/reads/quote-ve
 export type QuoteVersionFreezeApiDto = {
   quoteVersion: {
     id: string;
-    status: "SENT";
+    status: "SENT" | "SIGNED" | "VOID" | "SUPERSEDED";
     sentAt: string;
     sentById: string;
     pinnedWorkflowVersionId: string | null;

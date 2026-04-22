@@ -111,6 +111,12 @@ describe("deriveScopeVersionContext", () => {
     expect(r.message.toLowerCase()).toContain("audit");
   });
 
+  it("VOID + isLatest = frozen_latest (read-only)", () => {
+    const r = deriveScopeVersionContext({ status: "VOID", isLatest: true, versionNumber: 4 });
+    expect(r.kind).toBe("frozen_latest");
+    expect(r.tone).toBe("amber");
+  });
+
   it("Unrecognised status surfaces as amber and points at lifecycle reads", () => {
     const r = deriveScopeVersionContext({
       status: "WEIRD_STATE",

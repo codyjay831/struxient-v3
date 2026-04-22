@@ -1,4 +1,4 @@
-import { Prisma, type PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "@prisma/client";
 import { activateQuoteVersionInTransaction } from "./activate-quote-version";
 
 export type ApplyChangeOrderResult =
@@ -7,16 +7,22 @@ export type ApplyChangeOrderResult =
   | { ok: false; kind: "invalid_status"; status: string }
   | { ok: false; kind: "activation_failed"; detail: string }
   | { ok: false; kind: "payment_gate_block"; unsatisfiedGateIds: string[] }
+  | {
+      ok: false;
+      kind: "payment_gate_retarget_failed";
+      /** `packageTaskId` values with no replacement runtime task in the new flow (safe refusal). */
+      unmappedPackageTaskIds: string[];
+    }
   | { ok: false; kind: "invalid_applied_by" };
 
 /**
  * Applies an approved Change Order to the job execution structure.
  * 1. Activates the CO draft version -> creates NEW Flow and RuntimeTasks.
  * 2. Reconciles with PREVIOUS active tasks for the same job.
- * 3. For every OLD task:
- *    - Marks as superseded by this CO.
- *    - If a task with the SAME packageTaskId exists in the NEW flow, transfers its executions.
- * 4. Checks Payment Gates: Blocks if any superseded task is targeted by an unsatisfied gate.
+ * 3. Blocks apply if any **unsatisfied** payment gate targets a runtime task that will be superseded.
+ * 4. Retargets **all** payment-gate RUNTIME targets on those old tasks to the new flow's runtime task
+ *    with the same `packageTaskId`, or fails the transaction if any target cannot be remapped.
+ * 5. For every OLD task: transfers executions where `packageTaskId` matches, then marks superseded.
  */
 export async function applyChangeOrderForJob(
   prisma: PrismaClient,
@@ -111,11 +117,50 @@ export async function applyChangeOrderForJob(
       };
     }
 
-    // 4. Match and Transfer Executions
     const newTasks = await tx.runtimeTask.findMany({
       where: { flowId: newFlowId },
     });
 
+    const oldIdToPackageTaskId = new Map(oldActiveTasks.map((t) => [t.id, t.packageTaskId]));
+    const packageTaskIdToNewRuntimeId = new Map(newTasks.map((t) => [t.packageTaskId, t.id]));
+
+    const runtimeTargetsOnOldTasks = await tx.paymentGateTarget.findMany({
+      where: {
+        taskKind: "RUNTIME",
+        taskId: { in: oldTaskIds },
+        paymentGate: { jobId: co.jobId, tenantId: params.tenantId },
+      },
+      select: { id: true, taskId: true },
+    });
+
+    const unmappedPackageTaskIds = new Set<string>();
+    for (const tgt of runtimeTargetsOnOldTasks) {
+      const pkg = oldIdToPackageTaskId.get(tgt.taskId);
+      if (pkg == null) continue;
+      const newRtId = packageTaskIdToNewRuntimeId.get(pkg);
+      if (newRtId == null) {
+        unmappedPackageTaskIds.add(pkg);
+      }
+    }
+    if (unmappedPackageTaskIds.size > 0) {
+      return {
+        ok: false,
+        kind: "payment_gate_retarget_failed",
+        unmappedPackageTaskIds: [...unmappedPackageTaskIds].sort(),
+      };
+    }
+
+    for (const tgt of runtimeTargetsOnOldTasks) {
+      const pkg = oldIdToPackageTaskId.get(tgt.taskId);
+      if (pkg == null) continue;
+      const newRtId = packageTaskIdToNewRuntimeId.get(pkg)!;
+      await tx.paymentGateTarget.update({
+        where: { id: tgt.id },
+        data: { taskId: newRtId },
+      });
+    }
+
+    // 4. Match and Transfer Executions
     let transferredExecutionCount = 0;
 
     for (const oldTask of oldActiveTasks) {

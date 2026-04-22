@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import {
+  buildQuoteVersionCompareToPrior,
   mapQuoteVersionRowToHistoryItem,
   type QuoteVersionHistoryItemDto,
 } from "./quote-version-history-reads";
@@ -16,7 +17,10 @@ const VERSION_SELECT = {
   planSnapshotSha256: true,
   packageSnapshotSha256: true,
   activation: { select: { id: true } },
-  _count: { select: { proposalGroups: true } },
+  _count: { select: { proposalGroups: true, quoteLineItems: true } },
+  portalQuoteShareToken: true,
+  voidedAt: true,
+  voidReason: true,
 } as const;
 
 /** Aggregate summary of line items for a specific version. */
@@ -62,6 +66,23 @@ export type QuoteWorkspaceEvidenceDto = {
   contentType: string;
   taskTitle: string;
   createdAt: string;
+};
+
+/** FlowGroup-scoped pre-job rows for office context (read-only list; no scheduling semantics). */
+export type QuoteWorkspacePreJobTaskDto = {
+  id: string;
+  title: string;
+  status: string;
+  taskType: string;
+  sourceType: string;
+  quoteVersionId: string | null;
+  /** When the linked version belongs to this workspace quote; otherwise null. */
+  linkedQuoteVersionNumber: number | null;
+  /** Office scope URL when the task points at a version on this quote; otherwise null. */
+  quoteVersionScopeHref: string | null;
+  assignedToLabel: string | null;
+  dueAtIso: string | null;
+  createdAtIso: string;
 };
 
 /** Static path patterns; clients substitute `:quoteId` / `:quoteVersionId`. */
@@ -122,6 +143,8 @@ export type QuoteWorkspaceDto = {
   changeOrders: QuoteWorkspaceChangeOrderDto[];
   /** Consolidated evidence from all tasks on the job. */
   evidence: QuoteWorkspaceEvidenceDto[];
+  /** PreJobTask rows on the quote's FlowGroup (same tenant); optional quoteVersion link. */
+  preJobTasks: QuoteWorkspacePreJobTaskDto[];
   routeHints: QuoteWorkspaceRouteHints;
 };
 
@@ -160,6 +183,52 @@ export async function getQuoteWorkspaceForTenant(
   const paymentGates: QuoteWorkspacePaymentGateDto[] = [];
   const changeOrders: QuoteWorkspaceChangeOrderDto[] = [];
   const evidence: QuoteWorkspaceEvidenceDto[] = [];
+
+  const preJobTaskRows = await prisma.preJobTask.findMany({
+    where: { tenantId: params.tenantId, flowGroupId: row.flowGroup.id },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      title: true,
+      status: true,
+      taskType: true,
+      sourceType: true,
+      quoteVersionId: true,
+      dueAt: true,
+      createdAt: true,
+      assignedToUser: { select: { email: true, displayName: true } },
+    },
+  });
+
+  const versionIdToNumber = new Map(row.versions.map((v) => [v.id, v.versionNumber]));
+  const versionIdsThisQuote = new Set(row.versions.map((v) => v.id));
+
+  const preJobTasks: QuoteWorkspacePreJobTaskDto[] = preJobTaskRows.map((t) => {
+    const qvid = t.quoteVersionId;
+    const linkedQuoteVersionNumber =
+      qvid != null && versionIdToNumber.has(qvid) ? versionIdToNumber.get(qvid)! : null;
+    const quoteVersionScopeHref =
+      qvid != null && versionIdsThisQuote.has(qvid)
+        ? `/quotes/${params.quoteId}/versions/${encodeURIComponent(qvid)}/scope`
+        : null;
+    const assignedToLabel = t.assignedToUser
+      ? (t.assignedToUser.displayName?.trim() || t.assignedToUser.email)
+      : null;
+    return {
+      id: t.id,
+      title: t.title,
+      status: t.status,
+      taskType: t.taskType,
+      sourceType: t.sourceType,
+      quoteVersionId: qvid,
+      linkedQuoteVersionNumber,
+      quoteVersionScopeHref,
+      assignedToLabel,
+      dueAtIso: t.dueAt?.toISOString() ?? null,
+      createdAtIso: t.createdAt.toISOString(),
+    };
+  });
+
   if (row.flowGroup.job) {
     const gates = await prisma.paymentGate.findMany({
       where: { jobId: row.flowGroup.job.id, tenantId: params.tenantId },
@@ -229,7 +298,15 @@ export async function getQuoteWorkspaceForTenant(
     }
   }
 
-  const versions = row.versions.map(mapQuoteVersionRowToHistoryItem);
+  const versions = row.versions.map((v, i) => {
+    const base = mapQuoteVersionRowToHistoryItem(v);
+    const priorOlder = row.versions[i + 1];
+    return {
+      ...base,
+      compareToPrior:
+        priorOlder != null ? buildQuoteVersionCompareToPrior(v, priorOlder) : null,
+    };
+  });
   const headVersion = row.versions[0];
   const latestQuoteVersionId = headVersion?.id ?? null;
 
@@ -292,6 +369,7 @@ export async function getQuoteWorkspaceForTenant(
     paymentGates,
     changeOrders,
     evidence,
+    preJobTasks,
     routeHints: ROUTE_HINTS,
   };
 }

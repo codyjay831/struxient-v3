@@ -10,7 +10,8 @@ export type WorkflowVersionDiscoveryItemDto = {
   templateKey: string;
   versionNumber: number;
   status: WorkflowVersionStatus;
-  publishedAt: string;
+  /** Null for honest DRAFT rows; ISO string when published or superseded with a recorded publish time. */
+  publishedAt: string | null;
 };
 
 const DEFAULT_LIST_LIMIT = 50;
@@ -27,11 +28,12 @@ export function clampWorkflowVersionListLimit(raw: string | null): number {
   return Math.min(n, MAX_LIST_LIMIT);
 }
 
-function mapRow(row: {
+/** Maps a DB row to the discovery DTO; exported for unit tests. */
+export function toWorkflowVersionDiscoveryDto(row: {
   id: string;
   versionNumber: number;
   status: WorkflowVersionStatus;
-  publishedAt: Date;
+  publishedAt: Date | null;
   workflowTemplate: { id: string; displayName: string; templateKey: string };
 }): WorkflowVersionDiscoveryItemDto {
   return {
@@ -41,12 +43,14 @@ function mapRow(row: {
     templateKey: row.workflowTemplate.templateKey,
     versionNumber: row.versionNumber,
     status: row.status,
-    publishedAt: row.publishedAt.toISOString(),
+    publishedAt: row.publishedAt != null ? row.publishedAt.toISOString() : null,
   };
 }
 
 /**
- * **Published only** — matches `setPinnedWorkflowVersionForTenant` pin target rule.
+ * **Published only** — matches `setPinnedWorkflowVersionForTenant` pin target rule:
+ * status `PUBLISHED` and a non-null `publishedAt` (actually publishable / historically published).
+ * Excludes `DRAFT`, `SUPERSEDED`, and malformed `PUBLISHED` rows missing `publishedAt`.
  * Tenant scope: `WorkflowTemplate.tenantId`.
  */
 export async function listPublishedWorkflowVersionsForTenant(
@@ -56,6 +60,7 @@ export async function listPublishedWorkflowVersionsForTenant(
   const rows = await prisma.workflowVersion.findMany({
     where: {
       status: "PUBLISHED",
+      publishedAt: { not: null },
       workflowTemplate: { tenantId: params.tenantId },
     },
     select: {
@@ -68,7 +73,7 @@ export async function listPublishedWorkflowVersionsForTenant(
     orderBy: [{ workflowTemplate: { displayName: "asc" } }, { versionNumber: "desc" }],
     take: params.limit,
   });
-  return rows.map(mapRow);
+  return rows.map(toWorkflowVersionDiscoveryDto);
 }
 
 /**
@@ -94,5 +99,5 @@ export async function getWorkflowVersionDiscoveryForTenant(
   if (!row) {
     return null;
   }
-  return mapRow(row);
+  return toWorkflowVersionDiscoveryDto(row);
 }

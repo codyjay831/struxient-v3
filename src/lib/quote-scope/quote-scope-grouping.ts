@@ -128,7 +128,11 @@ export type ScopeVersionContext = {
 
 export function deriveScopeVersionContext(input: ScopeVersionContextInput): ScopeVersionContext {
   const isDraft = input.status === "DRAFT";
-  const isFrozen = input.status === "SENT" || input.status === "SIGNED";
+  const isFrozen =
+    input.status === "SENT" ||
+    input.status === "SIGNED" ||
+    input.status === "VOID" ||
+    input.status === "SUPERSEDED";
 
   if (isDraft && input.isLatest) {
     return {

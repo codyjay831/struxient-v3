@@ -116,4 +116,14 @@ describe("deriveQuoteHeadWorkspaceReadiness", () => {
       ),
     ).toBe(true);
   });
+
+  it("void head: no recommended step and void honesty note", () => {
+    const r = deriveQuoteHeadWorkspaceReadiness(
+      base({ status: "VOID", lineItemCount: 1, hasPinnedWorkflow: true, hasFrozenArtifacts: true }),
+    );
+    expect(r.kind).toBe("head");
+    if (r.kind !== "head") return;
+    expect(r.recommendedStepIndex).toBeNull();
+    expect(r.honestyNotes.some((s) => s.toLowerCase().includes("voided"))).toBe(true);
+  });
 });

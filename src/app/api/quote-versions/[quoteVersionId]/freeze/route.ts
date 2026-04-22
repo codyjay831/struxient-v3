@@ -31,12 +31,18 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       );
     }
 
-    if (exists.status !== "SENT" && exists.status !== "SIGNED") {
+    const freezeReadable =
+      exists.status === "SENT" ||
+      exists.status === "SIGNED" ||
+      exists.status === "VOID" ||
+      exists.status === "SUPERSEDED";
+    if (!freezeReadable) {
       return NextResponse.json(
         {
           error: {
             code: "QUOTE_VERSION_NOT_FROZEN",
-            message: "Freeze payloads exist only after send (SENT or SIGNED); use GET …/scope for draft authoring state.",
+            message:
+              "Freeze payloads exist only after send (including superseded/voided rows that retain snapshots); use GET …/scope for draft authoring state.",
           },
         },
         { status: 409 },

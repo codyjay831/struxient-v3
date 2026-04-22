@@ -31,6 +31,8 @@ type FormFields = {
   executionMode: ExecutionMode;
   unitPriceCents: string; // empty string = unset (null on the wire)
   proposalGroupId: string;
+  paymentBeforeWork: boolean;
+  paymentGateTitleOverride: string;
 };
 
 type Banner =
@@ -44,6 +46,8 @@ const blankFields = (group: ProposalGroup | undefined): FormFields => ({
   executionMode: "SOLD_SCOPE",
   unitPriceCents: "",
   proposalGroupId: group?.id ?? "",
+  paymentBeforeWork: false,
+  paymentGateTitleOverride: "",
 });
 
 /**
@@ -137,6 +141,8 @@ export function ScopeEditor({
         quantity: validation.quantity,
         executionMode: fields.executionMode,
         unitPriceCents: validation.unitPriceCents,
+        paymentBeforeWork: validation.paymentBeforeWork,
+        paymentGateTitleOverride: validation.paymentBeforeWork ? validation.paymentGateTitleOverride : null,
       };
 
       const res = await fetch(
@@ -182,6 +188,8 @@ export function ScopeEditor({
         quantity: validation.quantity,
         executionMode: fields.executionMode,
         unitPriceCents: validation.unitPriceCents,
+        paymentBeforeWork: validation.paymentBeforeWork,
+        paymentGateTitleOverride: validation.paymentBeforeWork ? validation.paymentGateTitleOverride : null,
       };
       const res = await fetch(
         `/api/quote-versions/${encodeURIComponent(quoteVersionId)}/line-items/${encodeURIComponent(item.id)}`,
@@ -284,6 +292,7 @@ export function ScopeEditor({
                   New line item · {group.name}
                 </h3>
                 <LineItemForm
+                  key={`create-${group.id}`}
                   initial={blankFields(group)}
                   proposalGroupOptions={[group]}
                   busy={busyKey === `create:${group.id}`}
@@ -306,6 +315,7 @@ export function ScopeEditor({
                     <li key={item.id} className="px-4 py-3">
                       {isEditing ? (
                         <LineItemForm
+                          key={item.id}
                           initial={{
                             title: item.title,
                             quantity: String(item.quantity),
@@ -313,6 +323,8 @@ export function ScopeEditor({
                               item.executionMode === "MANIFEST" ? "MANIFEST" : "SOLD_SCOPE",
                             unitPriceCents: "",
                             proposalGroupId: item.proposalGroupId,
+                            paymentBeforeWork: item.paymentBeforeWork,
+                            paymentGateTitleOverride: item.paymentGateTitleOverride ?? "",
                           }}
                           proposalGroupOptions={[group]}
                           busy={busyKey === `update:${item.id}`}
@@ -363,6 +375,7 @@ function LineItemRow({
         <p className="mt-1 text-[11px] text-zinc-500 font-mono">
           qty {item.quantity} · {item.executionMode}
           {item.tierCode ? ` · tier ${item.tierCode}` : ""}
+          {item.paymentBeforeWork ? " · payment before work" : ""}
           {item.scopePacketRevisionId
             ? " · library packet"
             : item.quoteLocalPacketId
@@ -479,6 +492,39 @@ function LineItemForm({
           />
         </label>
       </div>
+      <label className="flex items-start gap-2 text-xs text-zinc-300">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={fields.paymentBeforeWork}
+          onChange={(e) =>
+            setFields({
+              ...fields,
+              paymentBeforeWork: e.target.checked,
+              paymentGateTitleOverride: e.target.checked ? fields.paymentGateTitleOverride : "",
+            })
+          }
+          disabled={busy}
+        />
+        <span>
+          Require payment before field work starts for tasks from this line (frozen into the send
+          package; Epic 47).
+        </span>
+      </label>
+      {fields.paymentBeforeWork ? (
+        <label className="block text-xs">
+          <span className="text-zinc-400">Gate title override (optional, max 120)</span>
+          <input
+            type="text"
+            value={fields.paymentGateTitleOverride}
+            onChange={(e) => setFields({ ...fields, paymentGateTitleOverride: e.target.value })}
+            disabled={busy}
+            maxLength={120}
+            placeholder="e.g. Deposit before mobilization"
+            className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100 focus:border-sky-600 focus:outline-none disabled:opacity-60"
+          />
+        </label>
+      ) : null}
       <p className="text-[10px] text-zinc-500">
         Proposal group: <span className="text-zinc-400">{groupName}</span> · packet attachment is
         not part of this slice — line items are created without a packet and can be linked later.
@@ -586,6 +632,7 @@ function ReadOnlyView({
                   <p className="mt-1 text-[11px] text-zinc-500 font-mono">
                     qty {item.quantity} · {item.executionMode}
                     {item.tierCode ? ` · tier ${item.tierCode}` : ""}
+                    {item.paymentBeforeWork ? " · payment before work" : ""}
                   </p>
                 </li>
               ))}
@@ -600,8 +647,17 @@ function ReadOnlyView({
 /* ---------------- Validation ---------------- */
 
 type ValidatedFields =
-  | { ok: true; title: string; quantity: number; unitPriceCents: number | null }
+  | {
+      ok: true;
+      title: string;
+      quantity: number;
+      unitPriceCents: number | null;
+      paymentBeforeWork: boolean;
+      paymentGateTitleOverride: string | null;
+    }
   | { ok: false; message: string };
+
+const MAX_GATE_TITLE_OVERRIDE = 120;
 
 function validateFields(fields: FormFields): ValidatedFields {
   const title = fields.title.trim();
@@ -621,5 +677,20 @@ function validateFields(fields: FormFields): ValidatedFields {
     }
     unitPriceCents = parsed;
   }
-  return { ok: true, title, quantity, unitPriceCents };
+
+  const paymentBeforeWork = fields.paymentBeforeWork;
+  const ov = fields.paymentGateTitleOverride.trim();
+  if (ov.length > MAX_GATE_TITLE_OVERRIDE) {
+    return { ok: false, message: `Gate title override must be at most ${MAX_GATE_TITLE_OVERRIDE} characters.` };
+  }
+  const paymentGateTitleOverride = paymentBeforeWork ? (ov.length > 0 ? ov : null) : null;
+
+  return {
+    ok: true,
+    title,
+    quantity,
+    unitPriceCents,
+    paymentBeforeWork,
+    paymentGateTitleOverride,
+  };
 }

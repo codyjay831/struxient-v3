@@ -54,7 +54,7 @@ export async function setPinnedWorkflowVersionForTenant(
       id: params.pinnedWorkflowVersionId,
       workflowTemplate: { tenantId: params.tenantId },
     },
-    select: { id: true, status: true },
+    select: { id: true, status: true, publishedAt: true },
   });
 
   if (!wf) {
@@ -65,11 +65,11 @@ export async function setPinnedWorkflowVersionForTenant(
     );
   }
 
-  if (wf.status !== "PUBLISHED") {
+  if (wf.status !== "PUBLISHED" || wf.publishedAt == null) {
     throw new InvariantViolationError(
       "PINNED_WORKFLOW_VERSION_NOT_PUBLISHED",
-      "Only PUBLISHED workflow versions may be pinned on a draft quote version.",
-      { pinnedWorkflowVersionId: wf.id, status: wf.status },
+      "Only a currently PUBLISHED workflow version with a publish timestamp may be pinned on a draft quote version (not DRAFT, SUPERSEDED, or unpublished).",
+      { pinnedWorkflowVersionId: wf.id, status: wf.status, hasPublishedAt: wf.publishedAt != null },
     );
   }
 

@@ -18,6 +18,10 @@ function getNextStepHint(status: QuoteVersionStatus, hasActivation: boolean): st
       return "Waiting on Customer";
     case "SIGNED":
       return "Ready to Activate";
+    case "VOID":
+      return "Voided";
+    case "SUPERSEDED":
+      return "Superseded";
     default:
       return null;
   }
@@ -29,6 +33,8 @@ function getStatusColor(status: QuoteVersionStatus, hasActivation: boolean): str
         case "DRAFT": return "text-amber-400 bg-amber-950/30 border-amber-800/50";
         case "SENT": return "text-sky-400 bg-sky-950/30 border-sky-800/50";
         case "SIGNED": return "text-indigo-400 bg-indigo-950/30 border-indigo-800/50";
+        case "VOID": return "text-rose-400 bg-rose-950/30 border-rose-800/50";
+        case "SUPERSEDED": return "text-zinc-500 bg-zinc-900/40 border-zinc-700/50";
         default: return "text-zinc-400 bg-zinc-950/30 border-zinc-800/50";
     }
 }

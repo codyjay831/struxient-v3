@@ -93,3 +93,51 @@ export function renderProjectSmsContent(vars: DeliveryContentVariables): SmsCont
     body: msg
   };
 }
+
+export type QuotePortalDeliveryVariables = {
+  customerName: string;
+  quoteNumber: string;
+  versionNumber: number;
+  portalUrl: string;
+  companyName: string;
+};
+
+export function renderQuotePortalEmailContent(
+  vars: QuotePortalDeliveryVariables,
+  isFollowUp?: boolean,
+): EmailContent {
+  const label = `Quote ${vars.quoteNumber} (v${vars.versionNumber})`;
+  const subjectPrefix = isFollowUp ? "FOLLOW-UP: " : "";
+  const subject = `${subjectPrefix}Review & sign: ${label}`;
+
+  const intro = isFollowUp
+    ? `Following up on ${label}. Please review and accept at the secure link below:`
+    : `You can review and electronically accept ${label} at the following secure link:`;
+
+  const body =
+    `Hi ${vars.customerName},\n\n` +
+    `${intro}\n\n` +
+    `${vars.portalUrl}\n\n` +
+    `This link shows the proposal as frozen when it was sent.\n\n` +
+    `Thank you,\n${vars.companyName}`;
+
+  const html = `
+    <div style="font-family: sans-serif; line-height: 1.5; color: #111;">
+      <p>Hi ${vars.customerName},</p>
+      <p>${intro.replace(label, `<strong>${label}</strong>`)}</p>
+      <p><a href="${vars.portalUrl}" style="color: #0284c7; font-weight: bold;">${vars.portalUrl}</a></p>
+      <p>This link shows the proposal as frozen when it was sent.</p>
+      <p>Thank you,<br/><strong>${vars.companyName}</strong></p>
+    </div>
+  `;
+
+  return { subject, body, html };
+}
+
+export function renderQuotePortalSmsContent(vars: QuotePortalDeliveryVariables, isFollowUp?: boolean): SmsContent {
+  const label = `${vars.quoteNumber} v${vars.versionNumber}`;
+  const body = isFollowUp
+    ? `Follow-up: Review & sign quote ${label}: ${vars.portalUrl}`
+    : `Hi ${vars.customerName}, review & sign quote ${label}: ${vars.portalUrl}`;
+  return { body };
+}

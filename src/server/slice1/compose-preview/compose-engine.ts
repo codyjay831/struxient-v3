@@ -123,7 +123,7 @@ export async function runComposeFromReadModel(
   const groupById = new Map(model.proposalGroups.map((g) => [g.id, g]));
 
   let wf:
-    | { id: string; status: string; snapshotJson: unknown }
+    | { id: string; status: string; publishedAt: Date | null; snapshotJson: unknown }
     | null
     | undefined;
 
@@ -138,18 +138,19 @@ export async function runComposeFromReadModel(
         id: model.pinnedWorkflowVersionId,
         workflowTemplate: { tenantId: model.quote.tenantId },
       },
-      select: { id: true, status: true, snapshotJson: true },
+      select: { id: true, status: true, publishedAt: true, snapshotJson: true },
     });
     if (!wf) {
       errors.push({
         code: "WORKFLOW_NOT_PINNED",
         message: "Pinned workflow version is missing or not accessible for this tenant.",
       });
-    } else if (wf.status !== "PUBLISHED") {
+    } else if (wf.status !== "PUBLISHED" || wf.publishedAt == null) {
       errors.push({
         code: "WORKFLOW_NOT_PUBLISHED",
-        message: "Pinned workflow version must be PUBLISHED for compose.",
-        details: { workflowVersionId: wf.id, status: wf.status },
+        message:
+          "Pinned workflow version must be PUBLISHED with a publish timestamp for compose (not DRAFT, SUPERSEDED, or missing publishedAt).",
+        details: { workflowVersionId: wf.id, status: wf.status, hasPublishedAt: wf.publishedAt != null },
       });
     }
   }

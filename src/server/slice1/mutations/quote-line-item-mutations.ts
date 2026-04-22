@@ -6,6 +6,7 @@ import type {
 import { InvariantViolationError } from "../errors";
 import { assertQuoteLineItemInvariants } from "../invariants/quote-line-item";
 import { assertQuoteVersionDraft } from "../invariants/quote-version";
+import { normalizePaymentGateTitleOverride } from "../compose-preview/derive-payment-gate-intent-for-freeze";
 import { bumpComposePreviewStalenessToken } from "./compose-staleness";
 
 const MAX_TITLE = 500;
@@ -25,6 +26,8 @@ export type QuoteLineItemApiDto = {
   quoteLocalPacketId: string | null;
   unitPriceCents: number | null;
   lineTotalCents: number | null;
+  paymentBeforeWork: boolean;
+  paymentGateTitleOverride: string | null;
 };
 
 function assertNonNegativeIntCents(field: "unitPriceCents" | "lineTotalCents", value: number | null): void {
@@ -164,6 +167,8 @@ export async function createQuoteLineItemForTenant(
     quoteLocalPacketId?: string | null;
     unitPriceCents?: number | null;
     lineTotalCents?: number | null;
+    paymentBeforeWork?: boolean;
+    paymentGateTitleOverride?: string | null;
   },
 ): Promise<QuoteLineItemApiDto | "not_found"> {
   const qv = await loadQuoteVersionDraftForTenant(client, params.tenantId, params.quoteVersionId);
@@ -182,6 +187,10 @@ export async function createQuoteLineItemForTenant(
   assertDescription(description);
   assertNonNegativeIntCents("unitPriceCents", params.unitPriceCents ?? null);
   assertNonNegativeIntCents("lineTotalCents", params.lineTotalCents ?? null);
+
+  const paymentBeforeWork = params.paymentBeforeWork === true;
+  const rawOverride = normalizePaymentGateTitleOverride(params.paymentGateTitleOverride ?? null);
+  const paymentGateTitleOverride = paymentBeforeWork ? rawOverride : null;
 
   const scopeId = params.scopePacketRevisionId ?? null;
   const localId = params.quoteLocalPacketId ?? null;
@@ -214,6 +223,8 @@ export async function createQuoteLineItemForTenant(
       quoteLocalPacketId: localId,
       unitPriceCents: params.unitPriceCents ?? null,
       lineTotalCents: params.lineTotalCents ?? null,
+      paymentBeforeWork,
+      paymentGateTitleOverride,
     },
     select: {
       id: true,
@@ -229,6 +240,8 @@ export async function createQuoteLineItemForTenant(
       quoteLocalPacketId: true,
       unitPriceCents: true,
       lineTotalCents: true,
+      paymentBeforeWork: true,
+      paymentGateTitleOverride: true,
     },
   });
 
@@ -249,6 +262,8 @@ export type QuoteLineItemPatch = {
   unitPriceCents?: number | null;
   lineTotalCents?: number | null;
   proposalGroupId?: string;
+  paymentBeforeWork?: boolean;
+  paymentGateTitleOverride?: string | null;
 };
 
 /**
@@ -285,6 +300,8 @@ export async function updateQuoteLineItemForTenant(
       quoteLocalPacketId: true,
       unitPriceCents: true,
       lineTotalCents: true,
+      paymentBeforeWork: true,
+      paymentGateTitleOverride: true,
     },
   });
   if (!existing) return "not_found";
@@ -307,7 +324,15 @@ export async function updateQuoteLineItemForTenant(
     unitPriceCents:
       params.patch.unitPriceCents !== undefined ? params.patch.unitPriceCents : existing.unitPriceCents,
     lineTotalCents: params.patch.lineTotalCents !== undefined ? params.patch.lineTotalCents : existing.lineTotalCents,
+    paymentBeforeWork:
+      params.patch.paymentBeforeWork !== undefined ? params.patch.paymentBeforeWork : existing.paymentBeforeWork,
+    paymentGateTitleOverride:
+      params.patch.paymentGateTitleOverride !== undefined
+        ? normalizePaymentGateTitleOverride(params.patch.paymentGateTitleOverride)
+        : existing.paymentGateTitleOverride,
   };
+
+  const paymentGateTitleOverrideEffective = merged.paymentBeforeWork ? merged.paymentGateTitleOverride : null;
 
   assertSortOrder(merged.sortOrder);
   assertQuantity(merged.quantity);
@@ -355,6 +380,8 @@ export async function updateQuoteLineItemForTenant(
       quoteLocalPacketId: merged.quoteLocalPacketId,
       unitPriceCents: merged.unitPriceCents,
       lineTotalCents: merged.lineTotalCents,
+      paymentBeforeWork: merged.paymentBeforeWork,
+      paymentGateTitleOverride: paymentGateTitleOverrideEffective,
     },
     select: {
       id: true,
@@ -370,6 +397,8 @@ export async function updateQuoteLineItemForTenant(
       quoteLocalPacketId: true,
       unitPriceCents: true,
       lineTotalCents: true,
+      paymentBeforeWork: true,
+      paymentGateTitleOverride: true,
     },
   });
 

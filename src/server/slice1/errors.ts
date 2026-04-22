@@ -35,6 +35,17 @@ export type Slice1InvariantCode =
   | "QUOTE_LOCAL_PACKET_NOT_FOUND"
   | "PINNED_WORKFLOW_VERSION_NOT_FOUND"
   | "PINNED_WORKFLOW_VERSION_NOT_PUBLISHED"
+  // Epic 23 — workflow template / version authoring (non-UI slice).
+  | "WORKFLOW_TEMPLATE_INVALID_KEY"
+  | "WORKFLOW_TEMPLATE_INVALID_DISPLAY_NAME"
+  | "WORKFLOW_TEMPLATE_INVALID_FIELD_LENGTH"
+  | "WORKFLOW_TEMPLATE_KEY_TAKEN"
+  | "WORKFLOW_TEMPLATE_DRAFT_VERSION_EXISTS"
+  | "WORKFLOW_VERSION_PUBLISH_NOT_DRAFT"
+  | "WORKFLOW_VERSION_SNAPSHOT_REPLACE_NOT_DRAFT"
+  | "WORKFLOW_VERSION_SNAPSHOT_INVALID"
+  /** Fork-new-draft: source must be PUBLISHED or SUPERSEDED with `publishedAt` (Epic 23). */
+  | "WORKFLOW_VERSION_FORK_SOURCE_INVALID"
   | "TASK_DEFINITION_NOT_FOUND"
   | "TASK_DEFINITION_TASK_KEY_INVALID"
   | "TASK_DEFINITION_DISPLAY_NAME_INVALID"
@@ -93,7 +104,22 @@ export type Slice1InvariantCode =
   // out-of-band status mutation. Mutation-side path continues to use
   // LINE_SCOPE_REVISION_NOT_PUBLISHED (PUBLISHED-only); this code is reserved
   // for the read-side assertion and is not user-actionable.
-  | "LINE_SCOPE_REVISION_PIN_INVALID_STATE";
+  | "LINE_SCOPE_REVISION_PIN_INVALID_STATE"
+  // Epic 04 — Customer-scoped contacts (foundation slice).
+  | "CUSTOMER_CONTACT_PARENT_NOT_FOUND"
+  | "CUSTOMER_CONTACT_NOT_FOUND"
+  | "CUSTOMER_CONTACT_METHOD_NOT_FOUND"
+  | "CUSTOMER_CONTACT_DISPLAY_NAME_INVALID"
+  | "CUSTOMER_CONTACT_NOTES_TOO_LONG"
+  | "CUSTOMER_CONTACT_METHOD_VALUE_INVALID"
+  | "CUSTOMER_CONTACT_ROLE_INVALID"
+  // Epic 05 foundation — Customer-scoped office notes (separate from AuditEvent).
+  | "CUSTOMER_NOTE_PARENT_NOT_FOUND"
+  | "CUSTOMER_NOTE_NOT_FOUND"
+  | "CUSTOMER_NOTE_BODY_INVALID"
+  | "CUSTOMER_NOTE_AUTHOR_NOT_FOUND"
+  /** Only the note author may change body or archive state (Epic 05 integrity slice). */
+  | "CUSTOMER_NOTE_UPDATE_NOT_AUTHORIZED";
 
 export class InvariantViolationError extends Error {
   readonly code: Slice1InvariantCode;

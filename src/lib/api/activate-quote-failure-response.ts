@@ -96,6 +96,16 @@ export function nextResponseForActivateQuoteFailure(result: Fail): NextResponse 
         { error: { code: "WORKFLOW_PIN_MISMATCH", message: result.message } },
         { status: 409 },
       );
+    case "payment_gate_materialization_failed":
+      return NextResponse.json(
+        {
+          error: {
+            code: "PAYMENT_GATE_MATERIALIZATION_FAILED",
+            message: result.message,
+          },
+        },
+        { status: 409 },
+      );
     default:
       return NextResponse.json(
         { error: { code: "INTERNAL", message: "Unexpected activation failure shape" } },

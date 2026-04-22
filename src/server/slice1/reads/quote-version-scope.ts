@@ -41,6 +41,8 @@ export const quoteVersionScopeQueryArgs = Prisma.validator<Prisma.QuoteVersionDe
         title: true,
         tierCode: true,
         quantity: true,
+        paymentBeforeWork: true,
+        paymentGateTitleOverride: true,
         scopePacketRevisionId: true,
         quoteLocalPacketId: true,
         proposalGroup: { select: { quoteVersionId: true } },

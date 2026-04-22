@@ -17,6 +17,10 @@ export {
   type AssertScopePacketRevisionPublishPreconditionsParams,
 } from "./scope-packet-revision-publish";
 export {
+  assertWorkflowVersionPublishPreconditions,
+  type AssertWorkflowVersionPublishPreconditionsParams,
+} from "./workflow-version-publish";
+export {
   assertScopePacketRevisionForkPreconditions,
   type AssertScopePacketRevisionForkPreconditionsParams,
 } from "./scope-packet-revision-fork";

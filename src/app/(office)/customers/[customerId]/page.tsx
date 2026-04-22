@@ -1,18 +1,25 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { tryGetApiPrincipal } from "@/lib/auth/api-principal";
+import { principalHasCapability, tryGetApiPrincipal } from "@/lib/auth/api-principal";
 import { getPrisma } from "@/server/db/prisma";
 import { getCustomerForTenant } from "@/server/slice1/reads/customer-reads";
+import { listCustomerContactsForTenant } from "@/server/slice1/reads/customer-contact-reads";
+import { listCustomerNotesForTenant } from "@/server/slice1/reads/customer-note-reads";
+import { listCustomerRecentActivityForTenant } from "@/server/slice1/reads/customer-recent-activity-reads";
 import { listFlowGroupsForTenant } from "@/server/slice1/reads/flow-group-reads";
 import { listCommercialQuoteShellsForTenant } from "@/server/slice1/reads/commercial-quote-shell-reads";
+import { CustomerContactsPanel } from "@/components/customers/customer-contacts-panel";
+import { CustomerNotesPanel } from "@/components/customers/customer-notes-panel";
+import { CustomerRecentActivityPanel } from "@/components/customers/customer-recent-activity-panel";
 
 /**
  * Office customer detail. Read-only inspector for a single Customer record.
  *
- * Reuses three canon read models, all tenant-scoped:
+ * Reuses canon read models, all tenant-scoped:
  *   - `getCustomerForTenant` — identity + rollup counts
  *   - `listFlowGroupsForTenant({ ..., customerId })` — projects of this customer
  *   - `listCommercialQuoteShellsForTenant({ ..., customerId })` — quotes of this customer
+ *   - `listCustomerRecentActivityForTenant` — merged **summary** of note + contact row timestamps (not audit / not quotes)
  *
  * The two list reads use their newly-added optional `customerId` filter
  * (additive on top of the existing `tenantId` predicate) so this page can
@@ -52,10 +59,17 @@ export default async function OfficeCustomerDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  const [projects, quotes] = await Promise.all([
+  const [projects, quotes, contacts, notes, recentActivity] = await Promise.all([
     listFlowGroupsForTenant(prisma, { tenantId, customerId, limit: SUB_LIST_LIMIT }),
     listCommercialQuoteShellsForTenant(prisma, { tenantId, customerId, limit: SUB_LIST_LIMIT }),
+    listCustomerContactsForTenant(prisma, { tenantId, customerId }),
+    listCustomerNotesForTenant(prisma, { tenantId, customerId }),
+    listCustomerRecentActivityForTenant(prisma, { tenantId, customerId, limit: 25 }),
   ]);
+  const contactRows = contacts ?? [];
+  const noteRows = notes ?? [];
+  const activityItems = recentActivity ?? [];
+  const canOfficeMutate = principalHasCapability(auth.principal, "office_mutate");
 
   const projectsTruncated = customer.flowGroupCount > projects.length;
   const quotesTruncated = customer.quoteCount > quotes.length;
@@ -76,13 +90,14 @@ export default async function OfficeCustomerDetailPage({ params }: PageProps) {
             <h1 className="flex flex-wrap items-baseline gap-2 text-2xl font-semibold tracking-tight text-zinc-50">
               <span>{customer.name}</span>
               <span className="rounded border border-zinc-700 bg-zinc-950/40 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
-                Read-only
+                Office
               </span>
             </h1>
             <p className="mt-2 text-xs text-zinc-500">
               Customer since {formatCreatedDate(customer.createdAt)} · {customer.flowGroupCount}{" "}
               project{customer.flowGroupCount === 1 ? "" : "s"} · {customer.quoteCount} quote
-              {customer.quoteCount === 1 ? "" : "s"}.
+              {customer.quoteCount === 1 ? "" : "s"}. Core customer fields stay on the record; contacts are edited in the
+              contacts and notes sections below.
             </p>
           </div>
           <Link href="/customers" className="text-sm text-zinc-500 hover:text-zinc-400">
@@ -90,6 +105,24 @@ export default async function OfficeCustomerDetailPage({ params }: PageProps) {
           </Link>
         </div>
       </header>
+
+      <div className="mb-10">
+        <CustomerRecentActivityPanel customerId={customerId} items={activityItems} />
+      </div>
+
+      <div className="mb-10 space-y-10">
+        <CustomerContactsPanel
+          customerId={customerId}
+          initialContacts={contactRows}
+          canOfficeMutate={canOfficeMutate}
+        />
+        <CustomerNotesPanel
+          customerId={customerId}
+          initialNotes={noteRows}
+          canOfficeMutate={canOfficeMutate}
+          viewerUserId={auth.principal.userId}
+        />
+      </div>
 
       <section className="mb-10 space-y-3">
         <div className="flex items-baseline justify-between gap-2">

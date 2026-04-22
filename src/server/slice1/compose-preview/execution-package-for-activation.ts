@@ -22,12 +22,21 @@ function isSkeletonPackageSlot(r: Record<string, unknown>): boolean {
   return typeof sk === "string" && sk !== "";
 }
 
+/** Optional extension on `executionPackageSnapshot.v0` — authored at send/freeze time (Epic 47). */
+export type FrozenPaymentGateIntentV0 = {
+  schemaVersion: "paymentGateIntent.v0";
+  title: string;
+  /** Each id must match a manifest slot `packageTaskId` in the same snapshot (non-skeleton slots only). */
+  targetPackageTaskIds: string[];
+};
+
 export type ParseExecutionPackageResult =
   | {
       ok: true;
       pinnedWorkflowVersionId: string;
       slots: ActivationPackageSlot[];
       skippedSkeletonSlotCount: number;
+      paymentGateIntent: FrozenPaymentGateIntentV0 | null;
     }
   | { ok: false; code: string; message: string };
 
@@ -107,5 +116,51 @@ export function parseExecutionPackageSnapshotV0ForActivation(json: unknown): Par
     slots.push({ packageTaskId, nodeId, lineItemId, planTaskIds, displayTitle, completionRequirementsJson, conditionalRulesJson, instructions });
   }
 
-  return { ok: true, pinnedWorkflowVersionId: pinned, slots, skippedSkeletonSlotCount };
+  let paymentGateIntent: FrozenPaymentGateIntentV0 | null = null;
+  const pgi = o.paymentGateIntent;
+  if (pgi != null) {
+    if (typeof pgi !== "object" || Array.isArray(pgi)) {
+      return { ok: false, code: "INVALID_PAYMENT_GATE_INTENT", message: "paymentGateIntent must be an object." };
+    }
+    const g = pgi as Record<string, unknown>;
+    if (g.schemaVersion !== "paymentGateIntent.v0") {
+      return {
+        ok: false,
+        code: "UNSUPPORTED_PAYMENT_GATE_INTENT",
+        message: `Expected paymentGateIntent.v0, got ${String(g.schemaVersion)}.`,
+      };
+    }
+    const title = typeof g.title === "string" ? g.title.trim() : "";
+    if (title.length === 0) {
+      return { ok: false, code: "INVALID_PAYMENT_GATE_INTENT", message: "paymentGateIntent.title is required." };
+    }
+    const rawTargets = g.targetPackageTaskIds;
+    if (!Array.isArray(rawTargets) || rawTargets.length === 0) {
+      return {
+        ok: false,
+        code: "INVALID_PAYMENT_GATE_INTENT",
+        message: "paymentGateIntent.targetPackageTaskIds must be a non-empty string array.",
+      };
+    }
+    const targetPackageTaskIds = [...new Set(rawTargets.filter((x): x is string => typeof x === "string" && x !== ""))];
+    if (targetPackageTaskIds.length === 0) {
+      return {
+        ok: false,
+        code: "INVALID_PAYMENT_GATE_INTENT",
+        message: "paymentGateIntent.targetPackageTaskIds must contain at least one non-empty packageTaskId.",
+      };
+    }
+    const slotIds = new Set(slots.map((s) => s.packageTaskId));
+    const unknown = targetPackageTaskIds.filter((id) => !slotIds.has(id));
+    if (unknown.length > 0) {
+      return {
+        ok: false,
+        code: "INVALID_PAYMENT_GATE_INTENT",
+        message: `paymentGateIntent references unknown packageTaskId(s): ${unknown.join(", ")}.`,
+      };
+    }
+    paymentGateIntent = { schemaVersion: "paymentGateIntent.v0", title, targetPackageTaskIds };
+  }
+
+  return { ok: true, pinnedWorkflowVersionId: pinned, slots, skippedSkeletonSlotCount, paymentGateIntent };
 }

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import type { ComposePackageSlotDto, ComposePlanRowDto, ComposeValidationItem } from "./compose-engine";
+import type { FrozenPaymentGateIntentV0 } from "./execution-package-for-activation";
 
 export function canonicalStringify(value: unknown): string {
   if (value === null) {
@@ -102,8 +103,10 @@ export function buildExecutionPackageSnapshotV0(params: {
   composedAtIso: string;
   packageSlots: ComposePackageSlotDto[];
   diagnostics: { errors: ComposeValidationItem[]; warnings: ComposeValidationItem[] };
+  /** Optional; validated at activation against manifest `packageTaskId`s (Epic 47). */
+  paymentGateIntent?: FrozenPaymentGateIntentV0 | null;
 }): Prisma.InputJsonValue {
-  return {
+  const base: Record<string, unknown> = {
     schemaVersion: "executionPackageSnapshot.v0",
     quoteVersionId: params.quoteVersionId,
     pinnedWorkflowVersionId: params.pinnedWorkflowVersionId,
@@ -113,5 +116,9 @@ export function buildExecutionPackageSnapshotV0(params: {
       errors: params.diagnostics.errors.map(validationToDiagnostic),
       warnings: params.diagnostics.warnings.map(validationToDiagnostic),
     },
-  } as Prisma.InputJsonValue;
+  };
+  if (params.paymentGateIntent != null) {
+    base.paymentGateIntent = params.paymentGateIntent;
+  }
+  return base as Prisma.InputJsonValue;
 }

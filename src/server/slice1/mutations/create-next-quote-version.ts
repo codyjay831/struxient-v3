@@ -104,6 +104,8 @@ export async function createNextQuoteVersionForTenant(
               description: true,
               unitPriceCents: true,
               lineTotalCents: true,
+              paymentBeforeWork: true,
+              paymentGateTitleOverride: true,
             },
           },
         },
@@ -204,6 +206,8 @@ export async function createNextQuoteVersionForTenant(
             description: line.description,
             unitPriceCents: line.unitPriceCents,
             lineTotalCents: line.lineTotalCents,
+            paymentBeforeWork: line.paymentBeforeWork,
+            paymentGateTitleOverride: line.paymentGateTitleOverride,
           },
         });
       }
