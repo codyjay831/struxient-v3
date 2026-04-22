@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { tryGetApiPrincipal } from "@/lib/auth/api-principal";
+import { principalHasCapability, tryGetApiPrincipal } from "@/lib/auth/api-principal";
 import { getPrisma } from "@/server/db/prisma";
 import { listScopePacketsForTenant } from "@/server/slice1/reads/scope-packet-catalog-reads";
 
@@ -8,9 +8,8 @@ import { listScopePacketsForTenant } from "@/server/slice1/reads/scope-packet-ca
  * Office-surface library index for catalog ScopePackets.
  *
  * Reuses `listScopePacketsForTenant` — the same tenant-scoped read model the
- * `/dev/catalog-packets` index consumes. Read-only on purpose: catalog
- * authoring lifecycle (create-next-revision, fork, publish) stays on the dev
- * surface in this slice; office only inspects.
+ * `/dev/catalog-packets` index consumes. Greenfield create: `/library/packets/new`
+ * (`office_mutate`). Task-line authoring APIs in office remain deferred; revision pages are inspect-first.
  */
 export const dynamic = "force-dynamic";
 
@@ -27,9 +26,11 @@ export default async function OfficeLibraryPacketsPage() {
     limit: LIST_LIMIT,
   });
 
+  const canAuthor = principalHasCapability(auth.principal, "office_mutate");
+
   return (
     <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-semibold text-zinc-50">Library packets</h1>
           <p className="text-sm text-zinc-500 mt-1">
@@ -37,6 +38,14 @@ export default async function OfficeLibraryPacketsPage() {
             of authored task lines and is referenced by quote line items.
           </p>
         </div>
+        {canAuthor ? (
+          <Link
+            href="/library/packets/new"
+            className="shrink-0 rounded-lg bg-sky-700 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600 transition-colors"
+          >
+            New packet
+          </Link>
+        ) : null}
       </div>
 
       {items.length === 0 ? (
@@ -60,8 +69,20 @@ export default async function OfficeLibraryPacketsPage() {
           </div>
           <h2 className="text-zinc-200 font-medium">No catalog packets yet</h2>
           <p className="text-zinc-500 text-sm mt-1 max-w-sm mx-auto">
-            Catalog packets appear here after you promote a quote-local packet on a quote scope
-            page. Promotion creates a new ScopePacket with its first DRAFT revision.
+            {canAuthor ? (
+              <>
+                Create a packet directly with{" "}
+                <Link href="/library/packets/new" className="text-sky-400 hover:text-sky-300">
+                  New packet
+                </Link>
+                , or promote a quote-local packet from a quote scope page.
+              </>
+            ) : (
+              <>
+                Catalog packets appear here after promotion from a quote scope page, or when an office admin creates one
+                in the library.
+              </>
+            )}
           </p>
         </div>
       ) : (

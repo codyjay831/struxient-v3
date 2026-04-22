@@ -4,6 +4,7 @@ import {
   toTaskActionabilityApiDto,
   type TaskActionabilityApiDto,
 } from "@/server/slice1/eligibility/task-actionability";
+import { runtimeTaskBlockedByActiveHolds } from "@/server/slice1/eligibility/hold-eligibility";
 
 export type { TaskActionabilityApiDto };
 
@@ -54,9 +55,21 @@ export type JobShellApiDto = {
   flowGroup: { id: string; name: string; customerId: string };
   customer: { id: string; name: string };
   flows: JobShellFlowApiDto[];
+  activeOperationalHolds: {
+    id: string;
+    runtimeTaskId: string | null;
+    holdType: string;
+    reason: string;
+  }[];
 };
 
 export function toJobShellApiDto(m: JobShellReadModel): JobShellApiDto {
+  const holdScopes = m.activeOperationalHolds.map((h) => ({ runtimeTaskId: h.runtimeTaskId }));
+  const activeHoldsBridge = m.activeOperationalHolds.map((h) => ({
+    id: h.id,
+    runtimeTaskId: h.runtimeTaskId,
+    reason: h.reason,
+  }));
   return {
     job: {
       id: m.job.id,
@@ -81,6 +94,7 @@ export function toJobShellApiDto(m: JobShellReadModel): JobShellApiDto {
           g.status === "UNSATISFIED" && 
           g.targets.some(tg => tg.taskId === t.id && tg.taskKind === "RUNTIME")
         );
+        const hasHold = runtimeTaskBlockedByActiveHolds(holdScopes, t.id);
         return {
           id: t.id,
           packageTaskId: t.packageTaskId,
@@ -97,13 +111,23 @@ export function toJobShellApiDto(m: JobShellReadModel): JobShellApiDto {
             completionProof: t.execution.completionProof,
           },
           actionability: toTaskActionabilityApiDto(
-            evaluateRuntimeTaskActionability(hasActivation, t.execution, hasUnsatisfiedPaymentGate),
+            evaluateRuntimeTaskActionability(hasActivation, t.execution, hasUnsatisfiedPaymentGate, hasHold, {
+              runtimeTaskId: t.id,
+              paymentGates: m.paymentGates,
+              activeHolds: activeHoldsBridge,
+            }),
           ),
           completionRequirementsJson: t.completionRequirementsJson,
           conditionalRulesJson: t.conditionalRulesJson,
           instructions: t.instructions,
         };
       }),
+    })),
+    activeOperationalHolds: m.activeOperationalHolds.map((h) => ({
+      id: h.id,
+      runtimeTaskId: h.runtimeTaskId,
+      holdType: h.holdType,
+      reason: h.reason,
     })),
   };
 }

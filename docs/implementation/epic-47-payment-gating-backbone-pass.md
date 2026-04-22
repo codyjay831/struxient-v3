@@ -28,10 +28,22 @@ The Payment Gating Backbone provides a server-side enforcement layer that preven
   3. Office-authorized satisfaction unlocks the tasks.
   4. Tasks can start normally after satisfaction.
 
+## Freeze-sourced materialization (close-out)
+
+- **Source of truth**: `paymentGateIntent.v0` embedded in **`executionPackageSnapshot`** at **send/freeze** (`derivePaymentGateIntentForFreeze` + `sendQuoteVersionForTenant`). Commercial line `paymentBeforeWork` drives target **`packageTaskId`** list.
+- **Materialization point**: **Activation** (`activateQuoteVersionInTransaction`) maps each `targetPackageTaskId` → new **`RuntimeTask.id`** on the activation flow, then creates **`PaymentGate`** + **`PaymentGateTarget`** rows (idempotent per `quoteVersionId`).
+- **Idempotent repair**: If activation already exists but the gate row is missing while the frozen snapshot still carries `paymentGateIntent`, a **replay activate** recreates the gate from the same frozen mapping (no duplicate gates).
+
+## Change-order supersede-safe retargeting (close-out)
+
+- **`applyChangeOrderForJob`**: After activating the CO draft version, **unsatisfied** gates that still target **about-to-be-superseded** runtime tasks → **`payment_gate_block`** (transaction refused). **Satisfied** gates → RUNTIME targets are **retargeted** by stable **`packageTaskId`** to the new flow’s runtime row, or **`payment_gate_retarget_failed`** if a target slot no longer exists (no silent dangling targets).
+
 ## Intentionally Left Out
-- **Auto-release logic**: Gates must be satisfied manually for now.
-- **Granular Hold logic**: While `Decision 02` mentions Holds, this pass focused on the durable `PaymentGate` backbone as requested.
-- **Change Order Retargeting**: Deferred to Epic 37 (Change Orders).
+
+- **Auto-satisfy / billing integration**: Gates are still cleared by **office** `satisfy` only; no PSP webhooks in this slice.
+- **Epic 48 / `Hold` model**: Generic operational holds remain separate.
+- **Pre-activation runtime-less gates**: Targets are **RUNTIME** ids only; intent is resolved at activation when manifest tasks exist.
 
 ## Known Follow-up Risks
-- **Change Orders**: When a Change Order removes or replaces a task that was a gate target, the gate policy will need to be explicitly updated or remapped. This is a known subquestion in `Decision 02`.
+
+- **Second gate on CO-applied quote version**: If a CO **draft** is sent with its **own** `paymentGateIntent`, activation of that version can create an **additional** job-scoped gate (`quoteVersionId` unique per version). Product may later **consolidate** job-level deposit UX.

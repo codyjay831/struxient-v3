@@ -119,7 +119,16 @@ export type Slice1InvariantCode =
   | "CUSTOMER_NOTE_BODY_INVALID"
   | "CUSTOMER_NOTE_AUTHOR_NOT_FOUND"
   /** Only the note author may change body or archive state (Epic 05 integrity slice). */
-  | "CUSTOMER_NOTE_UPDATE_NOT_AUTHORIZED";
+  | "CUSTOMER_NOTE_UPDATE_NOT_AUTHORIZED"
+  // Epic 16 — library `PacketTaskLine` authoring on DRAFT `ScopePacketRevision` only.
+  | "SCOPE_PACKET_TASK_LINE_MUTATION_NOT_DRAFT"
+  | "SCOPE_PACKET_TASK_LINE_LINE_KEY_TAKEN"
+  | "SCOPE_PACKET_TASK_LINE_NOT_FOUND"
+  // Epic 29 / 48 — operational holds (distinct from PaymentGate).
+  | "HOLD_NOT_FOUND"
+  | "HOLD_RELEASE_NOT_ACTIVE"
+  | "HOLD_INVALID_REASON"
+  | "HOLD_RUNTIME_TASK_NOT_ON_JOB";
 
 export class InvariantViolationError extends Error {
   readonly code: Slice1InvariantCode;

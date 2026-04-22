@@ -50,6 +50,19 @@ export default async function PortalQuoteReviewPage({ params }: Props) {
           ) : null}
         </header>
 
+        {model.changeOrderSummary ? (
+          <section className="mt-8 rounded-lg border border-amber-900/50 bg-amber-950/25 px-4 py-3">
+            <h2 className="text-[11px] font-semibold uppercase tracking-wider text-amber-400/90">
+              Change order proposal
+            </h2>
+            <p className="mt-2 text-sm text-amber-100/95">{model.changeOrderSummary.reason}</p>
+            <p className="mt-2 text-[11px] leading-relaxed text-amber-200/75">
+              The scope list below is the frozen plan from this proposal version. Accepting applies only
+              to this version, not other quote history.
+            </p>
+          </section>
+        ) : null}
+
         <section className="mt-8">
           <h2 className="text-sm font-semibold text-zinc-200">Scope summary (frozen at send)</h2>
           <p className="mt-1 text-xs text-zinc-500">

@@ -87,6 +87,34 @@ export {
   type CustomerNoteSummaryDto,
 } from "./reads/customer-note-reads";
 export {
+  listCustomerDocumentsForTenant,
+  type CustomerDocumentSummaryDto,
+} from "./reads/customer-document-reads";
+export {
+  listCustomerAuditEventsForTenant,
+  type CustomerAuditEventListItemDto,
+} from "./reads/customer-audit-reads";
+export {
+  getTenantOperationalSettingsForTenant,
+  type TenantOperationalSettingsDto,
+} from "./reads/tenant-operational-settings-reads";
+export { listTenantMembersForTenant, type TenantMemberSummaryDto } from "./reads/tenant-team-reads";
+export {
+  updateTenantMemberRoleForTenant,
+  type UpdateTenantMemberRoleResult,
+} from "./mutations/tenant-member-role-mutations";
+export {
+  updateTenantOperationalSettingsForTenant,
+  type UpdateTenantOperationalSettingsInput,
+  type UpdateTenantOperationalSettingsResult,
+} from "./mutations/tenant-operational-settings-mutations";
+export {
+  archiveCustomerDocumentForTenant,
+  createCustomerDocumentForTenant,
+  type ArchiveCustomerDocumentResult,
+  type CreateCustomerDocumentResult,
+} from "./mutations/customer-document-mutations";
+export {
   listCustomerRecentActivityForTenant,
   type CustomerRecentActivityItemDto,
   type CustomerRecentActivityKind,
@@ -176,7 +204,9 @@ export {
   type SignQuoteVersionViaPortalSuccessDto,
 } from "./mutations/sign-quote-version-via-portal";
 export {
+  retryQuotePortalShareDeliveryForTenant,
   sendQuotePortalShareForTenant,
+  type RetryQuotePortalShareDeliveryResult,
   type SendQuotePortalShareRequestBody,
   type SendQuotePortalShareResult,
 } from "./mutations/quote-portal-share-delivery";
@@ -196,6 +226,43 @@ export {
   type ActivateQuoteVersionSuccessDto,
 } from "./mutations/activate-quote-version";
 export { getJobShellReadModel, type JobShellReadModel } from "./reads/job-shell";
+export {
+  getJobHandoffForTenant,
+  parseAssignedUserIdsJson,
+  type JobHandoffReadRow,
+} from "./reads/job-handoff-reads";
+export {
+  acknowledgeJobHandoffForTenant,
+  sendJobHandoffForTenant,
+  upsertJobHandoffDraftForTenant,
+  type AcknowledgeJobHandoffResult,
+  type SendJobHandoffResult,
+  type UpsertJobHandoffDraftResult,
+} from "./mutations/job-handoff-mutations";
+export {
+  GLOBAL_WORK_FEED_SCHEMA_VERSION,
+  classifyGlobalWorkFeedRuntimeLane,
+  getGlobalWorkFeedReadModelForTenant,
+  isPreJobTaskOpenInWorkFeedStatus,
+  type GlobalWorkFeedPreJobTaskReadRow,
+  type GlobalWorkFeedReadModel,
+  type GlobalWorkFeedRuntimeLane,
+  type GlobalWorkFeedRuntimeTaskReadRow,
+  type GlobalWorkFeedSkeletonTaskReadRow,
+} from "./reads/global-work-feed-reads";
+export {
+  OFFICE_SEARCH_DEFAULT_LIMIT_PER_SECTION,
+  OFFICE_SEARCH_QUERY_MAX_LEN,
+  OFFICE_SEARCH_QUERY_MIN_LEN,
+  OFFICE_SEARCH_SECTION_ORDER,
+  OFFICE_TENANT_SEARCH_READ_SCHEMA_VERSION,
+  normalizeOfficeSearchQuery,
+  searchOfficeTenantAnchors,
+  type OfficeSearchHit,
+  type OfficeSearchSection,
+  type OfficeSearchSectionKind,
+  type OfficeTenantSearchReadModel,
+} from "./reads/office-tenant-search-reads";
 export {
   getFlowExecutionReadModel,
   type FlowExecutionReadModel,
@@ -217,8 +284,13 @@ export {
   evaluateRuntimeTaskActionability,
   evaluateSkeletonTaskActionability,
   toTaskActionabilityApiDto,
+  type ActiveHoldForActionabilityBridge,
+  type PaymentGateForActionabilityBridge,
+  type RuntimeTaskActionabilityBridgeContext,
+  type SkeletonTaskActionabilityBridgeContext,
   type TaskActionability,
   type TaskActionabilityApiDto,
-  type TaskStartBlockReason,
   type TaskCompleteBlockReason,
+  type TaskStartBlockReason,
+  type TaskStartBlockerDetail,
 } from "./eligibility/task-actionability";

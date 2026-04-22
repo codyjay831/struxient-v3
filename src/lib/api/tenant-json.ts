@@ -133,6 +133,7 @@ function invariantToHttpStatus(code: Slice1InvariantCode): number {
     case "TASK_DEFINITION_TASK_KEY_TAKEN":
     case "QUOTE_LOCAL_PACKET_HAS_PINNING_LINES":
     case "QUOTE_LOCAL_PACKET_ITEM_LINE_KEY_TAKEN":
+    case "SCOPE_PACKET_TASK_LINE_LINE_KEY_TAKEN":
     case "QUOTE_LOCAL_PACKET_PROMOTION_PACKET_KEY_TAKEN":
     case "QUOTE_LOCAL_PACKET_PROMOTION_ALREADY_PROMOTED":
     // Resource exists but is in the wrong lifecycle state for the requested
@@ -150,6 +151,8 @@ function invariantToHttpStatus(code: Slice1InvariantCode): number {
     // Revision-2 evolution create-DRAFT preflight conflicts (decision pack §3-5).
     // All three describe a state-conflict between the requested DRAFT-clone
     // transition and the current state of the source packet → 409.
+    case "HOLD_RELEASE_NOT_ACTIVE":
+    case "SCOPE_PACKET_TASK_LINE_MUTATION_NOT_DRAFT":
     case "SCOPE_PACKET_REVISION_CREATE_DRAFT_NO_PUBLISHED_SOURCE":
     case "SCOPE_PACKET_REVISION_CREATE_DRAFT_PACKET_HAS_DRAFT":
     case "WORKFLOW_TEMPLATE_KEY_TAKEN":
@@ -168,6 +171,8 @@ function invariantToHttpStatus(code: Slice1InvariantCode): number {
     case "CUSTOMER_NOTE_PARENT_NOT_FOUND":
     case "CUSTOMER_NOTE_NOT_FOUND":
     case "CUSTOMER_NOTE_AUTHOR_NOT_FOUND":
+    case "SCOPE_PACKET_TASK_LINE_NOT_FOUND":
+    case "HOLD_NOT_FOUND":
       return 404;
     case "INVALID_PROPOSAL_GROUP_NAME":
     case "INVALID_LINE_QUANTITY":
@@ -207,6 +212,8 @@ function invariantToHttpStatus(code: Slice1InvariantCode): number {
     case "CUSTOMER_CONTACT_METHOD_VALUE_INVALID":
     case "CUSTOMER_CONTACT_ROLE_INVALID":
     case "CUSTOMER_NOTE_BODY_INVALID":
+    case "HOLD_INVALID_REASON":
+    case "HOLD_RUNTIME_TASK_NOT_ON_JOB":
       return 400;
     case "CUSTOMER_NOTE_UPDATE_NOT_AUTHORIZED":
       return 403;

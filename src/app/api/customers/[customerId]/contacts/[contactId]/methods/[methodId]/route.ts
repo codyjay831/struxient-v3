@@ -30,6 +30,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     customerId,
     contactId,
     methodId,
+    actorUserId: authGate.principal.userId,
   };
   if (typeof o.value === "string") patch.value = o.value;
   if (typeof o.isPrimary === "boolean") patch.isPrimary = o.isPrimary;
@@ -76,6 +77,7 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
       customerId,
       contactId,
       methodId,
+      actorUserId: authGate.principal.userId,
     });
     if (result === "not_found") {
       return NextResponse.json(

@@ -4,6 +4,7 @@ import {
   AutoActivateAfterSignError,
   type ActivateQuoteVersionSuccessDto,
 } from "./activate-quote-version";
+import { advancePendingCustomerChangeOrderOnQuoteVersionSigned } from "./change-order-after-quote-signed";
 
 const MAX_SIGNER_NAME = 120;
 const MAX_SIGNER_EMAIL = 254;
@@ -123,6 +124,7 @@ export async function signQuoteVersionViaPortalShareToken(
           outcome = { ok: false, kind: "signed_state_inconsistent" };
           return;
         }
+        await advancePendingCustomerChangeOrderOnQuoteVersionSigned(tx, locked.id);
         outcome = {
           ok: true,
           data: {
@@ -190,6 +192,8 @@ export async function signQuoteVersionViaPortalShareToken(
           signedById: null,
         },
       });
+
+      await advancePendingCustomerChangeOrderOnQuoteVersionSigned(tx, locked.id);
 
       await tx.auditEvent.create({
         data: {

@@ -80,6 +80,12 @@ export default async function OfficeFlowsListPage() {
             Activated execution records. Every flow was created by activating a signed quote version
             and is the entry point to its work feed.
           </p>
+          <p className="text-xs text-zinc-600 mt-2">
+            <Link href="/work" className="text-sky-500/90 hover:text-sky-400 underline decoration-sky-900/40">
+              Cross-flow work
+            </Link>{" "}
+            — runtime tasks across jobs, grouped by actionability (Epic 39 foundation).
+          </p>
         </div>
       </div>
 

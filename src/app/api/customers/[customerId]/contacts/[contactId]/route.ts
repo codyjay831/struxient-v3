@@ -28,6 +28,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     tenantId: authGate.principal.tenantId,
     customerId,
     contactId,
+    actorUserId: authGate.principal.userId,
   };
   if (typeof o.displayName === "string") patch.displayName = o.displayName;
   if ("role" in o) patch.role = o.role;

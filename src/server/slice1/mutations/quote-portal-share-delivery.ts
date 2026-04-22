@@ -190,3 +190,170 @@ export async function sendQuotePortalShareForTenant(
     return { ok: true, data: { deliveryId: delivery.id } };
   });
 }
+
+export type RetryQuotePortalShareDeliveryResult =
+  | { ok: true; data: { deliveryId: string } }
+  | { ok: false; kind: "not_found" }
+  | { ok: false; kind: "not_failed" }
+  | { ok: false; kind: "not_sent" }
+  | { ok: false; kind: "no_portal_token" }
+  | { ok: false; kind: "invalid_actor" }
+  | { ok: false; kind: "missing_recipient" };
+
+/**
+ * Re-invoke comms for a **FAILED** quote portal delivery row (mirrors `retryFlowShareDeliveryForTenant`).
+ * Uses the **current** portal token on the quote version so retries stay valid after token rotation.
+ */
+export async function retryQuotePortalShareDeliveryForTenant(
+  prisma: PrismaClient,
+  params: {
+    tenantId: string;
+    quoteVersionId: string;
+    deliveryId: string;
+    actorUserId: string;
+    baseUrl: string;
+  },
+): Promise<RetryQuotePortalShareDeliveryResult> {
+  const actorId = params.actorUserId.trim();
+  if (!actorId) {
+    return { ok: false, kind: "invalid_actor" };
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const delivery = await tx.quotePortalShareDelivery.findFirst({
+      where: {
+        id: params.deliveryId,
+        tenantId: params.tenantId,
+        quoteVersionId: params.quoteVersionId,
+      },
+      include: {
+        quoteVersion: {
+          select: {
+            id: true,
+            status: true,
+            versionNumber: true,
+            portalQuoteShareToken: true,
+            quote: {
+              select: {
+                quoteNumber: true,
+                customer: { select: { name: true } },
+                tenant: { select: { id: true, name: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!delivery) {
+      return { ok: false, kind: "not_found" } as const;
+    }
+    if (delivery.providerStatus !== PublicShareDeliveryStatus.FAILED) {
+      return { ok: false, kind: "not_failed" } as const;
+    }
+    if (delivery.quoteVersion.status !== "SENT") {
+      return { ok: false, kind: "not_sent" } as const;
+    }
+    const portalToken = delivery.quoteVersion.portalQuoteShareToken;
+    if (!portalToken) {
+      return { ok: false, kind: "no_portal_token" } as const;
+    }
+
+    if (
+      delivery.deliveryMethod !== PublicShareDeliveryMethod.MANUAL_LINK &&
+      (!delivery.recipientDetail || delivery.recipientDetail.trim().length === 0)
+    ) {
+      return { ok: false, kind: "missing_recipient" } as const;
+    }
+
+    const actor = await tx.user.findFirst({
+      where: { id: actorId, tenantId: params.tenantId },
+      select: { id: true },
+    });
+    if (!actor) {
+      return { ok: false, kind: "invalid_actor" } as const;
+    }
+
+    await tx.quotePortalShareDelivery.update({
+      where: { id: delivery.id },
+      data: { providerStatus: PublicShareDeliveryStatus.SENDING },
+    });
+
+    const qv = delivery.quoteVersion;
+    const base = params.baseUrl.replace(/\/$/, "");
+    const portalUrl = `${base}/portal/quotes/${encodeURIComponent(portalToken)}`;
+    const provider = getCommsProvider();
+
+    const vars = {
+      customerName: qv.quote.customer.name,
+      quoteNumber: qv.quote.quoteNumber,
+      versionNumber: qv.versionNumber,
+      portalUrl,
+      companyName: qv.quote.tenant.name,
+    };
+    const isFollowUp = delivery.isFollowUp;
+    const recipient = delivery.recipientDetail?.trim() ?? "";
+
+    const maxAttempts = 3;
+    let attempt = 0;
+    let sendResult: CommsSendResult = { ok: false, error: "Initial state" };
+
+    while (attempt < maxAttempts) {
+      attempt++;
+      if (delivery.deliveryMethod === PublicShareDeliveryMethod.EMAIL) {
+        const content = renderQuotePortalEmailContent(vars, isFollowUp);
+        sendResult = await provider.sendEmail({
+          to: recipient,
+          subject: content.subject,
+          body: content.body,
+          html: content.html,
+        });
+      } else if (delivery.deliveryMethod === PublicShareDeliveryMethod.SMS) {
+        const content = renderQuotePortalSmsContent(vars, isFollowUp);
+        sendResult = await provider.sendSms({
+          to: recipient,
+          message: content.body,
+        });
+      } else {
+        sendResult = { ok: true, externalId: "manual" };
+      }
+
+      if (sendResult.ok) break;
+      if (attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, attempt * 500));
+      }
+    }
+
+    await tx.quotePortalShareDelivery.update({
+      where: { id: delivery.id },
+      data: {
+        providerStatus: sendResult.ok ? PublicShareDeliveryStatus.SENT : PublicShareDeliveryStatus.FAILED,
+        providerExternalId: sendResult.ok ? sendResult.externalId : delivery.providerExternalId,
+        providerError: sendResult.ok ? null : sendResult.error,
+        providerResponse:
+          sendResult.ok && sendResult.response != null ?
+            (sendResult.response as object)
+          : delivery.providerResponse ?? undefined,
+        shareToken: sendResult.ok ? portalToken : delivery.shareToken,
+        retryCount: (delivery.retryCount ?? 0) + attempt,
+        deliveredAt: new Date(),
+      },
+    });
+
+    await tx.auditEvent.create({
+      data: {
+        tenantId: params.tenantId,
+        eventType: "QUOTE_PORTAL_SHARE_DELIVERED",
+        actorId: actor.id,
+        targetQuoteVersionId: qv.id,
+        payloadJson: {
+          deliveryId: delivery.id,
+          retry: true,
+          status: sendResult.ok ? "SENT" : "FAILED",
+        },
+      },
+    });
+
+    return { ok: true, data: { deliveryId: delivery.id } } as const;
+  });
+}

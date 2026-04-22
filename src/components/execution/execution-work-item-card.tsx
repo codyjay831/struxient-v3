@@ -215,6 +215,20 @@ export function ExecutionWorkItemCard({
                     <p className="text-[10px] font-bold text-amber-500 uppercase tracking-tighter">Start Blocked</p>
                     <p className="text-xs text-amber-200/70 font-medium leading-relaxed italic">
                       {item.actionability.start.reasons.join(", ")}
+                      {item.actionability.start.blockerDetails.length > 0 ? (
+                        <>
+                          <br />
+                          <span className="text-amber-200/50 not-italic">
+                            {item.actionability.start.blockerDetails
+                              .map((d) =>
+                                d.kind === "payment_gate"
+                                  ? `Gate: ${d.title}`
+                                  : `Hold (${d.scope}): ${d.reason}`,
+                              )
+                              .join(" · ")}
+                          </span>
+                        </>
+                      ) : null}
                     </p>
                   </div>
                 </div>

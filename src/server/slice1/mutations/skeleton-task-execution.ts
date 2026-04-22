@@ -1,6 +1,7 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { parseSkeletonTasksFromWorkflowSnapshot } from "../compose-preview/workflow-snapshot-skeleton-tasks";
 import { evaluateSkeletonTaskActionability } from "../eligibility/task-actionability";
+import { skeletonStartBlockedByActiveHolds } from "../eligibility/hold-eligibility";
 import { deriveRuntimeExecutionSummary } from "../reads/derive-runtime-execution-summary";
 import type { RuntimeTaskExecutionRequestBody } from "./runtime-task-execution";
 
@@ -21,7 +22,8 @@ export type StartSkeletonTaskResult =
   | { ok: false; kind: "unknown_skeleton_task" }
   | { ok: false; kind: "already_completed" }
   | { ok: false; kind: "flow_not_activated" }
-  | { ok: false; kind: "payment_gate_unsatisfied" };
+  | { ok: false; kind: "payment_gate_unsatisfied" }
+  | { ok: false; kind: "hold_active" };
 
 export type CompleteSkeletonTaskResult =
   | { ok: true; data: SkeletonTaskExecutionEventDto }
@@ -103,6 +105,12 @@ export async function startSkeletonTaskForTenant(
       select: { id: true },
     });
 
+    const activeHolds = await tx.hold.findMany({
+      where: { tenantId: params.tenantId, jobId: flow.jobId, status: "ACTIVE" },
+      select: { runtimeTaskId: true },
+    });
+    const hasOperationalHold = skeletonStartBlockedByActiveHolds(activeHolds);
+
     const skEvents = await tx.taskExecution.findMany({
       where: {
         flowId: flow.id,
@@ -117,6 +125,7 @@ export async function startSkeletonTaskForTenant(
       activation != null,
       execution,
       hasUnsatisfiedPaymentGate != null,
+      hasOperationalHold,
     );
     if (actionability.start.reasons.includes("TASK_ALREADY_COMPLETED")) {
       return { ok: false, kind: "already_completed" };
@@ -126,6 +135,9 @@ export async function startSkeletonTaskForTenant(
     }
     if (actionability.start.reasons.includes("PAYMENT_GATE_UNSATISFIED")) {
       return { ok: false, kind: "payment_gate_unsatisfied" };
+    }
+    if (actionability.start.reasons.includes("HOLD_ACTIVE")) {
+      return { ok: false, kind: "hold_active" };
     }
 
     const actor = await tx.user.findFirst({
@@ -252,7 +264,7 @@ export async function completeSkeletonTaskForTenant(
       orderBy: { createdAt: "asc" },
     });
     const execution = deriveRuntimeExecutionSummary(skEvents);
-    const actionability = evaluateSkeletonTaskActionability(activation != null, execution, false);
+    const actionability = evaluateSkeletonTaskActionability(activation != null, execution, false, false);
     if (actionability.complete.reasons.includes("FLOW_NOT_ACTIVATED")) {
       return { ok: false, kind: "flow_not_activated" };
     }

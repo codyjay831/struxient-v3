@@ -34,12 +34,20 @@ export type JobShellPaymentGateRead = {
   targets: { taskId: string; taskKind: "RUNTIME" | "SKELETON" }[];
 };
 
+export type JobShellOperationalHoldRead = {
+  id: string;
+  runtimeTaskId: string | null;
+  holdType: string;
+  reason: string;
+};
+
 export type JobShellReadModel = {
   job: { id: string; createdAt: Date; flowGroupId: string; tenantId: string };
   flowGroup: { id: string; name: string; customerId: string };
   customer: { id: string; name: string };
   flows: JobShellFlowRead[];
   paymentGates: JobShellPaymentGateRead[];
+  activeOperationalHolds: JobShellOperationalHoldRead[];
 };
 
 /**
@@ -125,6 +133,10 @@ export async function getJobShellReadModel(
           },
         },
       },
+      holds: {
+        where: { status: "ACTIVE" },
+        select: { id: true, runtimeTaskId: true, holdType: true, reason: true },
+      },
     },
   });
 
@@ -174,6 +186,12 @@ export async function getJobShellReadModel(
         taskId: tg.taskId,
         taskKind: tg.taskKind as "RUNTIME" | "SKELETON",
       })),
+    })),
+    activeOperationalHolds: row.holds.map((h) => ({
+      id: h.id,
+      runtimeTaskId: h.runtimeTaskId,
+      holdType: h.holdType,
+      reason: h.reason,
     })),
   };
 }

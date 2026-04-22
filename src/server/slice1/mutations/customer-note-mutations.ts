@@ -52,14 +52,28 @@ export async function createCustomerNoteForTenant(
 
   const body = assertCustomerNoteBody(params.body);
 
-  const row = await prisma.customerNote.create({
-    data: {
-      tenantId: customer.tenantId,
-      customerId: customer.id,
-      createdById: actor.id,
-      body,
-    },
-    select: { id: true, body: true, archivedAt: true, updatedAt: true },
+  const row = await prisma.$transaction(async (tx) => {
+    const note = await tx.customerNote.create({
+      data: {
+        tenantId: customer.tenantId,
+        customerId: customer.id,
+        createdById: actor.id,
+        body,
+      },
+      select: { id: true, body: true, archivedAt: true, updatedAt: true },
+    });
+
+    await tx.auditEvent.create({
+      data: {
+        tenantId: params.tenantId,
+        eventType: "CUSTOMER_NOTE_CREATED",
+        actorId: actor.id,
+        targetCustomerId: customer.id,
+        payloadJson: { noteId: note.id },
+      },
+    });
+
+    return note;
   });
 
   return {
@@ -124,10 +138,32 @@ export async function updateCustomerNoteForTenant(
     };
   }
 
-  const row = await prisma.customerNote.update({
-    where: { id: existing.id },
-    data,
-    select: { id: true, body: true, archivedAt: true, updatedAt: true },
+  const row = await prisma.$transaction(async (tx) => {
+    const note = await tx.customerNote.update({
+      where: { id: existing.id },
+      data,
+      select: { id: true, body: true, archivedAt: true, updatedAt: true },
+    });
+
+    let eventType: "CUSTOMER_NOTE_ARCHIVED" | "CUSTOMER_NOTE_UPDATED" = "CUSTOMER_NOTE_UPDATED";
+    const payload: Record<string, unknown> = { noteId: note.id };
+    if (input.archived === true) {
+      eventType = "CUSTOMER_NOTE_ARCHIVED";
+    } else if (input.archived === false) {
+      payload.unarchived = true;
+    }
+
+    await tx.auditEvent.create({
+      data: {
+        tenantId: input.tenantId,
+        eventType,
+        actorId: input.actorUserId,
+        targetCustomerId: input.customerId,
+        payloadJson: payload,
+      },
+    });
+
+    return note;
   });
 
   return {

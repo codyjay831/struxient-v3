@@ -57,6 +57,10 @@ export type QuoteWorkspaceChangeOrderDto = {
   reason: string;
   appliedAt: string | null;
   createdAt: string;
+  draftQuoteVersionId: string | null;
+  /** Present when the CO draft was sent for portal review (Epic 37). */
+  draftQuotePortalShareToken: string | null;
+  draftQuoteVersionStatus: string | null;
 };
 
 /** Compact visibility for media evidence. */
@@ -259,15 +263,22 @@ export async function getQuoteWorkspaceForTenant(
         reason: true,
         appliedAt: true,
         createdAt: true,
+        draftQuoteVersionId: true,
+        draftQuoteVersion: {
+          select: { portalQuoteShareToken: true, status: true },
+        },
       },
     });
     for (const co of cos) {
       changeOrders.push({
         id: co.id,
-        status: co.status as any,
+        status: co.status as QuoteWorkspaceChangeOrderDto["status"],
         reason: co.reason,
         appliedAt: co.appliedAt?.toISOString() ?? null,
         createdAt: co.createdAt.toISOString(),
+        draftQuoteVersionId: co.draftQuoteVersionId,
+        draftQuotePortalShareToken: co.draftQuoteVersion?.portalQuoteShareToken ?? null,
+        draftQuoteVersionStatus: co.draftQuoteVersion?.status ?? null,
       });
     }
 

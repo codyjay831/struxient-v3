@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { tryGetApiPrincipal } from "@/lib/auth/api-principal";
+import { principalHasCapability, tryGetApiPrincipal } from "@/lib/auth/api-principal";
 import { redirect } from "next/navigation";
 
 export default async function OfficeLayout({
@@ -25,6 +25,8 @@ export default async function OfficeLayout({
   const roleLabel = principal.role
     ? principal.role.toLowerCase().replace(/_/g, " ")
     : "member";
+
+  const showTenantSettings = principalHasCapability(principal, "office_mutate");
 
   return (
     <div className="flex min-h-screen bg-zinc-950 text-zinc-200">
@@ -63,6 +65,20 @@ export default async function OfficeLayout({
               Customers
             </Link>
             <Link
+              href="/work"
+              className="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800 transition-all"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
+              Work
+            </Link>
+            <Link
+              href="/search"
+              className="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800 transition-all"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              Search
+            </Link>
+            <Link
               href="/flows"
               className="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800 transition-all"
             >
@@ -76,6 +92,24 @@ export default async function OfficeLayout({
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
               Jobs
             </Link>
+            {showTenantSettings ? (
+              <>
+                <Link
+                  href="/settings/tenant"
+                  className="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800 transition-all"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                  Tenant settings
+                </Link>
+                <Link
+                  href="/settings/team"
+                  className="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800 transition-all"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                  Team & roles
+                </Link>
+              </>
+            ) : null}
             <div className="pt-4 pb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
               Library
             </div>
@@ -136,6 +170,12 @@ export default async function OfficeLayout({
              Tenant ID: <span className="font-mono text-zinc-400">{principal.tenantId}</span>
           </div>
           <div className="flex items-center gap-4">
+             <Link
+               href="/search"
+               className="text-xs text-zinc-400 hover:text-zinc-200 font-medium hidden sm:inline"
+             >
+               Search
+             </Link>
              <Link href="/quotes/new" className="text-xs bg-sky-700 hover:bg-sky-600 text-white px-3 py-1.5 rounded transition-colors font-medium">
                 + New Quote
              </Link>

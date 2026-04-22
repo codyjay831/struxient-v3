@@ -52,13 +52,17 @@ export async function applyChangeOrderForJob(
       return { ok: false, kind: "change_order_not_found" };
     }
 
-    if (co.status === "APPLIED") {
+    if (co.status === "APPLIED" || co.status === "VOID") {
       return { ok: false, kind: "invalid_status", status: co.status };
     }
 
-    // Allow apply if SIGNED (commercial) or PM marked it READY_TO_APPLY
+    /**
+     * Apply when the draft quote is **SIGNED** (customer portal, office-recorded, or legacy tests)
+     * **or** the CO was advanced to **READY_TO_APPLY** (same moment as sign for Epic 37 flow).
+     * **PENDING_CUSTOMER** without a signed draft remains blocked here.
+     */
     if (co.status !== "READY_TO_APPLY" && co.draftQuoteVersion?.status !== "SIGNED") {
-       return { ok: false, kind: "invalid_status", status: co.status };
+      return { ok: false, kind: "invalid_status", status: co.status };
     }
 
     const draftVersionId = co.draftQuoteVersionId;

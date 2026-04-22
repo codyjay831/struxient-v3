@@ -67,6 +67,28 @@ export async function POST(request: NextRequest, context: RouteContext) {
         { status: 409 },
       );
     }
+    if (result.ok === false && result.kind === "payment_gate_unsatisfied") {
+      return NextResponse.json(
+        {
+          error: {
+            code: "PAYMENT_GATE_UNSATISFIED",
+            message: "An unsatisfied payment gate targets this task; start is blocked until finance satisfies the gate.",
+          },
+        },
+        { status: 409 },
+      );
+    }
+    if (result.ok === false && result.kind === "hold_active") {
+      return NextResponse.json(
+        {
+          error: {
+            code: "HOLD_ACTIVE",
+            message: "An active operational hold blocks starting this task until office releases it.",
+          },
+        },
+        { status: 409 },
+      );
+    }
     if (!result.ok) {
       throw new Error("Unexpected start runtime task result");
     }

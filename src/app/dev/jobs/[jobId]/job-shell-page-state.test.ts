@@ -161,6 +161,24 @@ describe("summarizeFlowRuntimeTasks", () => {
     expect(r.blockingStartReasons).toEqual(["PAYMENT_GATE_UNSATISFIED"]);
   });
 
+  it("returns health=blocked when at least one task carries HOLD_ACTIVE", () => {
+    const r = summarizeFlowRuntimeTasks(
+      FLOW(true, [T("not_started", ["HOLD_ACTIVE"]), T("not_started")]),
+    );
+    expect(r.health).toBe("blocked");
+    expect(r.blockingStartReasons).toEqual(["HOLD_ACTIVE"]);
+  });
+
+  it("dedupes HOLD_ACTIVE + PAYMENT_GATE_UNSATISFIED across tasks (sorted)", () => {
+    const r = summarizeFlowRuntimeTasks(
+      FLOW(true, [
+        T("not_started", ["HOLD_ACTIVE"]),
+        T("not_started", ["PAYMENT_GATE_UNSATISFIED", "HOLD_ACTIVE"]),
+      ]),
+    );
+    expect(r.blockingStartReasons).toEqual(["HOLD_ACTIVE", "PAYMENT_GATE_UNSATISFIED"]);
+  });
+
   it("ignores reasons that are not real blockers (already_started/already_completed/already_accepted/flow_not_activated)", () => {
     // A task whose only reasons are FLOW_NOT_ACTIVATED + TASK_ALREADY_STARTED
     // should not count as a 'blocked' health (those are state-of-task, not

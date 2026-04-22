@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { evaluateRuntimeTaskActionability } from "../eligibility/task-actionability";
+import { runtimeTaskBlockedByActiveHolds } from "../eligibility/hold-eligibility";
 import { deriveRuntimeExecutionSummary } from "../reads/derive-runtime-execution-summary";
 
 export type RuntimeTaskExecutionRequestBody = {
@@ -35,7 +36,8 @@ export type StartRuntimeTaskResult =
   | { ok: false; kind: "invalid_actor" }
   | { ok: false; kind: "already_completed" }
   | { ok: false; kind: "flow_not_activated" }
-  | { ok: false; kind: "payment_gate_unsatisfied" };
+  | { ok: false; kind: "payment_gate_unsatisfied" }
+  | { ok: false; kind: "hold_active" };
 
 export type CompleteRuntimeTaskResult =
   | { ok: true; data: TaskExecutionEventDto }
@@ -92,6 +94,12 @@ export async function startRuntimeTaskForTenant(
       select: { id: true },
     });
 
+    const activeHolds = await tx.hold.findMany({
+      where: { tenantId: params.tenantId, jobId: rt.flow.jobId, status: "ACTIVE" },
+      select: { runtimeTaskId: true },
+    });
+    const hasOperationalHold = runtimeTaskBlockedByActiveHolds(activeHolds, rt.id);
+
     const runtimeEvents = await tx.taskExecution.findMany({
       where: { runtimeTaskId: rt.id, taskKind: "RUNTIME" },
       select: { eventType: true, createdAt: true },
@@ -102,6 +110,7 @@ export async function startRuntimeTaskForTenant(
       activation != null,
       execution,
       hasUnsatisfiedPaymentGate != null,
+      hasOperationalHold,
     );
     if (actionability.start.reasons.includes("TASK_ALREADY_COMPLETED")) {
       return { ok: false, kind: "already_completed" };
@@ -111,6 +120,9 @@ export async function startRuntimeTaskForTenant(
     }
     if (actionability.start.reasons.includes("PAYMENT_GATE_UNSATISFIED")) {
       return { ok: false, kind: "payment_gate_unsatisfied" };
+    }
+    if (actionability.start.reasons.includes("HOLD_ACTIVE")) {
+      return { ok: false, kind: "hold_active" };
     }
 
     const actor = await tx.user.findFirst({
@@ -327,7 +339,7 @@ export async function completeRuntimeTaskForTenant(
       orderBy: { createdAt: "asc" },
     });
     const execution = deriveRuntimeExecutionSummary(runtimeEvents);
-    const actionability = evaluateRuntimeTaskActionability(activation != null, execution, false);
+    const actionability = evaluateRuntimeTaskActionability(activation != null, execution, false, false);
     if (actionability.complete.reasons.includes("FLOW_NOT_ACTIVATED")) {
       return { ok: false, kind: "flow_not_activated" };
     }

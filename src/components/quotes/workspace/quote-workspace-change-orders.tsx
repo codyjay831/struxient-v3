@@ -11,6 +11,12 @@ type Props = {
   canOfficeMutate: boolean;
 };
 
+function canApplyChangeOrder(co: QuoteWorkspaceChangeOrderDto): boolean {
+  if (co.status === "APPLIED" || co.status === "VOID") return false;
+  if (co.status === "PENDING_CUSTOMER") return false;
+  return co.status === "READY_TO_APPLY" || co.draftQuoteVersionStatus === "SIGNED";
+}
+
 export function QuoteWorkspaceChangeOrders({ quoteId, jobId, changeOrders, canOfficeMutate }: Props) {
   const router = useRouter();
   const [isCreating, setIsCreating] = useState(false);
@@ -80,7 +86,13 @@ export function QuoteWorkspaceChangeOrders({ quoteId, jobId, changeOrders, canOf
       </div>
 
       <div className="p-4 space-y-4">
-        {result && <InternalActionResult result={result} />}
+        {result ? (
+          <InternalActionResult
+            kind={result.ok ? "success" : "error"}
+            title={result.ok ? "Success" : "Something went wrong"}
+            message={result.message}
+          />
+        ) : null}
 
         {changeOrders.length === 0 ? (
           <p className="text-xs text-zinc-500 italic">No change orders recorded for this job.</p>
@@ -90,28 +102,60 @@ export function QuoteWorkspaceChangeOrders({ quoteId, jobId, changeOrders, canOf
               <div key={co.id} className="text-xs border border-zinc-800 rounded p-2 bg-zinc-950/50">
                 <div className="flex items-center justify-between mb-1">
                   <span className="font-mono text-[10px] text-zinc-500">{co.id.slice(-8)}</span>
-                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
-                    co.status === "APPLIED" ? "bg-emerald-500/10 text-emerald-400" :
-                    co.status === "VOID" ? "bg-zinc-500/10 text-zinc-400" :
-                    "bg-blue-500/10 text-blue-400"
-                  }`}>
+                  <span
+                    className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
+                      co.status === "APPLIED"
+                        ? "bg-emerald-500/10 text-emerald-400"
+                        : co.status === "VOID"
+                          ? "bg-zinc-500/10 text-zinc-400"
+                          : co.status === "PENDING_CUSTOMER"
+                            ? "bg-amber-500/10 text-amber-400"
+                            : co.status === "READY_TO_APPLY"
+                              ? "bg-sky-500/10 text-sky-300"
+                              : "bg-blue-500/10 text-blue-400"
+                    }`}
+                  >
                     {co.status}
                   </span>
                 </div>
                 <p className="text-zinc-300 mb-2">{co.reason}</p>
+                {co.status === "PENDING_CUSTOMER" ? (
+                  <p className="mb-2 text-[10px] leading-relaxed text-amber-200/85">
+                    Awaiting customer acceptance on the sent proposal link.
+                    {co.draftQuotePortalShareToken ? (
+                      <>
+                        {" "}
+                        <a
+                          href={`/portal/quotes/${encodeURIComponent(co.draftQuotePortalShareToken)}`}
+                          className="text-amber-300 underline hover:text-amber-200"
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Open customer portal
+                        </a>
+                      </>
+                    ) : null}
+                  </p>
+                ) : null}
+                {co.status === "READY_TO_APPLY" ? (
+                  <p className="mb-2 text-[10px] text-sky-200/80">
+                    Customer acceptance recorded — safe to apply when operations are ready.
+                  </p>
+                ) : null}
                 <div className="flex items-center justify-between text-[10px] text-zinc-500">
                   <span>Created {new Date(co.createdAt).toLocaleDateString()}</span>
-                  {co.status !== "APPLIED" && co.status !== "VOID" && canOfficeMutate && (
+                  {canOfficeMutate && canApplyChangeOrder(co) ? (
                     <button
+                      type="button"
                       onClick={() => applyCO(co.id)}
                       className="text-blue-400 hover:text-blue-300 font-medium"
                     >
-                      Apply Now
+                      Apply now
                     </button>
-                  )}
-                  {co.status === "APPLIED" && (
+                  ) : null}
+                  {co.status === "APPLIED" ? (
                     <span>Applied {new Date(co.appliedAt!).toLocaleDateString()}</span>
-                  )}
+                  ) : null}
                 </div>
               </div>
             ))}

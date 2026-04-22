@@ -62,6 +62,43 @@ enum AuditEventType {
   QUOTE_PORTAL_LINK_REGENERATED
   QUOTE_VERSION_VOIDED
   QUOTE_VERSION_SUPERSEDED
+  /// Epic 44 — office briefed field; does not mutate scope/freeze.
+  JOB_HANDOFF_SENT
+  JOB_HANDOFF_ACKNOWLEDGED
+  /// Epic 06 — office customer file row (not task evidence).
+  CUSTOMER_DOCUMENT_UPLOADED
+  CUSTOMER_DOCUMENT_ARCHIVED
+  /// Epic 57 — customer CRM surface (not user-authored note bodies in payload).
+  CUSTOMER_NOTE_CREATED
+  CUSTOMER_NOTE_UPDATED
+  CUSTOMER_NOTE_ARCHIVED
+  CUSTOMER_CONTACT_CREATED
+  CUSTOMER_CONTACT_UPDATED
+  CUSTOMER_CONTACT_ARCHIVED
+  CUSTOMER_CONTACT_METHOD_CHANGED
+  /// Epic 60 — tenant operational policy (no entity FK; payload only).
+  TENANT_OPERATIONAL_SETTINGS_UPDATED
+  /// Epic 59 — `User.role` change within tenant (office admin).
+  TENANT_MEMBER_ROLE_UPDATED
+}
+
+/// Epic 06 — coarse document kind for office customer files (not a full taxonomy).
+enum CustomerDocumentCategory {
+  DOCUMENT
+  IMAGE
+  OTHER
+}
+
+enum CustomerDocumentStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+/// Epic 44 — office-to-field briefing record (intent only; not scheduling authority).
+enum JobHandoffStatus {
+  DRAFT
+  SENT
+  ACKNOWLEDGED
 }
 
 enum PublicShareDeliveryMethod {
@@ -93,6 +130,17 @@ enum PublicShareStatus {
 enum PaymentGateStatus {
   UNSATISFIED
   SATISFIED
+}
+
+/// Operational overlay holds (Epic 29 / 48 backbone). Distinct from `PaymentGate` rows.
+enum HoldStatus {
+  ACTIVE
+  RELEASED
+}
+
+/// First slice: single office-authored operational type; payment-linked holds deferred.
+enum HoldType {
+  OPERATIONAL_CUSTOM
 }
 
 enum TaskExecutionTaskKind {
@@ -176,6 +224,8 @@ model Tenant {
   name               String
   /// When true, successful POST …/sign (non-replay) runs activation in the same transaction (`epic 33`).
   autoActivateOnSign Boolean  @default(false)
+  /// Max single **office** customer document upload (bytes); clamped server-side to platform min/ceiling (Epic 60).
+  customerDocumentMaxBytes Int @default(20971520)
   createdAt          DateTime @default(now())
 
   users                      User[]
@@ -201,6 +251,9 @@ model Tenant {
   quotePortalShareDeliveries QuotePortalShareDelivery[]
   customerContacts           CustomerContact[]
   customerNotes              CustomerNote[]
+  customerDocuments          CustomerDocument[]
+  jobHandoffs                JobHandoff[]
+  holds                      Hold[]
 }
 
 model User {
@@ -231,6 +284,9 @@ model User {
   changeOrdersCreated ChangeOrder[] @relation("ChangeOrderCreatedBy")
   changeOrdersApplied ChangeOrder[] @relation("ChangeOrderAppliedBy")
 
+  holdsCreated  Hold[] @relation("HoldCreatedBy")
+  holdsReleased Hold[] @relation("HoldReleasedBy")
+
   completionProofAttachments CompletionProofAttachment[] @relation("CompletionProofAttachmentCreatedBy")
 
   quoteLocalPacketsCreated QuoteLocalPacket[]     @relation("QuoteLocalPacketCreatedBy")
@@ -241,6 +297,12 @@ model User {
   projectShareDeliveries   ProjectShareDelivery[]
 
   customerNotesCreated CustomerNote[] @relation("CustomerNoteCreatedBy")
+
+  customerDocumentsUploaded CustomerDocument[] @relation("CustomerDocumentUploadedBy")
+
+  jobHandoffsCreated      JobHandoff[] @relation("JobHandoffCreatedBy")
+  jobHandoffsSent       JobHandoff[] @relation("JobHandoffSentBy")
+  jobHandoffsAcknowledged JobHandoff[] @relation("JobHandoffAcknowledgedBy")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -291,8 +353,36 @@ model Customer {
   quotes     Quote[]
   contacts   CustomerContact[]
   notes      CustomerNote[]
+  documents  CustomerDocument[]
+  auditEventsTargeted AuditEvent[] @relation("AuditEventTargetCustomer")
 
   @@index([tenantId])
+}
+
+/// Office-attached file on a **Customer** (Epic 06); not completion evidence — separate from `CompletionProofAttachment`.
+model CustomerDocument {
+  id           String                   @id @default(cuid())
+  tenantId     String
+  customerId   String
+  storageKey   String                   @unique
+  fileName     String
+  contentType  String
+  sizeBytes    Int
+  category     CustomerDocumentCategory @default(OTHER)
+  caption      String?
+  status       CustomerDocumentStatus   @default(ACTIVE)
+  archivedAt   DateTime?
+  uploadedById String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  uploadedBy User     @relation("CustomerDocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, customerId])
+  @@index([customerId, createdAt])
 }
 
 /// Office-authored note on a Customer (not `AuditEvent`; not a merged timeline yet).
@@ -584,6 +674,8 @@ model Job {
   activations  Activation[]
   paymentGates PaymentGate[]
   changeOrders ChangeOrder[]
+  holds        Hold[]
+  jobHandoff   JobHandoff?
 
   @@index([tenantId])
 }
@@ -704,6 +796,8 @@ model RuntimeTask {
   changeOrderCreated    ChangeOrder? @relation("RuntimeTaskCreatedByCO", fields: [changeOrderIdCreated], references: [id], onDelete: SetNull)
   changeOrderSuperseded ChangeOrder? @relation("RuntimeTaskSupersededByCO", fields: [changeOrderIdSuperseded], references: [id], onDelete: SetNull)
 
+  holds Hold[]
+
   completionProofs CompletionProof[]
 
   taskExecutions TaskExecution[]
@@ -796,12 +890,46 @@ model QuoteVersion {
   preJobTasks       PreJobTask[]
   quoteLocalPackets QuoteLocalPacket[]
   portalShareDeliveries QuotePortalShareDelivery[]
+  jobHandoffs           JobHandoff[]
 
   @@unique([quoteId, versionNumber])
   @@index([quoteId])
   @@index([status])
   @@index([pinnedWorkflowVersionId])
   @@index([signedById])
+}
+
+/// Epic 44 — single office-authored briefing per job; immutable core after acknowledge (MVP: no edit after ACK).
+model JobHandoff {
+  id     String @id @default(cuid())
+  tenantId String
+  jobId  String @unique
+  /// Activation quote version this handoff anchors to (same tenant/job; not a scope edit).
+  quoteVersionId String
+
+  status          JobHandoffStatus @default(DRAFT)
+  briefingNotes   String?        @db.Text
+  /// JSON string[] of `User.id` in this tenant; empty = any field role may acknowledge (MVP).
+  assignedUserIds Json             @default("[]")
+
+  createdByUserId String
+  sentAt            DateTime?
+  sentByUserId      String?
+  acknowledgedAt    DateTime?
+  acknowledgedByUserId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant   Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  job      Job          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  quoteVersion QuoteVersion @relation(fields: [quoteVersionId], references: [id], onDelete: Restrict)
+  createdBy User @relation("JobHandoffCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  sentBy    User? @relation("JobHandoffSentBy", fields: [sentByUserId], references: [id], onDelete: SetNull)
+  acknowledgedBy User? @relation("JobHandoffAcknowledgedBy", fields: [acknowledgedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([tenantId, status])
 }
 
 model QuoteLocalPacket {
@@ -905,6 +1033,8 @@ model AuditEvent {
   actorId              String?
   targetQuoteVersionId String?
   targetFlowId         String?
+  /// When set, row is queryable as **customer-scoped** system history (Epic 57).
+  targetCustomerId     String?
   payloadJson          Json?
   createdAt            DateTime       @default(now())
 
@@ -912,10 +1042,37 @@ model AuditEvent {
   actor              User?         @relation(fields: [actorId], references: [id], onDelete: Restrict)
   targetQuoteVersion QuoteVersion? @relation(fields: [targetQuoteVersionId], references: [id], onDelete: Restrict)
   targetFlow         Flow?         @relation(fields: [targetFlowId], references: [id], onDelete: Restrict)
+  targetCustomer     Customer?     @relation("AuditEventTargetCustomer", fields: [targetCustomerId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, createdAt])
   @@index([targetQuoteVersionId])
   @@index([targetFlowId])
+  @@index([tenantId, targetCustomerId, createdAt])
+}
+
+/// Office-applied operational pause on a job and optionally one manifest runtime task (Epic 29 backbone).
+model Hold {
+  id            String     @id @default(cuid())
+  tenantId      String
+  jobId         String
+  /// Null = job-wide hold (blocks all runtime tasks on the job + skeleton starts on that job).
+  runtimeTaskId String?
+  holdType      HoldType   @default(OPERATIONAL_CUSTOM)
+  status        HoldStatus @default(ACTIVE)
+  reason        String     @db.Text
+  createdById   String
+  createdAt     DateTime   @default(now())
+  releasedAt    DateTime?
+  releasedById  String?
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  job         Job          @relation(fields: [jobId], references: [id], onDelete: Restrict)
+  runtimeTask RuntimeTask? @relation(fields: [runtimeTaskId], references: [id], onDelete: Restrict)
+  createdBy   User         @relation("HoldCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  releasedBy  User?        @relation("HoldReleasedBy", fields: [releasedById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, jobId, status])
+  @@index([tenantId, runtimeTaskId, status])
 }
 
 model PaymentGate {

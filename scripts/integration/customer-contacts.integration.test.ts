@@ -32,6 +32,7 @@ describe("customer contacts foundation", () => {
       const created = await createCustomerContactForTenant(prisma, {
         tenantId: tenantA,
         customerId: custA.id,
+        actorUserId: userA,
         displayName: "Alex Site",
         role: "SITE",
       });
@@ -40,6 +41,7 @@ describe("customer contacts foundation", () => {
         tenantId: tenantA,
         customerId: custA.id,
         contactId: created.id,
+        actorUserId: userA,
         type: "EMAIL",
         value: "Alex@Example.COM",
         isPrimary: true,
@@ -61,6 +63,7 @@ describe("customer contacts foundation", () => {
       expect(emptyB).toEqual([]);
     } finally {
       await prisma.customerContact.deleteMany({ where: { customerId: { in: [custA.id, custB.id] } } });
+      await prisma.auditEvent.deleteMany({ where: { tenantId: { in: [tenantA, tenantB] } } });
       await prisma.customer.deleteMany({ where: { id: { in: [custA.id, custB.id] } } });
       await prisma.user.deleteMany({ where: { id: { in: [userA, userB] } } });
       await prisma.tenant.deleteMany({ where: { id: { in: [tenantA, tenantB] } } });
@@ -71,18 +74,24 @@ describe("customer contacts foundation", () => {
     const prisma = getPrisma();
     const suffix = Math.random().toString(36).slice(2, 10);
     const tenantId = `ct-pri-${suffix}`;
+    const userId = `user-ct-pri-${suffix}`;
     await prisma.tenant.create({ data: { id: tenantId, name: "T" } });
+    await prisma.user.create({
+      data: { id: userId, tenantId, email: `pri-${suffix}@t.com`, role: "OFFICE_ADMIN" },
+    });
     const cust = await prisma.customer.create({ data: { tenantId, name: "C" } });
 
     try {
       const c1 = await createCustomerContactForTenant(prisma, {
         tenantId,
         customerId: cust.id,
+        actorUserId: userId,
         displayName: "Billing",
       });
       const c2 = await createCustomerContactForTenant(prisma, {
         tenantId,
         customerId: cust.id,
+        actorUserId: userId,
         displayName: "Site",
       });
       if (c1 === "parent_not_found" || c2 === "parent_not_found") throw new Error("unexpected");
@@ -91,6 +100,7 @@ describe("customer contacts foundation", () => {
         tenantId,
         customerId: cust.id,
         contactId: c1.id,
+        actorUserId: userId,
         type: "EMAIL",
         value: "billing@example.com",
         isPrimary: true,
@@ -102,6 +112,7 @@ describe("customer contacts foundation", () => {
         tenantId,
         customerId: cust.id,
         contactId: c2.id,
+        actorUserId: userId,
         type: "EMAIL",
         value: "site@example.com",
         isPrimary: true,
@@ -122,6 +133,7 @@ describe("customer contacts foundation", () => {
         customerId: cust.id,
         contactId: c1.id,
         methodId: m1.id,
+        actorUserId: userId,
         isPrimary: true,
       });
       if (promoted === "not_found") throw new Error("unexpected");
@@ -138,6 +150,7 @@ describe("customer contacts foundation", () => {
         tenantId,
         customerId: cust.id,
         contactId: c1.id,
+        actorUserId: userId,
         type: "PHONE",
         value: "555-0001",
         isPrimary: true,
@@ -153,7 +166,9 @@ describe("customer contacts foundation", () => {
       expect(primaryEmails3).toHaveLength(1);
     } finally {
       await prisma.customerContact.deleteMany({ where: { customerId: cust.id } });
+      await prisma.auditEvent.deleteMany({ where: { tenantId } });
       await prisma.customer.deleteMany({ where: { id: cust.id } });
+      await prisma.user.deleteMany({ where: { id: userId } });
       await prisma.tenant.deleteMany({ where: { id: tenantId } });
     }
   });
@@ -162,18 +177,24 @@ describe("customer contacts foundation", () => {
     const prisma = getPrisma();
     const suffix = Math.random().toString(36).slice(2, 10);
     const tenantId = `ct-pri-a-${suffix}`;
+    const userId = `user-ct-pri-a-${suffix}`;
     await prisma.tenant.create({ data: { id: tenantId, name: "T" } });
+    await prisma.user.create({
+      data: { id: userId, tenantId, email: `pri-a-${suffix}@t.com`, role: "OFFICE_ADMIN" },
+    });
     const cust = await prisma.customer.create({ data: { tenantId, name: "C" } });
 
     try {
       const legacy = await createCustomerContactForTenant(prisma, {
         tenantId,
         customerId: cust.id,
+        actorUserId: userId,
         displayName: "Legacy",
       });
       const current = await createCustomerContactForTenant(prisma, {
         tenantId,
         customerId: cust.id,
+        actorUserId: userId,
         displayName: "Current",
       });
       if (legacy === "parent_not_found" || current === "parent_not_found") throw new Error("unexpected");
@@ -182,6 +203,7 @@ describe("customer contacts foundation", () => {
         tenantId,
         customerId: cust.id,
         contactId: legacy.id,
+        actorUserId: userId,
         type: "EMAIL",
         value: "legacy@example.com",
         isPrimary: true,
@@ -192,6 +214,7 @@ describe("customer contacts foundation", () => {
         tenantId,
         customerId: cust.id,
         contactId: legacy.id,
+        actorUserId: userId,
         archived: true,
       });
       if (arch === "not_found") throw new Error("unexpected");
@@ -200,6 +223,7 @@ describe("customer contacts foundation", () => {
         tenantId,
         customerId: cust.id,
         contactId: current.id,
+        actorUserId: userId,
         type: "EMAIL",
         value: "current@example.com",
         isPrimary: true,
@@ -212,7 +236,9 @@ describe("customer contacts foundation", () => {
       expect(legacyMethod?.isPrimary).toBe(false);
     } finally {
       await prisma.customerContact.deleteMany({ where: { customerId: cust.id } });
+      await prisma.auditEvent.deleteMany({ where: { tenantId } });
       await prisma.customer.deleteMany({ where: { id: cust.id } });
+      await prisma.user.deleteMany({ where: { id: userId } });
       await prisma.tenant.deleteMany({ where: { id: tenantId } });
     }
   });

@@ -36,6 +36,7 @@ describe("customer recent activity summary (merged read)", () => {
       const contact = await createCustomerContactForTenant(prisma, {
         tenantId,
         customerId: customer.id,
+        actorUserId: userId,
         displayName: "Pat Owner",
         role: "OWNER",
       });
@@ -93,6 +94,7 @@ describe("customer recent activity summary (merged read)", () => {
     } finally {
       await prisma.customerNote.deleteMany({ where: { customerId: customer.id } });
       await prisma.customerContact.deleteMany({ where: { customerId: customer.id } });
+      await prisma.auditEvent.deleteMany({ where: { tenantId } });
       await prisma.customer.deleteMany({ where: { id: customer.id } });
       await prisma.user.deleteMany({ where: { id: userId } });
       await prisma.tenant.deleteMany({ where: { id: tenantId } });

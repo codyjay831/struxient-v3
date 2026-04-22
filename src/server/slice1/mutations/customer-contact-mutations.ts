@@ -1,9 +1,35 @@
 import type {
   CustomerContactMethodType,
   CustomerContactRole,
+  Prisma,
   PrismaClient,
 } from "@prisma/client";
 import { InvariantViolationError } from "../errors";
+
+async function emitCustomerAudit(
+  tx: Prisma.TransactionClient,
+  params: {
+    tenantId: string;
+    customerId: string;
+    actorId: string;
+    eventType:
+      | "CUSTOMER_CONTACT_CREATED"
+      | "CUSTOMER_CONTACT_UPDATED"
+      | "CUSTOMER_CONTACT_ARCHIVED"
+      | "CUSTOMER_CONTACT_METHOD_CHANGED";
+    payloadJson: Record<string, unknown>;
+  },
+) {
+  await tx.auditEvent.create({
+    data: {
+      tenantId: params.tenantId,
+      eventType: params.eventType,
+      actorId: params.actorId,
+      targetCustomerId: params.customerId,
+      payloadJson: params.payloadJson,
+    },
+  });
+}
 
 const DISPLAY_NAME_MAX = 120;
 const NOTES_MAX = 2000;
@@ -129,6 +155,7 @@ async function loadActiveContactForTenant(
 export type CreateCustomerContactInput = {
   tenantId: string;
   customerId: string;
+  actorUserId: string;
   displayName: string;
   role?: unknown;
   notes?: string | null;
@@ -151,19 +178,41 @@ export async function createCustomerContactForTenant(
   });
   if (!customer) return "parent_not_found";
 
+  const actor = await prisma.user.findFirst({
+    where: { id: input.actorUserId, tenantId: input.tenantId },
+    select: { id: true },
+  });
+  if (!actor) {
+    throw new InvariantViolationError(
+      "CUSTOMER_CONTACT_ACTOR_NOT_FOUND",
+      "Actor user not found for this tenant.",
+      { actorUserId: input.actorUserId },
+    );
+  }
+
   const displayName = assertCustomerContactDisplayName(input.displayName);
   const notes = normalizeNotes(input.notes);
   const role = input.role === undefined ? null : parseRole(input.role);
 
-  const row = await prisma.customerContact.create({
-    data: {
-      tenantId: customer.tenantId,
+  const row = await prisma.$transaction(async (tx) => {
+    const contact = await tx.customerContact.create({
+      data: {
+        tenantId: customer.tenantId,
+        customerId: customer.id,
+        displayName,
+        role,
+        notes,
+      },
+      select: { id: true, displayName: true, role: true, notes: true },
+    });
+    await emitCustomerAudit(tx, {
+      tenantId: input.tenantId,
       customerId: customer.id,
-      displayName,
-      role,
-      notes,
-    },
-    select: { id: true, displayName: true, role: true, notes: true },
+      actorId: actor.id,
+      eventType: "CUSTOMER_CONTACT_CREATED",
+      payloadJson: { contactId: contact.id },
+    });
+    return contact;
   });
   return row;
 }
@@ -173,6 +222,7 @@ export type UpdateCustomerContactMethodInput = {
   customerId: string;
   contactId: string;
   methodId: string;
+  actorUserId: string;
   value?: string;
   isPrimary?: boolean;
   okToSms?: boolean;
@@ -183,6 +233,7 @@ export type UpdateCustomerContactInput = {
   tenantId: string;
   customerId: string;
   contactId: string;
+  actorUserId: string;
   displayName?: string;
   role?: unknown;
   notes?: string | null;
@@ -226,10 +277,38 @@ export async function updateCustomerContactForTenant(
     return row;
   }
 
-  const row = await prisma.customerContact.update({
-    where: { id: existing.id },
-    data,
-    select: { id: true, displayName: true, role: true, notes: true },
+  const actor = await prisma.user.findFirst({
+    where: { id: input.actorUserId, tenantId: input.tenantId },
+    select: { id: true },
+  });
+  if (!actor) {
+    throw new InvariantViolationError(
+      "CUSTOMER_CONTACT_ACTOR_NOT_FOUND",
+      "Actor user not found for this tenant.",
+      { actorUserId: input.actorUserId },
+    );
+  }
+
+  const row = await prisma.$transaction(async (tx) => {
+    const contact = await tx.customerContact.update({
+      where: { id: existing.id },
+      data,
+      select: { id: true, displayName: true, role: true, notes: true },
+    });
+
+    const eventType = input.archived === true ? "CUSTOMER_CONTACT_ARCHIVED" : "CUSTOMER_CONTACT_UPDATED";
+    const payload: Record<string, unknown> = { contactId: contact.id };
+    if (input.archived === false) payload.unarchived = true;
+
+    await emitCustomerAudit(tx, {
+      tenantId: input.tenantId,
+      customerId: input.customerId,
+      actorId: actor.id,
+      eventType,
+      payloadJson: payload,
+    });
+
+    return contact;
   });
   return row;
 }
@@ -238,6 +317,7 @@ export type CreateCustomerContactMethodInput = {
   tenantId: string;
   customerId: string;
   contactId: string;
+  actorUserId: string;
   type: CustomerContactMethodType;
   value: string;
   isPrimary?: boolean;
@@ -284,6 +364,18 @@ export async function createCustomerContactMethodForTenant(
   const contact = await loadActiveContactForTenant(prisma, input);
   if (!contact) return "not_found";
 
+  const actor = await prisma.user.findFirst({
+    where: { id: input.actorUserId, tenantId: input.tenantId },
+    select: { id: true },
+  });
+  if (!actor) {
+    throw new InvariantViolationError(
+      "CUSTOMER_CONTACT_ACTOR_NOT_FOUND",
+      "Actor user not found for this tenant.",
+      { actorUserId: input.actorUserId },
+    );
+  }
+
   const value = assertMethodValue(input.type, input.value);
   const isPrimary = input.isPrimary === true;
   const okToSms = input.okToSms === true;
@@ -315,6 +407,18 @@ export async function createCustomerContactMethodForTenant(
         okToEmail: true,
       },
     });
+    await emitCustomerAudit(tx, {
+      tenantId: input.tenantId,
+      customerId: input.customerId,
+      actorId: actor.id,
+      eventType: "CUSTOMER_CONTACT_METHOD_CHANGED",
+      payloadJson: {
+        action: "added",
+        contactId: input.contactId,
+        methodId: row.id,
+        methodType: row.type,
+      },
+    });
     return row;
   });
 }
@@ -334,6 +438,18 @@ export async function updateCustomerContactMethodForTenant(
 
   const nextValue =
     input.value !== undefined ? assertMethodValue(method.type, input.value) : undefined;
+
+  const actor = await prisma.user.findFirst({
+    where: { id: input.actorUserId, tenantId: input.tenantId },
+    select: { id: true },
+  });
+  if (!actor) {
+    throw new InvariantViolationError(
+      "CUSTOMER_CONTACT_ACTOR_NOT_FOUND",
+      "Actor user not found for this tenant.",
+      { actorUserId: input.actorUserId },
+    );
+  }
 
   return prisma.$transaction(async (tx) => {
     if (input.isPrimary === true) {
@@ -361,23 +477,61 @@ export async function updateCustomerContactMethodForTenant(
         okToEmail: true,
       },
     });
+    await emitCustomerAudit(tx, {
+      tenantId: input.tenantId,
+      customerId: input.customerId,
+      actorId: actor.id,
+      eventType: "CUSTOMER_CONTACT_METHOD_CHANGED",
+      payloadJson: {
+        action: "updated",
+        contactId: input.contactId,
+        methodId: row.id,
+        methodType: row.type,
+      },
+    });
     return row;
   });
 }
 
 export async function deleteCustomerContactMethodForTenant(
   prisma: PrismaClient,
-  params: { tenantId: string; customerId: string; contactId: string; methodId: string },
+  params: { tenantId: string; customerId: string; contactId: string; methodId: string; actorUserId: string },
 ): Promise<"deleted" | "not_found"> {
   const contact = await loadActiveContactForTenant(prisma, params);
   if (!contact) return "not_found";
 
   const method = await prisma.customerContactMethod.findFirst({
     where: { id: params.methodId, contactId: params.contactId },
-    select: { id: true },
+    select: { id: true, type: true },
   });
   if (!method) return "not_found";
 
-  await prisma.customerContactMethod.delete({ where: { id: method.id } });
+  const actor = await prisma.user.findFirst({
+    where: { id: params.actorUserId, tenantId: params.tenantId },
+    select: { id: true },
+  });
+  if (!actor) {
+    throw new InvariantViolationError(
+      "CUSTOMER_CONTACT_ACTOR_NOT_FOUND",
+      "Actor user not found for this tenant.",
+      { actorUserId: params.actorUserId },
+    );
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.customerContactMethod.delete({ where: { id: method.id } });
+    await emitCustomerAudit(tx, {
+      tenantId: params.tenantId,
+      customerId: params.customerId,
+      actorId: actor.id,
+      eventType: "CUSTOMER_CONTACT_METHOD_CHANGED",
+      payloadJson: {
+        action: "removed",
+        contactId: params.contactId,
+        methodId: method.id,
+        methodType: method.type,
+      },
+    });
+  });
   return "deleted";
 }

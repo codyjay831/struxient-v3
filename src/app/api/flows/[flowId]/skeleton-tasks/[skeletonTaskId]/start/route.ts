@@ -80,6 +80,28 @@ export async function POST(request: NextRequest, context: RouteContext) {
         { status: 409 },
       );
     }
+    if (result.ok === false && result.kind === "payment_gate_unsatisfied") {
+      return NextResponse.json(
+        {
+          error: {
+            code: "PAYMENT_GATE_UNSATISFIED",
+            message: "An unsatisfied payment gate targets this skeleton task; start is blocked until finance satisfies the gate.",
+          },
+        },
+        { status: 409 },
+      );
+    }
+    if (result.ok === false && result.kind === "hold_active") {
+      return NextResponse.json(
+        {
+          error: {
+            code: "HOLD_ACTIVE",
+            message: "A job-wide operational hold blocks starting skeleton work until office releases it.",
+          },
+        },
+        { status: 409 },
+      );
+    }
     if (!result.ok) {
       throw new Error("Unexpected start skeleton task result");
     }

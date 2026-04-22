@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { getPrisma } from "@/server/db/prisma";
 import { requireApiPrincipal } from "@/lib/auth/api-principal";
 import { getStorageProvider } from "@/server/media/get-storage-provider";
@@ -10,36 +11,58 @@ export async function GET(request: NextRequest, context: RouteContext) {
   const { searchParams } = new URL(request.url);
   const shareToken = searchParams.get("token");
 
-  const authGate = shareToken ? null : await requireApiPrincipal();
-  if (!shareToken && authGate && !authGate.ok) return authGate.response;
-
   try {
     const prisma = getPrisma();
-    const where: any = { storageKey };
+
     if (shareToken) {
-      where.completionProof = {
-        taskExecution: {
-          flow: { 
-            publicShareToken: shareToken,
-            publicShareStatus: "PUBLISHED",
-            OR: [
-              { publicShareExpiresAt: null },
-              { publicShareExpiresAt: { gt: new Date() } }
-            ]
-          }
+      const attachment = await prisma.completionProofAttachment.findFirst({
+        where: {
+          storageKey,
+          completionProof: {
+            taskExecution: {
+              flow: {
+                publicShareToken: shareToken,
+                publicShareStatus: "PUBLISHED",
+                OR: [{ publicShareExpiresAt: null }, { publicShareExpiresAt: { gt: new Date() } }],
+              },
+            },
+          },
+        },
+        select: { id: true },
+      });
+      if (!attachment) {
+        return NextResponse.json(
+          { error: { code: "NOT_FOUND", message: "Media not found for portal share." } },
+          { status: 404 },
+        );
+      }
+    } else {
+      const authGate = await requireApiPrincipal();
+      if (!authGate.ok) return authGate.response;
+
+      const tenantId = authGate.principal.tenantId;
+
+      const customerDoc = await prisma.customerDocument.findFirst({
+        where: {
+          storageKey,
+          tenantId,
+          status: "ACTIVE",
+        },
+        select: { id: true },
+      });
+
+      if (!customerDoc) {
+        const attachment = await prisma.completionProofAttachment.findFirst({
+          where: { storageKey, tenantId },
+          select: { id: true },
+        });
+        if (!attachment) {
+          return NextResponse.json(
+            { error: { code: "NOT_FOUND", message: "Media not found for tenant" } },
+            { status: 404 },
+          );
         }
-      };
-    } else if (authGate) {
-      where.tenantId = authGate.principal.tenantId;
-    }
-
-    const attachment = await prisma.completionProofAttachment.findFirst({
-      where,
-      select: { id: true }
-    });
-
-    if (!attachment) {
-      return NextResponse.json({ error: { code: "NOT_FOUND", message: "Media not found for tenant" } }, { status: 404 });
+      }
     }
 
     const download = await getStorageProvider().download(storageKey);
@@ -47,12 +70,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: { code: "NOT_FOUND", message: "Media file missing from storage" } }, { status: 404 });
     }
 
-    return new Response(download.buffer, {
+    return new Response(new Uint8Array(download.buffer), {
       headers: {
         "Content-Type": download.contentType,
         "Content-Disposition": `inline; filename="${download.fileName}"`,
-        "Cache-Control": "private, max-age=3600"
-      }
+        "Cache-Control": "private, max-age=3600",
+      },
     });
   } catch (e) {
     console.error("Media Download Error:", e);

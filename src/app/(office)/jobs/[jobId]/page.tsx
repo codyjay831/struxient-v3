@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { tryGetApiPrincipal } from "@/lib/auth/api-principal";
+import { principalHasCapability, tryGetApiPrincipal } from "@/lib/auth/api-principal";
 import { getPrisma } from "@/server/db/prisma";
 import { getJobShellReadModel } from "@/server/slice1/reads/job-shell";
 import { toJobShellApiDto, type JobShellFlowApiDto } from "@/lib/job-shell-dto";
@@ -11,6 +11,9 @@ import {
   type FlowRuntimeSummary,
 } from "@/lib/jobs/job-shell-summary";
 import type { TaskStartBlockReason } from "@/server/slice1/eligibility/task-actionability";
+import { getJobHandoffForTenant } from "@/server/slice1/reads/job-handoff-reads";
+import { toJobHandoffApiDto } from "@/lib/job-handoff-dto";
+import { JobHandoffPanel } from "@/components/jobs/job-handoff-panel";
 
 /**
  * Office-surface job-anchor inspector.
@@ -22,8 +25,9 @@ import type { TaskStartBlockReason } from "@/server/slice1/eligibility/task-acti
  *                                     + blocking-start reasons)
  *   - `deriveJobHeaderContext`      → header identity projection
  *
- * Read-only: no mutations live here. The work feed at `/flows/[flowId]` is
- * the canonical place to act on individual runtime tasks.
+ * Server-rendered shell; field handoff edits go through `JobHandoffPanel` →
+ * `/api/jobs/.../handoff*`. The work feed at `/flows/[flowId]` is the
+ * canonical place to act on individual runtime tasks.
  *
  * Diagnostics intentionally omitted: raw IDs, workflow version numbers,
  * Prisma error panels, and `GET /api/jobs/...` deep-links stay on
@@ -70,6 +74,7 @@ const HEALTH_BADGE: Record<
 const BLOCK_REASON_LABEL: Record<TaskStartBlockReason, string> = {
   FLOW_NOT_ACTIVATED: "Flow not activated",
   PAYMENT_GATE_UNSATISFIED: "Payment gate unsatisfied",
+  HOLD_ACTIVE: "Operational hold active",
   TASK_ALREADY_STARTED: "Task already started",
   TASK_ALREADY_COMPLETED: "Task already completed",
   TASK_ALREADY_ACCEPTED: "Task already accepted",
@@ -98,6 +103,12 @@ export default async function OfficeJobDetailPage({ params }: OfficeJobDetailPag
 
   const dto = toJobShellApiDto(readModel);
   const header = deriveJobHeaderContext(dto);
+
+  const handoffRow = await getJobHandoffForTenant(getPrisma(), {
+    tenantId: auth.principal.tenantId,
+    jobId,
+  });
+  const handoffInitial = handoffRow ? toJobHandoffApiDto(handoffRow) : null;
 
   const flowsWithSummary = dto.flows.map((flow) => ({
     flow,
@@ -142,6 +153,14 @@ export default async function OfficeJobDetailPage({ params }: OfficeJobDetailPag
           </div>
         </div>
       </div>
+
+      <JobHandoffPanel
+        jobId={jobId}
+        initial={handoffInitial}
+        hasActivation={header.hasActivatedFlow}
+        canOfficeMutate={principalHasCapability(auth.principal, "office_mutate")}
+        canFieldExecute={principalHasCapability(auth.principal, "field_execute")}
+      />
 
       {flowsWithSummary.length === 0 ? (
         <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-900/20 p-10 text-center">

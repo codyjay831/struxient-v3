@@ -2,6 +2,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { parseExecutionPackageSnapshotV0ForActivation } from "../compose-preview/execution-package-for-activation";
 import { indexFrozenGeneratedPlanV0 } from "../compose-preview/frozen-plan-for-activation";
 import { canonicalStringify, sha256HexUtf8 } from "../compose-preview/freeze-snapshots";
+import { materializePaymentGateFromFrozenIntentIfAbsent } from "./materialize-payment-gate-from-frozen-intent";
 
 export type ActivateQuoteVersionSuccessDto = {
   quoteVersionId: string;
@@ -93,10 +94,36 @@ export async function activateQuoteVersionInTransaction(
 
   if (existingAct?.flow) {
     let skippedSkeletonSlotCount = 0;
+    let reparsedForGate: ReturnType<typeof parseExecutionPackageSnapshotV0ForActivation> | null = null;
     if (locked.executionPackageSnapshot != null) {
       const reparsed = parseExecutionPackageSnapshotV0ForActivation(locked.executionPackageSnapshot);
       if (reparsed.ok) {
         skippedSkeletonSlotCount = reparsed.skippedSkeletonSlotCount;
+        reparsedForGate = reparsed;
+      }
+    }
+    // Repair: snapshot has `paymentGateIntent` but gate row missing (partial legacy / migration).
+    if (reparsedForGate?.ok && reparsedForGate.paymentGateIntent) {
+      const gateRow = await tx.paymentGate.findFirst({
+        where: { quoteVersionId: locked.id },
+        select: { id: true },
+      });
+      if (!gateRow) {
+        const rts = await tx.runtimeTask.findMany({
+          where: { flowId: existingAct.flowId },
+          select: { id: true, packageTaskId: true },
+        });
+        const runtimeTaskIdByPackageTaskId = new Map(rts.map((r) => [r.packageTaskId, r.id]));
+        const mat = await materializePaymentGateFromFrozenIntentIfAbsent(tx, {
+          tenantId: locked.quote.tenantId,
+          jobId: existingAct.jobId,
+          quoteVersionId: locked.id,
+          intent: reparsedForGate.paymentGateIntent,
+          runtimeTaskIdByPackageTaskId,
+        });
+        if (!mat.ok) {
+          return { ok: false, kind: "payment_gate_materialization_failed", message: mat.message };
+        }
       }
     }
     return {
@@ -223,34 +250,15 @@ export async function activateQuoteVersionInTransaction(
   }
 
   if (parsed.paymentGateIntent) {
-    const existingGate = await tx.paymentGate.findFirst({
-      where: { quoteVersionId: locked.id },
-      select: { id: true },
+    const mat = await materializePaymentGateFromFrozenIntentIfAbsent(tx, {
+      tenantId: locked.quote.tenantId,
+      jobId: job.id,
+      quoteVersionId: locked.id,
+      intent: parsed.paymentGateIntent,
+      runtimeTaskIdByPackageTaskId,
     });
-    if (!existingGate) {
-      const intent = parsed.paymentGateIntent;
-      const targetCreates: { taskKind: "RUNTIME"; taskId: string }[] = [];
-      for (const pkg of intent.targetPackageTaskIds) {
-        const taskId = runtimeTaskIdByPackageTaskId.get(pkg);
-        if (!taskId) {
-          return {
-            ok: false,
-            kind: "payment_gate_materialization_failed",
-            message: `Frozen paymentGateIntent references packageTaskId "${pkg}" with no created runtime task.`,
-          };
-        }
-        targetCreates.push({ taskKind: "RUNTIME", taskId });
-      }
-      await tx.paymentGate.create({
-        data: {
-          tenantId: locked.quote.tenantId,
-          jobId: job.id,
-          quoteVersionId: locked.id,
-          title: intent.title,
-          status: "UNSATISFIED",
-          targets: { create: targetCreates },
-        },
-      });
+    if (!mat.ok) {
+      return { ok: false, kind: "payment_gate_materialization_failed", message: mat.message };
     }
   }
 

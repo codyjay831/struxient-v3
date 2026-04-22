@@ -61,6 +61,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const result = await createCustomerContactForTenant(getPrisma(), {
       tenantId: authGate.principal.tenantId,
       customerId,
+      actorUserId: authGate.principal.userId,
       displayName,
       role: o.role,
       notes: typeof o.notes === "string" || o.notes === null ? (o.notes as string | null) : undefined,

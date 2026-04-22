@@ -15,6 +15,8 @@ type DeliveryRow = {
   recipientDetail: string | null;
   shareTokenPreview: string;
   providerStatus: string;
+  providerError: string | null;
+  retryCount: number;
   isFollowUp: boolean;
 };
 
@@ -70,6 +72,43 @@ export function QuoteWorkspaceSignSent({ signTarget, canOfficeMutate, appOrigin 
   useEffect(() => {
     void loadDeliveries();
   }, [loadDeliveries]);
+
+  async function retryPortalDelivery(deliveryId: string) {
+    if (!signTarget?.quoteVersionId || !canOfficeMutate) return;
+    setShareBusy(`retry:${deliveryId}`);
+    setResult(null);
+    try {
+      const res = await fetch(
+        `/api/quote-versions/${encodeURIComponent(signTarget.quoteVersionId)}/portal-share/deliveries/${encodeURIComponent(deliveryId)}/retry`,
+        { method: "POST", credentials: "include" },
+      );
+      const body = (await res.json().catch(() => ({}))) as { error?: { code?: string; message?: string } };
+      if (!res.ok) {
+        setResult({
+          kind: "error",
+          title: "Retry failed",
+          message: body.error?.message ?? `Server returned ${res.status}.`,
+          technicalDetails: body.error?.code ?? undefined,
+        });
+        return;
+      }
+      setResult({
+        kind: "success",
+        title: "Delivery retried",
+        message: "Provider was invoked again; check status in recent deliveries.",
+      });
+      await loadDeliveries();
+      router.refresh();
+    } catch {
+      setResult({
+        kind: "error",
+        title: "Retry failed",
+        message: "Could not reach the server.",
+      });
+    } finally {
+      setShareBusy(null);
+    }
+  }
 
   async function runSign() {
     if (!signTarget || !canOfficeMutate) return;
@@ -411,13 +450,48 @@ export function QuoteWorkspaceSignSent({ signTarget, canOfficeMutate, appOrigin 
           {deliveries && deliveries.length > 0 ? (
             <div className="mt-3 border-t border-sky-900/30 pt-2">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-sky-300/80">Recent deliveries</p>
-              <ul className="mt-1 space-y-1 text-[10px] text-sky-100/70">
-                {deliveries.map((d) => (
-                  <li key={d.id} className="font-mono">
-                    {d.deliveredAtIso} · {d.deliveryMethod} · {d.providerStatus}
-                    {d.recipientDetail ? ` · ${d.recipientDetail}` : ""} · token {d.shareTokenPreview}
-                  </li>
-                ))}
+              <ul className="mt-2 space-y-2 text-[10px] text-sky-100/80">
+                {deliveries.map((d) => {
+                  const retrying = shareBusy === `retry:${d.id}`;
+                  const statusClass =
+                    d.providerStatus === "SENT" ? "text-emerald-400"
+                    : d.providerStatus === "FAILED" ? "text-rose-400"
+                    : d.providerStatus === "SENDING" ? "text-sky-300 animate-pulse"
+                    : "text-amber-300";
+                  return (
+                    <li
+                      key={d.id}
+                      className="rounded border border-sky-900/25 bg-zinc-950/40 px-2 py-1.5 font-mono leading-relaxed"
+                    >
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
+                        <span className="text-sky-200/90">
+                          {d.deliveredAtIso} · {d.deliveryMethod}
+                          {d.recipientDetail ? ` · ${d.recipientDetail}` : ""} · token {d.shareTokenPreview}
+                          {d.isFollowUp ? " · follow-up" : ""}
+                          {typeof d.retryCount === "number" ? ` · attempts ${d.retryCount}` : ""}
+                        </span>
+                        <span className={`shrink-0 font-semibold uppercase tracking-tight ${statusClass}`}>
+                          {d.providerStatus}
+                        </span>
+                      </div>
+                      {d.providerError ? (
+                        <p className="mt-1 text-rose-200/80 break-words" title={d.providerError}>
+                          {d.providerError}
+                        </p>
+                      ) : null}
+                      {canOfficeMutate && d.providerStatus === "FAILED" ? (
+                        <button
+                          type="button"
+                          disabled={!!shareBusy}
+                          onClick={() => void retryPortalDelivery(d.id)}
+                          className="mt-1.5 rounded border border-sky-700/60 bg-sky-950/60 px-2 py-0.5 text-[10px] font-medium text-sky-200 hover:bg-sky-900/50 disabled:opacity-50"
+                        >
+                          {retrying ? "Retrying…" : "Retry send"}
+                        </button>
+                      ) : null}
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           ) : null}

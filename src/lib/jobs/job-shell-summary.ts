@@ -99,6 +99,7 @@ export type FlowRuntimeSummary = {
 
 const REAL_BLOCK_REASONS: ReadonlySet<TaskStartBlockReason> = new Set<TaskStartBlockReason>([
   "PAYMENT_GATE_UNSATISFIED",
+  "HOLD_ACTIVE",
 ]);
 
 /**

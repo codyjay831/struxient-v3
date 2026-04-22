@@ -680,4 +680,329 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
       await prisma.tenant.deleteMany({ where: { id: tenantId } });
     }
   });
+
+  it("recreates a missing payment gate on idempotent activate when frozen intent is present", async () => {
+    const prisma = getPrisma();
+    const suffix = Math.random().toString(36).slice(2, 10);
+    const tenantId = `pg47repair-${suffix}`;
+    const userId = `user-pg47repair-${suffix}`;
+    await prisma.tenant.create({ data: { id: tenantId, name: "T" } });
+    await prisma.user.create({
+      data: { id: userId, tenantId, email: `rp-${suffix}@t.com`, role: "OFFICE_ADMIN" },
+    });
+    const customer = await prisma.customer.create({ data: { tenantId, name: "C" } });
+    const fg = await prisma.flowGroup.create({ data: { tenantId, customerId: customer.id, name: "FG" } });
+    const quote = await prisma.quote.create({
+      data: { tenantId, customerId: customer.id, flowGroupId: fg.id, quoteNumber: `QR-${suffix}` },
+    });
+    const wt = await prisma.workflowTemplate.create({
+      data: { tenantId, templateKey: `tkrp-${suffix}`, displayName: "WT" },
+    });
+    const wv = await prisma.workflowVersion.create({
+      data: {
+        workflowTemplateId: wt.id,
+        versionNumber: 1,
+        status: "PUBLISHED",
+        publishedAt: new Date(),
+        snapshotJson: { nodes: [{ id: "N1", type: "TASK" }] },
+      },
+    });
+    const qvId = `qv-rp-${suffix}`;
+    const pkg = {
+      schemaVersion: "executionPackageSnapshot.v0",
+      quoteVersionId: qvId,
+      pinnedWorkflowVersionId: wv.id,
+      composedAt: new Date().toISOString(),
+      slots: [
+        {
+          packageTaskId: "PT-RP",
+          nodeId: "N1",
+          source: "SOLD_SCOPE",
+          planTaskIds: ["PL-RP"],
+          displayTitle: "R",
+          lineItemId: "L1",
+        },
+      ],
+      diagnostics: { errors: [], warnings: [] },
+      paymentGateIntent: {
+        schemaVersion: "paymentGateIntent.v0",
+        title: "Repairable gate",
+        targetPackageTaskIds: ["PT-RP"],
+      },
+    };
+    const plan = {
+      schemaVersion: "generatedPlanSnapshot.v0",
+      quoteVersionId: qvId,
+      pinnedWorkflowVersionId: wv.id,
+      generatedAt: new Date().toISOString(),
+      rows: [{ planTaskId: "PL-RP", lineItemId: "L1", scopeSource: "SOLD_SCOPE", quantityIndex: 0, targetNodeKey: "N1", title: "R", taskKind: "INSTALL", sortKey: "a" }],
+    };
+    await prisma.job.create({ data: { tenantId, flowGroupId: fg.id } });
+    await prisma.quoteVersion.create({
+      data: {
+        id: qvId,
+        quoteId: quote.id,
+        versionNumber: 1,
+        status: "SIGNED",
+        createdById: userId,
+        pinnedWorkflowVersionId: wv.id,
+        executionPackageSnapshot: pkg,
+        packageSnapshotSha256: sha256HexUtf8(canonicalStringify(pkg)),
+        generatedPlanSnapshot: plan,
+        planSnapshotSha256: sha256HexUtf8(canonicalStringify(plan)),
+      },
+    });
+    try {
+      const act1 = await activateQuoteVersionForTenant(prisma, {
+        tenantId,
+        quoteVersionId: qvId,
+        activatedByUserId: userId,
+      });
+      expect(act1.ok).toBe(true);
+      if (!act1.ok) throw new Error("unexpected");
+      const gate1 = await prisma.paymentGate.findFirst({ where: { quoteVersionId: qvId } });
+      expect(gate1).not.toBeNull();
+
+      await prisma.paymentGate.delete({ where: { id: gate1!.id } });
+
+      const act2 = await activateQuoteVersionForTenant(prisma, {
+        tenantId,
+        quoteVersionId: qvId,
+        activatedByUserId: userId,
+      });
+      expect(act2.ok).toBe(true);
+      if (!act2.ok) throw new Error("unexpected");
+      expect(act2.data.idempotentReplay).toBe(true);
+
+      const gate2 = await prisma.paymentGate.findFirst({
+        where: { quoteVersionId: qvId },
+        include: { targets: true },
+      });
+      expect(gate2).not.toBeNull();
+      expect(gate2!.title).toBe("Repairable gate");
+      expect(gate2!.targets).toHaveLength(1);
+      const rt = await prisma.runtimeTask.findFirst({
+        where: { quoteVersionId: qvId, packageTaskId: "PT-RP" },
+        select: { id: true },
+      });
+      expect(gate2!.targets[0]!.taskId).toBe(rt!.id);
+    } finally {
+      await prisma.paymentGateTarget.deleteMany({ where: { paymentGate: { tenantId } } });
+      await prisma.paymentGate.deleteMany({ where: { tenantId } });
+      await prisma.taskExecution.deleteMany({ where: { tenantId } });
+      await prisma.runtimeTask.deleteMany({ where: { tenantId } });
+      await prisma.activation.deleteMany({ where: { tenantId } });
+      await prisma.flow.deleteMany({ where: { tenantId } });
+      await prisma.job.deleteMany({ where: { tenantId } });
+      await prisma.quoteVersion.deleteMany({ where: { quoteId: quote.id } });
+      await prisma.quote.deleteMany({ where: { id: quote.id } });
+      await prisma.workflowVersion.deleteMany({ where: { id: wv.id } });
+      await prisma.workflowTemplate.deleteMany({ where: { id: wt.id } });
+      await prisma.flowGroup.deleteMany({ where: { id: fg.id } });
+      await prisma.customer.deleteMany({ where: { id: customer.id } });
+      await prisma.user.deleteMany({ where: { id: userId } });
+      await prisma.tenant.deleteMany({ where: { id: tenantId } });
+    }
+  });
+
+  it("freeze-sourced SATISFIED gate retargets by packageTaskId on CO apply (no manual PaymentGate.create)", async () => {
+    const prisma = getPrisma();
+    const suffix = Math.random().toString(36).slice(2, 10);
+    const tenantId = `pg47fz-${suffix}`;
+    const userId = `user-pg47fz-${suffix}`;
+    await prisma.tenant.create({ data: { id: tenantId, name: "T" } });
+    await prisma.user.create({
+      data: { id: userId, tenantId, email: `fz-${suffix}@t.com`, role: "OFFICE_ADMIN" },
+    });
+    const customer = await prisma.customer.create({ data: { tenantId, name: "C" } });
+    const fg = await prisma.flowGroup.create({ data: { tenantId, customerId: customer.id, name: "FG" } });
+    const quote = await prisma.quote.create({
+      data: { tenantId, customerId: customer.id, flowGroupId: fg.id, quoteNumber: `QFZ-${suffix}` },
+    });
+    const wt = await prisma.workflowTemplate.create({
+      data: { tenantId, templateKey: `tkfz-${suffix}`, displayName: "WT" },
+    });
+    const wv = await prisma.workflowVersion.create({
+      data: {
+        workflowTemplateId: wt.id,
+        versionNumber: 1,
+        status: "PUBLISHED",
+        publishedAt: new Date(),
+        snapshotJson: { nodes: [{ id: "N1", type: "TASK" }, { id: "N2", type: "TASK" }] },
+      },
+    });
+    const qv1Id = `qv1fz-${suffix}`;
+    const pkgV1 = {
+      schemaVersion: "executionPackageSnapshot.v0",
+      quoteVersionId: qv1Id,
+      pinnedWorkflowVersionId: wv.id,
+      composedAt: new Date().toISOString(),
+      slots: [
+        {
+          packageTaskId: "PT-A",
+          nodeId: "N1",
+          source: "SOLD_SCOPE",
+          planTaskIds: ["PL-A"],
+          displayTitle: "Task A",
+          lineItemId: "L1",
+        },
+      ],
+      diagnostics: { errors: [], warnings: [] },
+      paymentGateIntent: {
+        schemaVersion: "paymentGateIntent.v0",
+        title: "Deposit (frozen)",
+        targetPackageTaskIds: ["PT-A"],
+      },
+    };
+    const planV1 = {
+      schemaVersion: "generatedPlanSnapshot.v0",
+      quoteVersionId: qv1Id,
+      pinnedWorkflowVersionId: wv.id,
+      generatedAt: new Date().toISOString(),
+      rows: [{ planTaskId: "PL-A", lineItemId: "L1", scopeSource: "SOLD_SCOPE", quantityIndex: 0, targetNodeKey: "N1", title: "A", taskKind: "INSTALL", sortKey: "a" }],
+    };
+    await prisma.job.create({ data: { tenantId, flowGroupId: fg.id } });
+    await prisma.quoteVersion.create({
+      data: {
+        id: qv1Id,
+        quoteId: quote.id,
+        versionNumber: 1,
+        status: "SIGNED",
+        createdById: userId,
+        pinnedWorkflowVersionId: wv.id,
+        executionPackageSnapshot: pkgV1,
+        packageSnapshotSha256: sha256HexUtf8(canonicalStringify(pkgV1)),
+        generatedPlanSnapshot: planV1,
+        planSnapshotSha256: sha256HexUtf8(canonicalStringify(planV1)),
+      },
+    });
+    try {
+      const act0 = await activateQuoteVersionForTenant(prisma, {
+        tenantId,
+        quoteVersionId: qv1Id,
+        activatedByUserId: userId,
+      });
+      expect(act0.ok).toBe(true);
+      if (!act0.ok) throw new Error("unexpected");
+
+      const gate = await prisma.paymentGate.findFirst({
+        where: { quoteVersionId: qv1Id },
+        include: { targets: true },
+      });
+      expect(gate).not.toBeNull();
+      expect(gate!.title).toBe("Deposit (frozen)");
+      expect(gate!.status).toBe("UNSATISFIED");
+
+      const rtA = await prisma.runtimeTask.findFirst({
+        where: { flowId: act0.data.flowId, packageTaskId: "PT-A" },
+        select: { id: true },
+      });
+      expect(rtA).not.toBeNull();
+      expect(gate!.targets[0]!.taskId).toBe(rtA!.id);
+
+      const sat = await satisfyPaymentGateForTenant(prisma, {
+        tenantId,
+        paymentGateId: gate!.id,
+        actorUserId: userId,
+      });
+      expect(sat.ok).toBe(true);
+
+      const co = await createChangeOrderForJob(prisma, {
+        tenantId,
+        jobId: act0.data.jobId,
+        reason: "add B",
+        createdById: userId,
+      });
+      expect(co.ok).toBe(true);
+      if (!co.ok) throw new Error("unexpected");
+      const qv2Id = co.data.draftQuoteVersionId;
+
+      const pkgV2 = {
+        schemaVersion: "executionPackageSnapshot.v0",
+        quoteVersionId: qv2Id,
+        pinnedWorkflowVersionId: wv.id,
+        composedAt: new Date().toISOString(),
+        slots: [
+          {
+            packageTaskId: "PT-A",
+            nodeId: "N1",
+            source: "SOLD_SCOPE",
+            planTaskIds: ["PL-A"],
+            displayTitle: "Task A",
+            lineItemId: "L1",
+          },
+          {
+            packageTaskId: "PT-B",
+            nodeId: "N2",
+            source: "SOLD_SCOPE",
+            planTaskIds: ["PL-B"],
+            displayTitle: "Task B",
+            lineItemId: "L2",
+          },
+        ],
+        diagnostics: { errors: [], warnings: [] },
+      };
+      const planV2 = {
+        schemaVersion: "generatedPlanSnapshot.v0",
+        quoteVersionId: qv2Id,
+        pinnedWorkflowVersionId: wv.id,
+        generatedAt: new Date().toISOString(),
+        rows: [
+          { planTaskId: "PL-A", lineItemId: "L1", scopeSource: "SOLD_SCOPE", quantityIndex: 0, targetNodeKey: "N1", title: "A", taskKind: "INSTALL", sortKey: "a" },
+          { planTaskId: "PL-B", lineItemId: "L2", scopeSource: "SOLD_SCOPE", quantityIndex: 0, targetNodeKey: "N2", title: "B", taskKind: "INSTALL", sortKey: "b" },
+        ],
+      };
+      await prisma.quoteVersion.update({
+        where: { id: qv2Id },
+        data: {
+          status: "SIGNED",
+          executionPackageSnapshot: pkgV2,
+          packageSnapshotSha256: sha256HexUtf8(canonicalStringify(pkgV2)),
+          generatedPlanSnapshot: planV2,
+          planSnapshotSha256: sha256HexUtf8(canonicalStringify(planV2)),
+        },
+      });
+
+      const apply1 = await applyChangeOrderForJob(prisma, {
+        tenantId,
+        changeOrderId: co.data.changeOrderId,
+        appliedByUserId: userId,
+      });
+      expect(apply1.ok).toBe(true);
+      if (!apply1.ok) throw new Error(JSON.stringify(apply1));
+
+      const flow2 = await prisma.flow.findFirst({
+        where: { quoteVersionId: qv2Id },
+        select: { id: true },
+      });
+      const rtA2 = await prisma.runtimeTask.findFirst({
+        where: { flowId: flow2!.id, packageTaskId: "PT-A" },
+        select: { id: true },
+      });
+      expect(rtA2!.id).not.toBe(rtA!.id);
+
+      const tgtAfter = await prisma.paymentGateTarget.findFirst({
+        where: { paymentGateId: gate!.id },
+        select: { taskId: true },
+      });
+      expect(tgtAfter!.taskId).toBe(rtA2!.id);
+    } finally {
+      await prisma.changeOrder.deleteMany({ where: { tenantId } });
+      await prisma.paymentGateTarget.deleteMany({ where: { paymentGate: { tenantId } } });
+      await prisma.paymentGate.deleteMany({ where: { tenantId } });
+      await prisma.taskExecution.deleteMany({ where: { tenantId } });
+      await prisma.runtimeTask.deleteMany({ where: { tenantId } });
+      await prisma.activation.deleteMany({ where: { tenantId } });
+      await prisma.flow.deleteMany({ where: { tenantId } });
+      await prisma.job.deleteMany({ where: { tenantId } });
+      await prisma.quoteVersion.deleteMany({ where: { quoteId: quote.id } });
+      await prisma.quote.deleteMany({ where: { id: quote.id } });
+      await prisma.workflowVersion.deleteMany({ where: { id: wv.id } });
+      await prisma.workflowTemplate.deleteMany({ where: { id: wt.id } });
+      await prisma.flowGroup.deleteMany({ where: { id: fg.id } });
+      await prisma.customer.deleteMany({ where: { id: customer.id } });
+      await prisma.user.deleteMany({ where: { id: userId } });
+      await prisma.tenant.deleteMany({ where: { id: tenantId } });
+    }
+  });
 });

@@ -44,6 +44,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       tenantId: authGate.principal.tenantId,
       customerId,
       contactId,
+      actorUserId: authGate.principal.userId,
       type,
       value,
       isPrimary: o.isPrimary === true,

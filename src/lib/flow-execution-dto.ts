@@ -9,6 +9,10 @@ import {
   toTaskActionabilityApiDto,
   type TaskActionabilityApiDto,
 } from "@/server/slice1/eligibility/task-actionability";
+import {
+  runtimeTaskBlockedByActiveHolds,
+  skeletonStartBlockedByActiveHolds,
+} from "@/server/slice1/eligibility/hold-eligibility";
 
 export type { TaskActionabilityApiDto };
 
@@ -112,6 +116,12 @@ export type FlowExecutionApiDto = {
   }[];
   runtimeTasks: FlowExecutionRuntimeTaskApiDto[];
   workItems: FlowWorkItemApiDto[];
+  activeOperationalHolds: {
+    id: string;
+    runtimeTaskId: string | null;
+    holdType: string;
+    reason: string;
+  }[];
 };
 
 function mergeNodeOrder(
@@ -150,8 +160,18 @@ function runtimeTasksForNode(
     });
 }
 
+function bridgeHolds(m: FlowExecutionReadModel) {
+  return m.activeOperationalHolds.map((h) => ({
+    id: h.id,
+    runtimeTaskId: h.runtimeTaskId,
+    reason: h.reason,
+  }));
+}
+
 function buildWorkItems(m: FlowExecutionReadModel): FlowWorkItemApiDto[] {
   const hasActivation = m.activation != null;
+  const holdScopes = m.activeOperationalHolds.map((h) => ({ runtimeTaskId: h.runtimeTaskId }));
+  const activeHoldsBridge = bridgeHolds(m);
   const nodeOrder = mergeNodeOrder(m.workflowNodeOrder, m.skeletonTasks, m.runtimeTasks);
   const items: FlowWorkItemApiDto[] = [];
   for (const nodeId of nodeOrder) {
@@ -160,6 +180,7 @@ function buildWorkItems(m: FlowExecutionReadModel): FlowWorkItemApiDto[] {
         g.status === "UNSATISFIED" && 
         g.targets.some(tg => tg.taskId === sk.skeletonTaskId && tg.taskKind === "SKELETON")
       );
+      const hasHold = skeletonStartBlockedByActiveHolds(holdScopes);
       items.push({
         kind: "SKELETON",
         nodeId: sk.nodeId,
@@ -174,7 +195,11 @@ function buildWorkItems(m: FlowExecutionReadModel): FlowWorkItemApiDto[] {
           completionProof: sk.execution.completionProof,
         },
         actionability: toTaskActionabilityApiDto(
-          evaluateSkeletonTaskActionability(hasActivation, sk.execution, hasUnsatisfiedPaymentGate),
+          evaluateSkeletonTaskActionability(hasActivation, sk.execution, hasUnsatisfiedPaymentGate, hasHold, {
+            skeletonTaskId: sk.skeletonTaskId,
+            paymentGates: m.paymentGates,
+            activeHolds: activeHoldsBridge,
+          }),
         ),
       });
     }
@@ -183,6 +208,7 @@ function buildWorkItems(m: FlowExecutionReadModel): FlowWorkItemApiDto[] {
         g.status === "UNSATISFIED" && 
         g.targets.some(tg => tg.taskId === rt.id && tg.taskKind === "RUNTIME")
       );
+      const hasHold = runtimeTaskBlockedByActiveHolds(holdScopes, rt.id);
       items.push({
         kind: "RUNTIME",
         runtimeTaskId: rt.id,
@@ -200,7 +226,11 @@ function buildWorkItems(m: FlowExecutionReadModel): FlowWorkItemApiDto[] {
           completionProof: rt.execution.completionProof,
         },
         actionability: toTaskActionabilityApiDto(
-          evaluateRuntimeTaskActionability(hasActivation, rt.execution, hasUnsatisfiedPaymentGate),
+          evaluateRuntimeTaskActionability(hasActivation, rt.execution, hasUnsatisfiedPaymentGate, hasHold, {
+            runtimeTaskId: rt.id,
+            paymentGates: m.paymentGates,
+            activeHolds: activeHoldsBridge,
+          }),
         ),
         completionRequirementsJson: rt.completionRequirementsJson,
         conditionalRulesJson: rt.conditionalRulesJson,
@@ -213,6 +243,8 @@ function buildWorkItems(m: FlowExecutionReadModel): FlowWorkItemApiDto[] {
 
 export function toFlowExecutionApiDto(m: FlowExecutionReadModel): FlowExecutionApiDto {
   const hasActivation = m.activation != null;
+  const holdScopes = m.activeOperationalHolds.map((h) => ({ runtimeTaskId: h.runtimeTaskId }));
+  const activeHoldsBridge = bridgeHolds(m);
 
   return {
     flow: {
@@ -258,6 +290,7 @@ export function toFlowExecutionApiDto(m: FlowExecutionReadModel): FlowExecutionA
         g.status === "UNSATISFIED" && 
         g.targets.some(tg => tg.taskId === sk.skeletonTaskId && tg.taskKind === "SKELETON")
       );
+      const hasHold = skeletonStartBlockedByActiveHolds(holdScopes);
       return {
         nodeId: sk.nodeId,
         skeletonTaskId: sk.skeletonTaskId,
@@ -271,7 +304,11 @@ export function toFlowExecutionApiDto(m: FlowExecutionReadModel): FlowExecutionA
           completionProof: sk.execution.completionProof,
         },
         actionability: toTaskActionabilityApiDto(
-          evaluateSkeletonTaskActionability(hasActivation, sk.execution, hasUnsatisfiedPaymentGate),
+          evaluateSkeletonTaskActionability(hasActivation, sk.execution, hasUnsatisfiedPaymentGate, hasHold, {
+            skeletonTaskId: sk.skeletonTaskId,
+            paymentGates: m.paymentGates,
+            activeHolds: activeHoldsBridge,
+          }),
         ),
       };
     }),
@@ -280,6 +317,7 @@ export function toFlowExecutionApiDto(m: FlowExecutionReadModel): FlowExecutionA
         g.status === "UNSATISFIED" && 
         g.targets.some(tg => tg.taskId === t.id && tg.taskKind === "RUNTIME")
       );
+      const hasHold = runtimeTaskBlockedByActiveHolds(holdScopes, t.id);
       return {
         id: t.id,
         packageTaskId: t.packageTaskId,
@@ -296,7 +334,11 @@ export function toFlowExecutionApiDto(m: FlowExecutionReadModel): FlowExecutionA
           completionProof: t.execution.completionProof,
         },
         actionability: toTaskActionabilityApiDto(
-          evaluateRuntimeTaskActionability(hasActivation, t.execution, hasUnsatisfiedPaymentGate),
+          evaluateRuntimeTaskActionability(hasActivation, t.execution, hasUnsatisfiedPaymentGate, hasHold, {
+            runtimeTaskId: t.id,
+            paymentGates: m.paymentGates,
+            activeHolds: activeHoldsBridge,
+          }),
         ),
         completionRequirementsJson: t.completionRequirementsJson,
         conditionalRulesJson: t.conditionalRulesJson,
@@ -304,5 +346,11 @@ export function toFlowExecutionApiDto(m: FlowExecutionReadModel): FlowExecutionA
       };
     }),
     workItems: buildWorkItems(m),
+    activeOperationalHolds: m.activeOperationalHolds.map((h) => ({
+      id: h.id,
+      runtimeTaskId: h.runtimeTaskId,
+      holdType: h.holdType,
+      reason: h.reason,
+    })),
   };
 }

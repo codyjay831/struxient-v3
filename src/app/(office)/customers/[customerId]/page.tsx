@@ -4,11 +4,16 @@ import { principalHasCapability, tryGetApiPrincipal } from "@/lib/auth/api-princ
 import { getPrisma } from "@/server/db/prisma";
 import { getCustomerForTenant } from "@/server/slice1/reads/customer-reads";
 import { listCustomerContactsForTenant } from "@/server/slice1/reads/customer-contact-reads";
+import { listCustomerAuditEventsForTenant } from "@/server/slice1/reads/customer-audit-reads";
+import { listCustomerDocumentsForTenant } from "@/server/slice1/reads/customer-document-reads";
 import { listCustomerNotesForTenant } from "@/server/slice1/reads/customer-note-reads";
 import { listCustomerRecentActivityForTenant } from "@/server/slice1/reads/customer-recent-activity-reads";
 import { listFlowGroupsForTenant } from "@/server/slice1/reads/flow-group-reads";
 import { listCommercialQuoteShellsForTenant } from "@/server/slice1/reads/commercial-quote-shell-reads";
+import { getTenantOperationalSettingsForTenant } from "@/server/slice1/reads/tenant-operational-settings-reads";
 import { CustomerContactsPanel } from "@/components/customers/customer-contacts-panel";
+import { CustomerDocumentsPanel } from "@/components/customers/customer-documents-panel";
+import { CustomerSystemAuditPanel } from "@/components/customers/customer-system-audit-panel";
 import { CustomerNotesPanel } from "@/components/customers/customer-notes-panel";
 import { CustomerRecentActivityPanel } from "@/components/customers/customer-recent-activity-panel";
 
@@ -20,6 +25,8 @@ import { CustomerRecentActivityPanel } from "@/components/customers/customer-rec
  *   - `listFlowGroupsForTenant({ ..., customerId })` — projects of this customer
  *   - `listCommercialQuoteShellsForTenant({ ..., customerId })` — quotes of this customer
  *   - `listCustomerRecentActivityForTenant` — merged **summary** of note + contact row timestamps (not audit / not quotes)
+ *   - `listCustomerDocumentsForTenant` — Epic 06 office files on the customer (not task evidence)
+ *   - `listCustomerAuditEventsForTenant` — Epic 57 system audit tail (`targetCustomerId`)
  *
  * The two list reads use their newly-added optional `customerId` filter
  * (additive on top of the existing `tenantId` predicate) so this page can
@@ -59,16 +66,21 @@ export default async function OfficeCustomerDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  const [projects, quotes, contacts, notes, recentActivity] = await Promise.all([
+  const [projects, quotes, contacts, notes, documents, auditEvents, recentActivity, tenantOps] = await Promise.all([
     listFlowGroupsForTenant(prisma, { tenantId, customerId, limit: SUB_LIST_LIMIT }),
     listCommercialQuoteShellsForTenant(prisma, { tenantId, customerId, limit: SUB_LIST_LIMIT }),
     listCustomerContactsForTenant(prisma, { tenantId, customerId }),
     listCustomerNotesForTenant(prisma, { tenantId, customerId }),
+    listCustomerDocumentsForTenant(prisma, { tenantId, customerId }),
+    listCustomerAuditEventsForTenant(prisma, { tenantId, customerId, limit: 40 }),
     listCustomerRecentActivityForTenant(prisma, { tenantId, customerId, limit: 25 }),
+    getTenantOperationalSettingsForTenant(prisma, { tenantId }),
   ]);
   const contactRows = contacts ?? [];
   const noteRows = notes ?? [];
   const activityItems = recentActivity ?? [];
+  const documentRows = documents ?? [];
+  const auditEventRows = auditEvents ?? [];
   const canOfficeMutate = principalHasCapability(auth.principal, "office_mutate");
 
   const projectsTruncated = customer.flowGroupCount > projects.length;
@@ -110,6 +122,10 @@ export default async function OfficeCustomerDetailPage({ params }: PageProps) {
         <CustomerRecentActivityPanel customerId={customerId} items={activityItems} />
       </div>
 
+      <div className="mb-10">
+        <CustomerSystemAuditPanel customerId={customerId} initialEvents={auditEventRows} />
+      </div>
+
       <div className="mb-10 space-y-10">
         <CustomerContactsPanel
           customerId={customerId}
@@ -121,6 +137,12 @@ export default async function OfficeCustomerDetailPage({ params }: PageProps) {
           initialNotes={noteRows}
           canOfficeMutate={canOfficeMutate}
           viewerUserId={auth.principal.userId}
+        />
+        <CustomerDocumentsPanel
+          customerId={customerId}
+          initialDocuments={documentRows}
+          canOfficeMutate={canOfficeMutate}
+          tenantMaxUploadBytesEffective={tenantOps?.customerDocumentMaxBytesEffective ?? null}
         />
       </div>
 

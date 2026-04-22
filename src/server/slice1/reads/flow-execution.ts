@@ -70,6 +70,13 @@ export type FlowExecutionReadModel = {
     title: string;
     targets: { taskId: string; taskKind: "RUNTIME" | "SKELETON" }[];
   }[];
+  /** ACTIVE operational holds on this flow's job (Epic 29 backbone). */
+  activeOperationalHolds: {
+    id: string;
+    runtimeTaskId: string | null;
+    holdType: string;
+    reason: string;
+  }[];
 };
 
 /**
@@ -177,6 +184,10 @@ export async function getFlowExecutionReadModel(
                 select: { taskId: true, taskKind: true },
               },
             },
+          },
+          holds: {
+            where: { status: "ACTIVE" },
+            select: { id: true, runtimeTaskId: true, holdType: true, reason: true },
           },
         },
       },
@@ -314,6 +325,12 @@ export async function getFlowExecutionReadModel(
         taskId: tg.taskId,
         taskKind: tg.taskKind as "RUNTIME" | "SKELETON",
       })),
+    })),
+    activeOperationalHolds: row.job.holds.map((h) => ({
+      id: h.id,
+      runtimeTaskId: h.runtimeTaskId,
+      holdType: h.holdType,
+      reason: h.reason,
     })),
   };
 }

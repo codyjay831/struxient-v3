@@ -8,6 +8,10 @@ export type QuotePortalShareDeliveryListItemDto = {
   /** Short preview of the token snapshot at send time (not the live portal URL). */
   shareTokenPreview: string;
   providerStatus: string;
+  /** Office-only: last provider error when status is FAILED. */
+  providerError: string | null;
+  /** Cumulative inline attempts on initial send; retries add further attempts in `retryQuotePortalShareDeliveryForTenant`. */
+  retryCount: number;
   isFollowUp: boolean;
 };
 
@@ -31,6 +35,8 @@ export async function listQuotePortalShareDeliveriesForTenant(
       recipientDetail: true,
       shareToken: true,
       providerStatus: true,
+      providerError: true,
+      retryCount: true,
       isFollowUp: true,
     },
   });
@@ -43,6 +49,8 @@ export async function listQuotePortalShareDeliveriesForTenant(
     shareTokenPreview:
       r.shareToken.length > 10 ? `${r.shareToken.slice(0, 4)}…${r.shareToken.slice(-4)}` : "…",
     providerStatus: r.providerStatus,
+    providerError: r.providerError,
+    retryCount: r.retryCount,
     isFollowUp: r.isFollowUp,
   }));
 }

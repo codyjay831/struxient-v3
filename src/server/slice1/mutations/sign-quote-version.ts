@@ -4,6 +4,7 @@ import {
   AutoActivateAfterSignError,
   type ActivateQuoteVersionSuccessDto,
 } from "./activate-quote-version";
+import { advancePendingCustomerChangeOrderOnQuoteVersionSigned } from "./change-order-after-quote-signed";
 
 export type SignQuoteVersionSuccessDto = {
   quoteVersionId: string;
@@ -74,6 +75,7 @@ export async function signQuoteVersionForTenant(
           outcome = { ok: false, kind: "signed_state_inconsistent" };
           return;
         }
+        await advancePendingCustomerChangeOrderOnQuoteVersionSigned(tx, locked.id);
         outcome = {
           ok: true,
           data: {
@@ -143,6 +145,8 @@ export async function signQuoteVersionForTenant(
           signedById: actor.id,
         },
       });
+
+      await advancePendingCustomerChangeOrderOnQuoteVersionSigned(tx, locked.id);
 
       await tx.auditEvent.create({
         data: {

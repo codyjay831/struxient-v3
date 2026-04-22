@@ -253,6 +253,12 @@ export async function sendQuoteVersionForTenant(
         },
       });
 
+      /** Epic 37: sending the CO draft quote is the office “customer acceptance requested” moment (DRAFT → PENDING_CUSTOMER). */
+      await tx.changeOrder.updateMany({
+        where: { draftQuoteVersionId: locked.id, status: "DRAFT" },
+        data: { status: "PENDING_CUSTOMER" },
+      });
+
       const priorSent = await tx.quoteVersion.findMany({
         where: {
           quoteId: model.quoteId,

@@ -17,6 +17,8 @@ export type QuotePortalPresentationReadModel = {
   signatureMethod: string | null;
   portalSignerLabel: string | null;
   planRows: QuotePortalPlanRowDto[];
+  /** When this sent quote version is a change-order draft, surface frozen office-authored reason (Epic 37). */
+  changeOrderSummary: { reason: string } | null;
 };
 
 function parseFrozenPlanRowsForPortal(generatedPlanSnapshot: Prisma.JsonValue): QuotePortalPlanRowDto[] {
@@ -86,6 +88,11 @@ export async function getQuotePortalPresentationByShareToken(
 
   const planRows = parseFrozenPlanRowsForPortal(row.generatedPlanSnapshot);
 
+  const co = await client.changeOrder.findFirst({
+    where: { draftQuoteVersionId: row.id },
+    select: { reason: true },
+  });
+
   return {
     quoteVersionId: row.id,
     status: row.status as "SENT" | "SIGNED",
@@ -97,5 +104,6 @@ export async function getQuotePortalPresentationByShareToken(
     signatureMethod: row.quoteSignature?.method ?? null,
     portalSignerLabel: row.quoteSignature?.portalSignerLabel ?? null,
     planRows,
+    changeOrderSummary: co ? { reason: co.reason } : null,
   };
 }
