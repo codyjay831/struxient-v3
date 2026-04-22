@@ -39,7 +39,7 @@ The system now enforces the following rules during task completion based on the 
 ## 5. Known Gaps & Follow-ups
 - **Numeric Validation**: Measurements currently accept any string; future hardening could enforce numeric ranges or format masks based on metadata.
 - **Ad Hoc Requirement Conflict**: Ad hoc (manually added) fields are not validated; only authored prompts carry enforcement rules.
-- **Skeleton Task Validation**: Requirements for workflow-level skeleton tasks are not yet wired into the validation pass.
+- **Skeleton Task Validation**: Wired to the same `validateCompletionProofAgainstContract` path as runtime complete (`skeleton-task-execution` + frozen snapshot contract lookup). See `scripts/integration/skeleton-task-completion-validation.integration.test.ts`.
 
 ## 6. Next Recommended Epic
 **Field Evidence Expansion (Checklist Rule Overlays)**: Now that completion is enforced, the next step is to add conditional logic (e.g. "if result is FAIL, a photo is required") to further refine the field compliance contract.

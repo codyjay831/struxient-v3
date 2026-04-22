@@ -1,8 +1,12 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
-import { parseSkeletonTasksFromWorkflowSnapshot } from "../compose-preview/workflow-snapshot-skeleton-tasks";
+import {
+  lookupSkeletonTaskCompletionContractInSnapshot,
+  parseSkeletonTasksFromWorkflowSnapshot,
+} from "../compose-preview/workflow-snapshot-skeleton-tasks";
 import { evaluateSkeletonTaskActionability } from "../eligibility/task-actionability";
 import { skeletonStartBlockedByActiveHolds } from "../eligibility/hold-eligibility";
 import { deriveRuntimeExecutionSummary } from "../reads/derive-runtime-execution-summary";
+import { validateCompletionProofAgainstContract } from "./completion-proof-contract-validation";
 import type { RuntimeTaskExecutionRequestBody } from "./runtime-task-execution";
 
 export type SkeletonTaskExecutionEventDto = {
@@ -31,7 +35,8 @@ export type CompleteSkeletonTaskResult =
   | { ok: false; kind: "invalid_actor" }
   | { ok: false; kind: "unknown_skeleton_task" }
   | { ok: false; kind: "not_started" }
-  | { ok: false; kind: "flow_not_activated" };
+  | { ok: false; kind: "flow_not_activated" }
+  | { ok: false; kind: "validation_failed"; errors: { message: string; field?: string }[] };
 
 function isUniqueViolation(e: unknown): boolean {
   return e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
@@ -247,6 +252,19 @@ export async function completeSkeletonTaskForTenant(
 
     if (!skeletonDefinedOnSnapshot(flow.workflowVersion.snapshotJson, skeletonTaskId)) {
       return { ok: false, kind: "unknown_skeleton_task" };
+    }
+
+    const contract = lookupSkeletonTaskCompletionContractInSnapshot(
+      flow.workflowVersion.snapshotJson,
+      skeletonTaskId,
+    );
+    const validationErrors = validateCompletionProofAgainstContract(
+      contract.completionRequirementsJson,
+      contract.conditionalRulesJson,
+      params.request.completionProof,
+    );
+    if (validationErrors.length > 0) {
+      return { ok: false, kind: "validation_failed", errors: validationErrors };
     }
 
     const activation = await tx.activation.findUnique({

@@ -54,6 +54,8 @@ export type FlowWorkItemApiDto =
       displayTitle: string;
       execution: FlowExecutionRuntimeTaskApiDto["execution"];
       actionability: TaskActionabilityApiDto;
+      completionRequirementsJson?: unknown;
+      conditionalRulesJson?: unknown;
     }
   | {
       kind: "RUNTIME";
@@ -113,6 +115,8 @@ export type FlowExecutionApiDto = {
     displayTitle: string;
     execution: FlowExecutionRuntimeTaskApiDto["execution"];
     actionability: TaskActionabilityApiDto;
+    completionRequirementsJson?: unknown;
+    conditionalRulesJson?: unknown;
   }[];
   runtimeTasks: FlowExecutionRuntimeTaskApiDto[];
   workItems: FlowWorkItemApiDto[];
@@ -194,6 +198,8 @@ function buildWorkItems(m: FlowExecutionReadModel): FlowWorkItemApiDto[] {
           correctionFeedback: sk.execution.correctionFeedback,
           completionProof: sk.execution.completionProof,
         },
+        completionRequirementsJson: sk.completionRequirementsJson,
+        conditionalRulesJson: sk.conditionalRulesJson,
         actionability: toTaskActionabilityApiDto(
           evaluateSkeletonTaskActionability(hasActivation, sk.execution, hasUnsatisfiedPaymentGate, hasHold, {
             skeletonTaskId: sk.skeletonTaskId,
@@ -303,6 +309,8 @@ export function toFlowExecutionApiDto(m: FlowExecutionReadModel): FlowExecutionA
           correctionFeedback: sk.execution.correctionFeedback,
           completionProof: sk.execution.completionProof,
         },
+        completionRequirementsJson: sk.completionRequirementsJson,
+        conditionalRulesJson: sk.conditionalRulesJson,
         actionability: toTaskActionabilityApiDto(
           evaluateSkeletonTaskActionability(hasActivation, sk.execution, hasUnsatisfiedPaymentGate, hasHold, {
             skeletonTaskId: sk.skeletonTaskId,

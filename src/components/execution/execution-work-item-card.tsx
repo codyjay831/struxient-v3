@@ -36,6 +36,14 @@ const STATUS_CONFIG: Record<
   correction_required: { label: "Correction Required", cls: "border-red-800 bg-red-950/40 text-red-200", dot: "bg-red-400" },
 };
 
+/** When true, Complete opens the structured proof drawer first (matches server validation contract). */
+function workItemHasStructuredCompletionContract(item: FlowWorkItemApiDto): boolean {
+  if (item.kind !== "RUNTIME" && item.kind !== "SKELETON") return false;
+  const r = item.completionRequirementsJson;
+  const c = item.conditionalRulesJson;
+  return (Array.isArray(r) && r.length > 0) || (Array.isArray(c) && c.length > 0);
+}
+
 export function ExecutionWorkItemCard({
   item,
   busy,
@@ -64,6 +72,8 @@ export function ExecutionWorkItemCard({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isSkeleton = item.kind === "SKELETON";
+  const completionRequirementsJsonForUi =
+    item.kind === "RUNTIME" || item.kind === "SKELETON" ? item.completionRequirementsJson : undefined;
   const kindLabel = isSkeleton ? "Skeleton" : "Runtime";
   const kindCls = isSkeleton
     ? "text-violet-400 border-violet-900/40 bg-violet-950/30"
@@ -75,7 +85,10 @@ export function ExecutionWorkItemCard({
 
   const canReview = canReviewTasks && !isSkeleton && item.execution.status === "completed";
 
-  const rules = (item.kind === "RUNTIME" && (item.conditionalRulesJson as any[])) || [];
+  const rules =
+    (item.kind === "RUNTIME" || item.kind === "SKELETON") && Array.isArray(item.conditionalRulesJson)
+      ? (item.conditionalRulesJson as any[])
+      : [];
   const triggeredRules = rules.filter((rule) => {
     const trigger = rule.trigger;
     if (trigger.kind === "result") {
@@ -101,7 +114,8 @@ export function ExecutionWorkItemCard({
   // Note / attachment can also be required as authored baseline singletons
   // on the activation-frozen requirements snapshot. The runtime validator
   // already enforces both; these helpers keep the visual hint in sync.
-  const requirementsSnapshot = item.kind === "RUNTIME" ? item.completionRequirementsJson : null;
+  const requirementsSnapshot =
+    item.kind === "RUNTIME" || item.kind === "SKELETON" ? item.completionRequirementsJson : null;
   const noteRequired = isBaselineRequired(requirementsSnapshot, "note") || isRuleRequired("note");
   const attachmentRequired =
     isBaselineRequired(requirementsSnapshot, "attachment") || isRuleRequired("attachment");
@@ -267,43 +281,41 @@ export function ExecutionWorkItemCard({
               type="button"
               disabled={busy || !canExecuteTasks || !item.actionability.complete.canComplete}
               onClick={() => {
-                if (!showProofEntry && !isSkeleton) {
-                  // Pre-shape form from authored requirements
-                  if (item.kind === "RUNTIME" && item.completionRequirementsJson) {
-                    const reqs = item.completionRequirementsJson;
-                    if (Array.isArray(reqs)) {
-                      const initialChecklist = reqs
-                        .filter((r: any) => r.kind === "checklist")
-                        .map((r: any) => ({ label: r.label, status: "yes" as const }));
-                      const initialMeasurements = reqs
-                        .filter((r: any) => r.kind === "measurement")
-                        .map((r: any) => ({ label: r.label, value: "", unit: r.unit }));
-                      const initialIdentifiers = reqs
-                        .filter((r: any) => r.kind === "identifier")
-                        .map((r: any) => ({ label: r.label, value: "" }));
-                      
-                      if (initialChecklist.length > 0) setChecklist(initialChecklist);
-                      if (initialMeasurements.length > 0) setMeasurements(initialMeasurements);
-                      if (initialIdentifiers.length > 0) setIdentifiers(initialIdentifiers);
-                      
-                      const resultReq = reqs.find((r: any) => r.kind === "result");
-                      if (resultReq) setOverallResult(""); // Start with empty so they must choose if required
-                    }
+                if (!showProofEntry && workItemHasStructuredCompletionContract(item)) {
+                  // Pre-shape form from authored requirements (runtime + skeleton frozen contract)
+                  const reqs = completionRequirementsJsonForUi;
+                  if (Array.isArray(reqs)) {
+                    const initialChecklist = reqs
+                      .filter((r: any) => r.kind === "checklist")
+                      .map((r: any) => ({ label: r.label, status: "yes" as const }));
+                    const initialMeasurements = reqs
+                      .filter((r: any) => r.kind === "measurement")
+                      .map((r: any) => ({ label: r.label, value: "", unit: r.unit }));
+                    const initialIdentifiers = reqs
+                      .filter((r: any) => r.kind === "identifier")
+                      .map((r: any) => ({ label: r.label, value: "" }));
+
+                    if (initialChecklist.length > 0) setChecklist(initialChecklist);
+                    if (initialMeasurements.length > 0) setMeasurements(initialMeasurements);
+                    if (initialIdentifiers.length > 0) setIdentifiers(initialIdentifiers);
+
+                    const resultReq = reqs.find((r: any) => r.kind === "result");
+                    if (resultReq) setOverallResult(""); // Start with empty so they must choose if required
                   }
                   setShowProofEntry(true);
                 } else {
-                  onComplete(isSkeleton ? null : { 
-                    note: proofNote, 
-                    attachments: attachments.map(a => ({
+                  onComplete({
+                    note: proofNote,
+                    attachments: attachments.map((a) => ({
                       key: a.key,
                       fileName: a.name,
                       fileSize: a.size,
-                      contentType: a.type
+                      contentType: a.type,
                     })),
                     checklist,
                     measurements,
                     identifiers,
-                    overallResult: overallResult || null
+                    overallResult: overallResult || null,
                   });
                   setShowProofEntry(false);
                   setProofNote("");
@@ -517,7 +529,9 @@ export function ExecutionWorkItemCard({
                     {checklist.map((c, i) => (
                       <div key={i} className="flex items-center gap-2">
                         <div className="flex-1 flex items-center gap-1.5 overflow-hidden">
-                          {item.kind === "RUNTIME" && item.completionRequirementsJson?.find((r: any) => r.kind === 'checklist' && r.label === c.label)?.required && (
+                          {completionRequirementsJsonForUi?.find(
+                            (r: any) => r.kind === "checklist" && r.label === c.label,
+                          )?.required && (
                             <span className="text-red-500 text-[10px] font-bold">*</span>
                           )}
                           <input
@@ -563,7 +577,9 @@ export function ExecutionWorkItemCard({
                   <div className="space-y-2">
                     {measurements.map((m, i) => (
                       <div key={i} className="flex items-center gap-2">
-                        {((item.kind === "RUNTIME" && item.completionRequirementsJson?.find((r: any) => r.kind === 'measurement' && r.label === m.label)?.required) || 
+                        {((completionRequirementsJsonForUi?.find(
+                          (r: any) => r.kind === "measurement" && r.label === m.label,
+                        )?.required) ||
                           isRuleRequired("measurement", m.label)) && (
                           <span className="text-red-500 text-[10px] font-bold shrink-0">*</span>
                         )}
@@ -618,7 +634,9 @@ export function ExecutionWorkItemCard({
                   <div className="space-y-2">
                     {identifiers.map((id, i) => (
                       <div key={i} className="flex items-center gap-2">
-                        {((item.kind === "RUNTIME" && item.completionRequirementsJson?.find((r: any) => r.kind === 'identifier' && r.label === id.label)?.required) || 
+                        {((completionRequirementsJsonForUi?.find(
+                          (r: any) => r.kind === "identifier" && r.label === id.label,
+                        )?.required) ||
                           isRuleRequired("identifier", id.label)) && (
                           <span className="text-red-500 text-[10px] font-bold shrink-0">*</span>
                         )}
@@ -661,7 +679,7 @@ export function ExecutionWorkItemCard({
                 <div className="flex items-center gap-2">
                   <label className="text-[9px] font-bold text-zinc-600 uppercase tracking-widest flex items-center gap-1">
                     Overall Result:
-                    {item.kind === "RUNTIME" && item.completionRequirementsJson?.some((r: any) => r.kind === 'result' && r.required) && (
+                    {completionRequirementsJsonForUi?.some((r: any) => r.kind === "result" && r.required) && (
                       <span className="text-red-500 font-bold">*</span>
                     )}
                   </label>

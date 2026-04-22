@@ -4,6 +4,7 @@ import { getPrisma } from "@/server/db/prisma";
 import { jsonResponseForCaughtError } from "@/lib/api/tenant-json";
 import { apiAuthMeta, requireApiPrincipalWithCapability } from "@/lib/auth/api-principal";
 import { completeSkeletonTaskForTenant } from "@/server/slice1/mutations/skeleton-task-execution";
+import type { RuntimeTaskExecutionRequestBody } from "@/server/slice1/mutations/runtime-task-execution";
 
 type RouteContext = { params: Promise<{ flowId: string; skeletonTaskId: string }> };
 
@@ -14,14 +15,25 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const { flowId, skeletonTaskId } = await context.params;
 
   let notes: string | null = null;
+  let completionProof: {
+    note?: string | null;
+    attachments?: { key: string; fileName: string; fileSize: number; contentType: string }[];
+    checklist?: { label: string; status: "yes" | "no" | "na" }[];
+    measurements?: { label: string; value: string; unit?: string }[];
+    identifiers?: { label: string; value: string }[];
+    overallResult?: string | null;
+  } | null = null;
   const ct = request.headers.get("content-type") ?? "";
   if (ct.includes("application/json")) {
     try {
-      const body = (await request.json()) as { notes?: unknown };
+      const body = (await request.json()) as { notes?: unknown; completionProof?: unknown };
       if (typeof body.notes === "string") {
         notes = body.notes;
       } else if (body.notes === null) {
         notes = null;
+      }
+      if (body.completionProof && typeof body.completionProof === "object") {
+        completionProof = body.completionProof as typeof completionProof;
       }
     } catch {
       return NextResponse.json(
@@ -37,7 +49,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
       flowId,
       skeletonTaskId,
       actorUserId: authGate.principal.userId,
-      request: { notes },
+      request: {
+        notes,
+        completionProof: completionProof as RuntimeTaskExecutionRequestBody["completionProof"],
+      },
     });
 
     if (result.ok === false && result.kind === "not_found") {
@@ -78,6 +93,18 @@ export async function POST(request: NextRequest, context: RouteContext) {
           },
         },
         { status: 409 },
+      );
+    }
+    if (result.ok === false && result.kind === "validation_failed") {
+      return NextResponse.json(
+        {
+          error: {
+            code: "VALIDATION_FAILED",
+            message: "One or more required fields are missing or invalid.",
+            details: result.errors,
+          },
+        },
+        { status: 400 },
       );
     }
     if (!result.ok) {

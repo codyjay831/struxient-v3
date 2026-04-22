@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import {
+  lookupSkeletonTaskCompletionContractInSnapshot,
   parseSkeletonTasksFromWorkflowSnapshot,
   parseWorkflowNodeIdsInOrder,
   type WorkflowSkeletonTaskRow,
@@ -21,6 +22,9 @@ export type FlowExecutionRuntimeTaskRead = {
 
 export type FlowExecutionSkeletonTaskRead = WorkflowSkeletonTaskRow & {
   execution: RuntimeTaskExecutionSummary;
+  /** From pinned `WorkflowVersion.snapshotJson` for this skeleton task id (same frozen shape as runtime). */
+  completionRequirementsJson?: unknown;
+  conditionalRulesJson?: unknown;
 };
 
 export type FlowExecutionReadModel = {
@@ -246,10 +250,15 @@ export async function getFlowExecutionReadModel(
     eventsBySkeletonId.set(r.skeletonTaskId, list);
   }
 
-  const skeletonTasks: FlowExecutionSkeletonTaskRead[] = skeletonBase.map((sk) => ({
-    ...sk,
-    execution: deriveRuntimeExecutionSummary(eventsBySkeletonId.get(sk.skeletonTaskId) ?? []),
-  }));
+  const skeletonTasks: FlowExecutionSkeletonTaskRead[] = skeletonBase.map((sk) => {
+    const contract = lookupSkeletonTaskCompletionContractInSnapshot(snapshotJson, sk.skeletonTaskId);
+    return {
+      ...sk,
+      completionRequirementsJson: contract.completionRequirementsJson,
+      conditionalRulesJson: contract.conditionalRulesJson,
+      execution: deriveRuntimeExecutionSummary(eventsBySkeletonId.get(sk.skeletonTaskId) ?? []),
+    };
+  });
 
   return {
     flow: {

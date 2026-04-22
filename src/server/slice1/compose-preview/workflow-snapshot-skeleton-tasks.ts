@@ -33,6 +33,48 @@ export function parseWorkflowNodeIdsInOrder(snapshotJson: unknown): string[] {
   return ids;
 }
 
+/** Frozen completion contract for a skeleton task id on `WorkflowVersion.snapshotJson` (nodes[].tasks[]). */
+export function lookupSkeletonTaskCompletionContractInSnapshot(
+  snapshotJson: unknown,
+  skeletonTaskId: string,
+): { completionRequirementsJson: unknown[]; conditionalRulesJson: unknown[] } {
+  const empty: unknown[] = [];
+  if (snapshotJson === null || typeof snapshotJson !== "object" || Array.isArray(snapshotJson)) {
+    return { completionRequirementsJson: empty, conditionalRulesJson: empty };
+  }
+  const nodes = (snapshotJson as Record<string, unknown>).nodes;
+  if (!Array.isArray(nodes)) {
+    return { completionRequirementsJson: empty, conditionalRulesJson: empty };
+  }
+  for (const n of nodes) {
+    if (n === null || typeof n !== "object" || Array.isArray(n)) {
+      continue;
+    }
+    const node = n as Record<string, unknown>;
+    const tasks = node.tasks;
+    if (!Array.isArray(tasks)) {
+      continue;
+    }
+    for (const t of tasks) {
+      if (t === null || typeof t !== "object" || Array.isArray(t)) {
+        continue;
+      }
+      const tr = t as Record<string, unknown>;
+      const tid = typeof tr.id === "string" && tr.id !== "" ? tr.id : null;
+      if (tid !== skeletonTaskId) {
+        continue;
+      }
+      const cr = tr.completionRequirementsJson;
+      const cond = tr.conditionalRulesJson;
+      return {
+        completionRequirementsJson: Array.isArray(cr) ? cr : empty,
+        conditionalRulesJson: Array.isArray(cond) ? cond : empty,
+      };
+    }
+  }
+  return { completionRequirementsJson: empty, conditionalRulesJson: empty };
+}
+
 export function parseSkeletonTasksFromWorkflowSnapshot(snapshotJson: unknown): WorkflowSkeletonTaskRow[] {
   if (snapshotJson === null || typeof snapshotJson !== "object" || Array.isArray(snapshotJson)) {
     return [];

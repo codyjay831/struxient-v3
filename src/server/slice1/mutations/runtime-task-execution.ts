@@ -2,6 +2,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { evaluateRuntimeTaskActionability } from "../eligibility/task-actionability";
 import { runtimeTaskBlockedByActiveHolds } from "../eligibility/hold-eligibility";
 import { deriveRuntimeExecutionSummary } from "../reads/derive-runtime-execution-summary";
+import { validateCompletionProofAgainstContract } from "./completion-proof-contract-validation";
 
 export type RuntimeTaskExecutionRequestBody = {
   notes?: string | null;
@@ -216,114 +217,11 @@ export async function completeRuntimeTaskForTenant(
       return { ok: false, kind: "not_found" };
     }
 
-    // 1. Validate against requirements
-    const requirements = (rt.completionRequirementsJson as any[]) || [];
-    const validationErrors: { message: string; field?: string }[] = [];
-    const proof = params.request.completionProof;
-
-    for (const req of requirements) {
-      if (req.required) {
-        if (req.kind === "checklist") {
-          const item = (proof?.checklist || []).find((c) => c.label === req.label);
-          if (!item || (item.status !== "yes" && item.status !== "no" && item.status !== "na")) {
-            validationErrors.push({ 
-              message: `Required checklist item "${req.label}" is missing or unanswered.`,
-              field: `checklist:${req.label}`
-            });
-          }
-        } else if (req.kind === "measurement") {
-          const item = (proof?.measurements || []).find((m) => m.label === req.label);
-          if (!item || !item.value.trim()) {
-            validationErrors.push({ 
-              message: `Required measurement "${req.label}" is missing.`,
-              field: `measurement:${req.label}`
-            });
-          }
-        } else if (req.kind === "identifier") {
-          const item = (proof?.identifiers || []).find((i) => i.label === req.label);
-          if (!item || !item.value.trim()) {
-            validationErrors.push({ 
-              message: `Required identifier "${req.label}" is missing.`,
-              field: `identifier:${req.label}`
-            });
-          }
-        } else if (req.kind === "result") {
-          if (!proof?.overallResult) {
-            validationErrors.push({ 
-              message: "Overall task result is required.",
-              field: "overallResult"
-            });
-          }
-        } else if (req.kind === "note") {
-          if (!proof?.note || !proof.note.trim()) {
-            validationErrors.push({
-              message: "A completion note is required.",
-              field: "note",
-            });
-          }
-        } else if (req.kind === "attachment") {
-          if (!proof?.attachments || proof.attachments.length === 0) {
-            validationErrors.push({
-              message: "At least one photo or evidence attachment is required.",
-              field: "attachments",
-            });
-          }
-        }
-      }
-    }
-
-    // 2. Validate against conditional rules
-    const rules = (rt.conditionalRulesJson as any[]) || [];
-    for (const rule of rules) {
-      let triggered = false;
-      const trigger = rule.trigger;
-      if (trigger.kind === "result") {
-        if (proof?.overallResult === trigger.value) {
-          triggered = true;
-        }
-      } else if (trigger.kind === "checklist") {
-        const item = (proof?.checklist || []).find((c) => c.label === trigger.label);
-        if (item && item.status === trigger.value) {
-          triggered = true;
-        }
-      }
-
-      if (triggered) {
-        const req = rule.require;
-        if (req.kind === "note") {
-          if (!proof?.note || !proof.note.trim()) {
-            validationErrors.push({
-              message: req.message || `A note is required because of a conditional rule.`,
-              field: "note"
-            });
-          }
-        } else if (req.kind === "attachment") {
-          if (!proof?.attachments || proof.attachments.length === 0) {
-            validationErrors.push({
-              message: req.message || `An attachment is required because of a conditional rule.`,
-              field: "attachments"
-            });
-          }
-        } else if (req.kind === "measurement") {
-          const item = (proof?.measurements || []).find((m) => m.label === req.label);
-          if (!item || !item.value.trim()) {
-            validationErrors.push({
-              message: req.message || `Required measurement "${req.label}" is missing because of a conditional rule.`,
-              field: `measurement:${req.label}`
-            });
-          }
-        } else if (req.kind === "identifier") {
-          const item = (proof?.identifiers || []).find((i) => i.label === req.label);
-          if (!item || !item.value.trim()) {
-            validationErrors.push({
-              message: req.message || `Required identifier "${req.label}" is missing because of a conditional rule.`,
-              field: `identifier:${req.label}`
-            });
-          }
-        }
-      }
-    }
-
+    const validationErrors = validateCompletionProofAgainstContract(
+      rt.completionRequirementsJson,
+      rt.conditionalRulesJson,
+      params.request.completionProof,
+    );
     if (validationErrors.length > 0) {
       return { ok: false, kind: "validation_failed", errors: validationErrors };
     }
