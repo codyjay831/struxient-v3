@@ -19,6 +19,9 @@ export type QuotePortalPresentationReadModel = {
   /** Present when customer declined on the portal (Epic 13 + 54). */
   portalDeclinedAtIso: string | null;
   portalDeclineReason: string | null;
+  /** Non-terminal portal change request while version remains SENT (Epic 13 + 54). */
+  portalChangeRequestedAtIso: string | null;
+  portalChangeRequestMessage: string | null;
   planRows: QuotePortalPlanRowDto[];
   /** When this sent quote version is a change-order draft, surface frozen office-authored reason (Epic 37). */
   changeOrderSummary: { reason: string } | null;
@@ -74,6 +77,8 @@ export async function getQuotePortalPresentationByShareToken(
       signedAt: true,
       portalDeclinedAt: true,
       portalDeclineReason: true,
+      portalChangeRequestedAt: true,
+      portalChangeRequestMessage: true,
       generatedPlanSnapshot: true,
       quote: {
         select: {
@@ -113,6 +118,8 @@ export async function getQuotePortalPresentationByShareToken(
     portalSignerLabel: row.quoteSignature?.portalSignerLabel ?? null,
     portalDeclinedAtIso: row.portalDeclinedAt?.toISOString() ?? null,
     portalDeclineReason: row.portalDeclineReason,
+    portalChangeRequestedAtIso: row.portalChangeRequestedAt?.toISOString() ?? null,
+    portalChangeRequestMessage: row.portalChangeRequestMessage,
     planRows,
     changeOrderSummary: co ? { reason: co.reason } : null,
   };

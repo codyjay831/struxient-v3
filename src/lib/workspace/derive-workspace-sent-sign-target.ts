@@ -78,3 +78,47 @@ export function deriveNewestPortalDeclinedSummary(
     portalQuoteShareToken: row.portalQuoteShareToken ?? null,
   };
 }
+
+/** Workspace/history row slice: portal change request on a still-SENT revision. */
+export type VersionRowForPortalChangeRequest = {
+  id: string;
+  versionNumber: number;
+  status: string;
+  portalChangeRequestedAt: string | null;
+  portalChangeRequestMessage: string | null;
+};
+
+export type PortalChangeRequestOnSentSummary = {
+  quoteVersionId: string;
+  versionNumber: number;
+  portalChangeRequestedAtIso: string;
+  portalChangeRequestMessage: string;
+};
+
+/**
+ * When the workspace sign target is a **SENT** row, surface any persisted portal change request
+ * on that same version (Epic 13 + 54).
+ */
+export function derivePortalChangeRequestOnSentTarget(
+  signTarget: SentSignTarget | null,
+  versionsOrderedNewestFirst: VersionRowForPortalChangeRequest[],
+): PortalChangeRequestOnSentSummary | null {
+  if (!signTarget) {
+    return null;
+  }
+  const row = versionsOrderedNewestFirst.find((v) => v.id === signTarget.quoteVersionId);
+  if (!row) {
+    return null;
+  }
+  const at = row.portalChangeRequestedAt?.trim() ?? "";
+  const msg = row.portalChangeRequestMessage?.trim() ?? "";
+  if (!at || !msg) {
+    return null;
+  }
+  return {
+    quoteVersionId: row.id,
+    versionNumber: row.versionNumber,
+    portalChangeRequestedAtIso: row.portalChangeRequestedAt!,
+    portalChangeRequestMessage: msg,
+  };
+}

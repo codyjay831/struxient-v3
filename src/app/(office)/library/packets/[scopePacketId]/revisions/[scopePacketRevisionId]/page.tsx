@@ -4,10 +4,13 @@ import { AddEmbeddedPacketTaskLineForm } from "@/components/catalog-packets/add-
 import { AddLibraryPacketTaskLineForm } from "@/components/catalog-packets/add-library-packet-task-line-form";
 import { DeletePacketTaskLineButton } from "@/components/catalog-packets/delete-packet-task-line-button";
 import { EditPacketTaskLineForm } from "@/components/catalog-packets/edit-packet-task-line-form";
+import { LibraryPacketComposeHintWorkflowProvider } from "@/components/catalog-packets/library-packet-compose-hint-workflow-provider";
 import { ReorderPacketTaskLineButtons } from "@/components/catalog-packets/reorder-packet-task-line-buttons";
 import { PublishRevisionForm } from "@/components/catalog-packets/publish-revision-form";
 import { principalHasCapability, tryGetApiPrincipal } from "@/lib/auth/api-principal";
+import { formatLibraryPacketComposeHintWorkflowLabel } from "@/lib/library-packet-compose-hint-workflow";
 import { getPrisma } from "@/server/db/prisma";
+import { listPublishedWorkflowVersionsForTenant } from "@/server/slice1";
 import { getScopePacketRevisionDetailForTenant } from "@/server/slice1/reads/scope-packet-catalog-reads";
 import { listTaskDefinitionsForTenant } from "@/server/slice1/reads/task-definition-reads";
 
@@ -17,8 +20,9 @@ import { listTaskDefinitionsForTenant } from "@/server/slice1/reads/task-definit
  * revisions when the principal has `office_mutate`, and interim publish when readiness is satisfied.
  *
  * Reuses `getScopePacketRevisionDetailForTenant` and the shared readiness
- * predicate (same canon truth as `/dev/...`). Full catalog designer and
- * workflow/template integration remain out of scope.
+ * predicate (same canon truth as `/dev/...`). Optional compose-hint workflow
+ * selection drives `targetNodeKey` pickers (Epic 15 + 16); full catalog designer
+ * and graph authoring remain out of scope.
  */
 export const dynamic = "force-dynamic";
 
@@ -70,6 +74,18 @@ export default async function OfficeLibraryPacketRevisionPage({ params }: PagePr
         statuses: ["PUBLISHED"],
       })
     : [];
+
+  const publishedWorkflowHints = draftAuthoring
+    ? await listPublishedWorkflowVersionsForTenant(getPrisma(), {
+        tenantId: auth.principal.tenantId,
+        limit: 100,
+      })
+    : [];
+
+  const composeHintWorkflowOptions = publishedWorkflowHints.map((v) => ({
+    id: v.id,
+    label: formatLibraryPacketComposeHintWorkflowLabel(v),
+  }));
 
   const totalLines = detail.packetTaskLines.length;
   const tieredLines = detail.packetTaskLines.filter(
@@ -199,139 +215,144 @@ export default async function OfficeLibraryPacketRevisionPage({ params }: PagePr
         )}
       </section>
 
-      {draftAuthoring ? (
-        <section className="mb-6 space-y-4">
-          <AddEmbeddedPacketTaskLineForm
-            scopePacketId={detail.scopePacketId}
-            scopePacketRevisionId={detail.revision.id}
-          />
-          <AddLibraryPacketTaskLineForm
-            scopePacketId={detail.scopePacketId}
-            scopePacketRevisionId={detail.revision.id}
-            publishedTaskDefinitions={publishedTaskDefinitions.map((d) => ({
-              id: d.id,
-              taskKey: d.taskKey,
-              displayName: d.displayName,
-            }))}
-          />
-        </section>
-      ) : null}
+      <LibraryPacketComposeHintWorkflowProvider
+        enabled={draftAuthoring}
+        versionOptions={composeHintWorkflowOptions}
+      >
+        {draftAuthoring ? (
+          <section className="mb-6 space-y-4">
+            <AddEmbeddedPacketTaskLineForm
+              scopePacketId={detail.scopePacketId}
+              scopePacketRevisionId={detail.revision.id}
+            />
+            <AddLibraryPacketTaskLineForm
+              scopePacketId={detail.scopePacketId}
+              scopePacketRevisionId={detail.revision.id}
+              publishedTaskDefinitions={publishedTaskDefinitions.map((d) => ({
+                id: d.id,
+                taskKey: d.taskKey,
+                displayName: d.displayName,
+              }))}
+            />
+          </section>
+        ) : null}
 
-      <section className="mt-6 space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">
-          Packet task lines
-        </h2>
-        {detail.packetTaskLines.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-zinc-800 bg-zinc-950/30 p-6 text-sm text-zinc-500">
-            This revision has no task lines.
-          </p>
-        ) : (
-          <ul className="space-y-2">
-            {detail.packetTaskLines.map((line, lineIndex) => (
-              <li
-                key={line.id}
-                className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex flex-wrap items-baseline gap-2">
-                    <span className="text-sm font-semibold text-zinc-100">{line.lineKey}</span>
-                    <span className="text-[11px] text-zinc-500">sortOrder {line.sortOrder}</span>
-                    <span
-                      className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                        LINE_KIND_BADGE[line.lineKind] ?? "border-zinc-700 text-zinc-400"
-                      }`}
-                    >
-                      {line.lineKind}
-                    </span>
-                    {line.tierCode ? (
-                      <span className="rounded border border-zinc-700 bg-zinc-950/40 px-1.5 py-0.5 text-[10px] font-mono text-zinc-300">
-                        tier: {line.tierCode}
+        <section className="mt-6 space-y-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">
+            Packet task lines
+          </h2>
+          {detail.packetTaskLines.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-zinc-800 bg-zinc-950/30 p-6 text-sm text-zinc-500">
+              This revision has no task lines.
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {detail.packetTaskLines.map((line, lineIndex) => (
+                <li
+                  key={line.id}
+                  className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-baseline gap-2">
+                      <span className="text-sm font-semibold text-zinc-100">{line.lineKey}</span>
+                      <span className="text-[11px] text-zinc-500">sortOrder {line.sortOrder}</span>
+                      <span
+                        className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                          LINE_KIND_BADGE[line.lineKind] ?? "border-zinc-700 text-zinc-400"
+                        }`}
+                      >
+                        {line.lineKind}
                       </span>
-                    ) : (
-                      <span className="rounded border border-zinc-800 bg-zinc-950/40 px-1.5 py-0.5 text-[10px] text-zinc-500 italic">
-                        no tier (applies to all)
-                      </span>
-                    )}
-                  </div>
-                  {draftAuthoring && (line.lineKind === "EMBEDDED" || line.lineKind === "LIBRARY") ? (
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {detail.packetTaskLines.length > 1 ? (
-                        <ReorderPacketTaskLineButtons
+                      {line.tierCode ? (
+                        <span className="rounded border border-zinc-700 bg-zinc-950/40 px-1.5 py-0.5 text-[10px] font-mono text-zinc-300">
+                          tier: {line.tierCode}
+                        </span>
+                      ) : (
+                        <span className="rounded border border-zinc-800 bg-zinc-950/40 px-1.5 py-0.5 text-[10px] text-zinc-500 italic">
+                          no tier (applies to all)
+                        </span>
+                      )}
+                    </div>
+                    {draftAuthoring && (line.lineKind === "EMBEDDED" || line.lineKind === "LIBRARY") ? (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {detail.packetTaskLines.length > 1 ? (
+                          <ReorderPacketTaskLineButtons
+                            scopePacketId={detail.scopePacketId}
+                            scopePacketRevisionId={detail.revision.id}
+                            packetTaskLineId={line.id}
+                            canMoveUp={lineIndex > 0}
+                            canMoveDown={lineIndex < detail.packetTaskLines.length - 1}
+                          />
+                        ) : null}
+                        <DeletePacketTaskLineButton
                           scopePacketId={detail.scopePacketId}
                           scopePacketRevisionId={detail.revision.id}
                           packetTaskLineId={line.id}
-                          canMoveUp={lineIndex > 0}
-                          canMoveDown={lineIndex < detail.packetTaskLines.length - 1}
+                          lineKey={line.lineKey}
                         />
-                      ) : null}
-                      <DeletePacketTaskLineButton
-                        scopePacketId={detail.scopePacketId}
-                        scopePacketRevisionId={detail.revision.id}
-                        packetTaskLineId={line.id}
-                        lineKey={line.lineKey}
-                      />
-                    </div>
-                  ) : null}
-                </div>
+                      </div>
+                    ) : null}
+                  </div>
 
-                {line.lineKind === "LIBRARY" && (
-                  <div className="mt-2 text-[11px] text-zinc-400">
-                    {line.taskDefinition ? (
-                      <span className="inline-flex flex-wrap items-baseline gap-2">
-                        <Link
-                          href={`/library/task-definitions/${line.taskDefinition.id}`}
-                          className="text-zinc-300 hover:text-sky-400"
-                        >
-                          {line.taskDefinition.displayName}
-                        </Link>
-                        <code className="text-zinc-500">{line.taskDefinition.taskKey}</code>
-                        <span
-                          className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${
-                            TASK_DEFINITION_STATUS_BADGE[line.taskDefinition.status] ??
-                            "border-zinc-700 text-zinc-400"
-                          }`}
-                        >
-                          {line.taskDefinition.status}
+                  {line.lineKind === "LIBRARY" && (
+                    <div className="mt-2 text-[11px] text-zinc-400">
+                      {line.taskDefinition ? (
+                        <span className="inline-flex flex-wrap items-baseline gap-2">
+                          <Link
+                            href={`/library/task-definitions/${line.taskDefinition.id}`}
+                            className="text-zinc-300 hover:text-sky-400"
+                          >
+                            {line.taskDefinition.displayName}
+                          </Link>
+                          <code className="text-zinc-500">{line.taskDefinition.taskKey}</code>
+                          <span
+                            className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${
+                              TASK_DEFINITION_STATUS_BADGE[line.taskDefinition.status] ??
+                              "border-zinc-700 text-zinc-400"
+                            }`}
+                          >
+                            {line.taskDefinition.status}
+                          </span>
                         </span>
-                      </span>
+                      ) : (
+                        <span className="text-amber-400/80">
+                          LIBRARY line with no taskDefinition — the source TaskDefinition may have
+                          been removed. This will block publish.
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="mt-2 text-[11px] text-zinc-500">
+                    targetNodeKey: <code className="text-zinc-300">{line.targetNodeKey}</code>
+                  </div>
+
+                  <div className="mt-2 text-[11px] text-zinc-500">
+                    embeddedPayload:{" "}
+                    {line.hasEmbeddedPayload ? (
+                      <span className="text-zinc-300">present</span>
                     ) : (
-                      <span className="text-amber-400/80">
-                        LIBRARY line with no taskDefinition — the source TaskDefinition may have
-                        been removed. This will block publish.
-                      </span>
+                      <span className="text-zinc-500 italic">empty</span>
                     )}
                   </div>
-                )}
 
-                <div className="mt-2 text-[11px] text-zinc-500">
-                  targetNodeKey: <code className="text-zinc-300">{line.targetNodeKey}</code>
-                </div>
-
-                <div className="mt-2 text-[11px] text-zinc-500">
-                  embeddedPayload:{" "}
-                  {line.hasEmbeddedPayload ? (
-                    <span className="text-zinc-300">present</span>
-                  ) : (
-                    <span className="text-zinc-500 italic">empty</span>
-                  )}
-                </div>
-
-                {draftAuthoring && (line.lineKind === "EMBEDDED" || line.lineKind === "LIBRARY") ? (
-                  <EditPacketTaskLineForm
-                    scopePacketId={detail.scopePacketId}
-                    scopePacketRevisionId={detail.revision.id}
-                    packetTaskLineId={line.id}
-                    lineKind={line.lineKind}
-                    initialTargetNodeKey={line.targetNodeKey}
-                    initialTierCode={line.tierCode}
-                    embeddedPayloadJson={line.embeddedPayloadJson}
-                  />
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+                  {draftAuthoring && (line.lineKind === "EMBEDDED" || line.lineKind === "LIBRARY") ? (
+                    <EditPacketTaskLineForm
+                      scopePacketId={detail.scopePacketId}
+                      scopePacketRevisionId={detail.revision.id}
+                      packetTaskLineId={line.id}
+                      lineKind={line.lineKind}
+                      initialTargetNodeKey={line.targetNodeKey}
+                      initialTierCode={line.tierCode}
+                      embeddedPayloadJson={line.embeddedPayloadJson}
+                    />
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </LibraryPacketComposeHintWorkflowProvider>
     </main>
   );
 }

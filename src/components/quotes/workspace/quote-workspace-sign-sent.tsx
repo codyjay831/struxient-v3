@@ -4,9 +4,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { InternalActionResult } from "@/components/internal/internal-action-result";
-import type { PortalDeclinedSummary, SentSignTarget } from "@/lib/workspace/derive-workspace-sent-sign-target";
+import type {
+  PortalChangeRequestOnSentSummary,
+  PortalDeclinedSummary,
+  SentSignTarget,
+} from "@/lib/workspace/derive-workspace-sent-sign-target";
 
-export type { PortalDeclinedSummary, SentSignTarget };
+export type { PortalChangeRequestOnSentSummary, PortalDeclinedSummary, SentSignTarget };
 
 type DeliveryRow = {
   id: string;
@@ -24,9 +28,16 @@ type Props = {
   signTarget: SentSignTarget | null;
   /** Newest portal decline in history (Epic 13 + 54); shown even when a newer SENT exists. */
   portalDeclinedSummary: PortalDeclinedSummary | null;
+  /** Portal change request on the current **SENT** sign target version, if any (Epic 13 + 54). */
+  portalChangeRequestOnSent: PortalChangeRequestOnSentSummary | null;
   canOfficeMutate: boolean;
   /** Public site origin for copy + email links (e.g. `https://app.example.com`). */
   appOrigin: string;
+  /**
+   * Same-quote workspace URL with `#revision-management` (create draft + scope handoff).
+   * When set, the portal change-request banner links staff to the existing revise path.
+   */
+  quoteWorkspaceRevisionSectionHref?: string | null;
 };
 
 /**
@@ -34,7 +45,14 @@ type Props = {
  * `POST /api/quote-versions/:id/sign` — body unused; actor from session.
  * Portal share: copy / email via comms / manual audit / regenerate token (Epic 54 follow-up).
  */
-export function QuoteWorkspaceSignSent({ signTarget, portalDeclinedSummary, canOfficeMutate, appOrigin }: Props) {
+export function QuoteWorkspaceSignSent({
+  signTarget,
+  portalDeclinedSummary,
+  portalChangeRequestOnSent,
+  canOfficeMutate,
+  appOrigin,
+  quoteWorkspaceRevisionSectionHref = null,
+}: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ kind: "success" | "error"; title: string; message?: string; technicalDetails?: string } | null>(null);
@@ -406,6 +424,39 @@ export function QuoteWorkspaceSignSent({ signTarget, portalDeclinedSummary, canO
           <p className="mt-1 whitespace-pre-wrap text-[11px] leading-relaxed text-orange-50/88">
             {portalDeclinedSummary.portalDeclineReason}
           </p>
+        </div>
+      ) : null}
+
+      {portalChangeRequestOnSent ? (
+        <div className="mt-3 rounded border border-amber-900/45 bg-amber-950/20 px-3 py-2 text-xs text-amber-100/90">
+          <p className="font-medium text-amber-200/95">
+            Customer requested changes (portal) · v{portalChangeRequestOnSent.versionNumber}
+            {portalChangeRequestOnSent.portalChangeRequestedAtIso ?
+              ` · ${new Date(portalChangeRequestOnSent.portalChangeRequestedAtIso).toLocaleString()}`
+            : ""}
+          </p>
+          <p className="mt-1 whitespace-pre-wrap text-[11px] leading-relaxed text-amber-50/90">
+            {portalChangeRequestOnSent.portalChangeRequestMessage}
+          </p>
+          {quoteWorkspaceRevisionSectionHref ? (
+            <>
+              <p className="mt-2 text-[11px] leading-relaxed text-amber-100/88">
+                Typical office response: use <strong className="text-amber-50/95">Revision management</strong> to
+                start a new draft from the current head, open <strong className="text-amber-50/95">Scope editor</strong>{" "}
+                to adjust line items, then return to <strong className="text-amber-50/95">Prepare and send</strong> when
+                you are ready to issue a revised proposal. This SENT version remains unchanged until a newer version is
+                sent.
+              </p>
+              <p className="mt-2">
+                <Link
+                  href={quoteWorkspaceRevisionSectionHref}
+                  className="inline-flex text-[11px] font-semibold text-amber-200 underline underline-offset-2 hover:text-amber-100"
+                >
+                  Jump to revision and scope (step 1)
+                </Link>
+              </p>
+            </>
+          ) : null}
         </div>
       ) : null}
 

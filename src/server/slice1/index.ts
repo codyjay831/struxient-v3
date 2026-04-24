@@ -238,6 +238,12 @@ export {
   type DeclineQuoteVersionViaPortalSuccessDto,
 } from "./mutations/decline-quote-version-via-portal";
 export {
+  requestQuoteChangesViaPortalShareToken,
+  type RequestQuoteChangesViaPortalRequestBody,
+  type RequestQuoteChangesViaPortalResult,
+  type RequestQuoteChangesViaPortalSuccessDto,
+} from "./mutations/request-quote-changes-via-portal";
+export {
   retryQuotePortalShareDeliveryForTenant,
   sendQuotePortalShareForTenant,
   type RetryQuotePortalShareDeliveryResult,

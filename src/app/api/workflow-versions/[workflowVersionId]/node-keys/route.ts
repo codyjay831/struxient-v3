@@ -8,8 +8,9 @@ import { apiAuthMeta, requireApiPrincipalWithCapability } from "@/lib/auth/api-p
 type RouteContext = { params: Promise<{ workflowVersionId: string }> };
 
 /**
- * Narrow projection of pinned-workflow snapshot node ids (with derived task counts)
- * for the QuoteLocalPacketItem `targetNodeKey` picker. **No snapshotJson exposure.**
+ * Narrow projection of workflow snapshot node ids (with derived task counts) for
+ * `targetNodeKey` authoring: quote-local (pinned workflow) and office library packet
+ * compose-hint workflow selection. **No snapshotJson exposure.**
  *
  * Wrong tenant or unknown id → 404 (no leak). Mirrors the contract of
  * `GET /api/workflow-versions/[id]`.

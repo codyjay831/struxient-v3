@@ -2,6 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useLibraryPacketComposeHintWorkflowVersionId } from "@/components/catalog-packets/library-packet-compose-hint-workflow-provider";
+import { TargetNodePicker } from "@/components/quote-scope/target-node-picker";
 
 function readStringFromJson(json: unknown, key: string): string {
   if (json === null || typeof json !== "object" || Array.isArray(json)) return "";
@@ -30,6 +32,7 @@ export function EditPacketTaskLineForm({
   embeddedPayloadJson,
 }: Props) {
   const router = useRouter();
+  const hintWorkflowVersionId = useLibraryPacketComposeHintWorkflowVersionId();
   const [open, setOpen] = useState(false);
   const [targetNodeKey, setTargetNodeKey] = useState(initialTargetNodeKey);
   const [tierCode, setTierCode] = useState(initialTierCode ?? "");
@@ -101,14 +104,16 @@ export function EditPacketTaskLineForm({
       {open ? (
         <form onSubmit={(ev) => void onSubmit(ev)} className="mt-2 space-y-2 rounded border border-zinc-800 bg-zinc-950/50 p-3">
           <div>
-            <label className="block text-[10px] font-medium text-zinc-500">targetNodeKey</label>
-            <input
-              required
-              value={targetNodeKey}
-              onChange={(e) => setTargetNodeKey(e.target.value)}
-              disabled={busy}
-              className="mt-0.5 w-full rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs text-zinc-100"
-            />
+            <span className="block text-[10px] font-medium text-zinc-500">targetNodeKey</span>
+            <div className="mt-0.5">
+              <TargetNodePicker
+                workflowVersionIdForNodeKeys={hintWorkflowVersionId}
+                value={targetNodeKey}
+                disabled={busy}
+                onChange={setTargetNodeKey}
+                copyVariant="catalogLibraryHint"
+              />
+            </div>
           </div>
           <div>
             <label className="block text-[10px] font-medium text-zinc-500">tierCode (optional, empty clears)</label>

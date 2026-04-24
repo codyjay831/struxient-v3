@@ -112,7 +112,7 @@ describe("operational holds backbone (Epic 29 / 48)", () => {
       expect(blockedStart.kind).toBe("hold_active");
 
       const feedWhileHeld = await getGlobalWorkFeedReadModelForTenant(prisma, { tenantId, fetchCap: 50, maxRows: 50 });
-      expect(feedWhileHeld.schemaVersion).toBe(4);
+      expect(feedWhileHeld.schemaVersion).toBe(5);
       const rowWhileHeld = feedWhileHeld.rows.find((r) => r.runtimeTaskId === rtA.id);
       expect(rowWhileHeld?.lane).toBe("blocked");
       expect(rowWhileHeld?.actionability.start.reasons).toContain("HOLD_ACTIVE");

@@ -17,7 +17,7 @@ type Props = {
   /**
    * Pinned workflow version id for the host quote version. When non-null, the
    * targetNodeKey field renders as a snapshot-driven picker; when null, it
-   * falls back to free-text entry. See TargetNodePicker.
+   * falls back to free-text entry. See {@link TargetNodePicker}.
    */
   pinnedWorkflowVersionId: string | null;
 };
@@ -930,7 +930,7 @@ function ItemForm({
       <div className="space-y-1">
         <span className="block text-zinc-500">Target node key</span>
         <TargetNodePicker
-          pinnedWorkflowVersionId={pinnedWorkflowVersionId}
+          workflowVersionIdForNodeKeys={pinnedWorkflowVersionId}
           value={draft.targetNodeKey}
           disabled={busy}
           onChange={(next) => set("targetNodeKey", next)}

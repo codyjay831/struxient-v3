@@ -13,6 +13,8 @@ export type GlobalWorkFeedRuntimeTaskApiRow = {
   customerId: string;
   customerName: string;
   quoteNumber: string;
+  /** Frozen package slot id; deterministic ordering key for `isNextForJob`. */
+  packageTaskId: string;
   displayTitle: string;
   nodeId: string;
   createdAt: string;
@@ -25,6 +27,8 @@ export type GlobalWorkFeedRuntimeTaskApiRow = {
   };
   actionability: TaskActionabilityApiDto;
   lane: GlobalWorkFeedRuntimeLane;
+  /** True for at most one row per `jobId` (Execution Canon Schema v5). */
+  isNextForJob: boolean;
 };
 
 export type GlobalWorkFeedPreJobTaskApiRow = {
@@ -90,6 +94,7 @@ export function toGlobalWorkFeedApiDto(model: GlobalWorkFeedReadModel): GlobalWo
       customerId: r.customerId,
       customerName: r.customerName,
       quoteNumber: r.quoteNumber,
+      packageTaskId: r.packageTaskId,
       displayTitle: r.displayTitle,
       nodeId: r.nodeId,
       createdAt: r.createdAt.toISOString(),
@@ -102,6 +107,7 @@ export function toGlobalWorkFeedApiDto(model: GlobalWorkFeedReadModel): GlobalWo
       },
       actionability: toTaskActionabilityApiDto(r.actionability),
       lane: r.lane,
+      isNextForJob: r.isNextForJob,
     })),
     preJobRows: model.preJobRows.map((p) => ({
       preJobTaskId: p.preJobTaskId,

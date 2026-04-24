@@ -2,6 +2,7 @@ import { getPrisma } from "@/server/db/prisma";
 import { getQuotePortalPresentationByShareToken } from "@/server/slice1/reads/quote-portal-reads";
 import { InternalNotFoundState } from "@/components/internal/internal-state-feedback";
 import { PortalQuoteDeclineForm } from "@/components/portal/portal-quote-decline-form";
+import { PortalQuoteRequestChangesForm } from "@/components/portal/portal-quote-request-changes-form";
 import { PortalQuoteSignForm } from "@/components/portal/portal-quote-sign-form";
 
 type Props = { params: Promise<{ shareToken: string }> };
@@ -98,7 +99,24 @@ export default async function PortalQuoteReviewPage({ params }: Props) {
 
         {!isSigned && !isDeclined ? (
           <>
+            {model.portalChangeRequestedAtIso && model.portalChangeRequestMessage ? (
+              <section className="mt-8 rounded-lg border border-amber-900/45 bg-amber-950/25 px-4 py-3">
+                <h2 className="text-[11px] font-semibold uppercase tracking-wider text-amber-400/90">
+                  Change request on file
+                </h2>
+                <p className="mt-2 text-xs text-amber-200/75">
+                  Submitted {new Date(model.portalChangeRequestedAtIso).toLocaleString()}
+                </p>
+                <p className="mt-2 text-sm leading-relaxed text-amber-50/95 whitespace-pre-wrap">
+                  {model.portalChangeRequestMessage}
+                </p>
+                <p className="mt-3 text-[11px] text-amber-200/65">
+                  You can submit an updated message below, or sign if this version already works for you.
+                </p>
+              </section>
+            ) : null}
             <PortalQuoteSignForm shareToken={shareToken} />
+            <PortalQuoteRequestChangesForm shareToken={shareToken} />
             <PortalQuoteDeclineForm shareToken={shareToken} />
           </>
         ) : null}

@@ -57,6 +57,8 @@ enum AuditEventType {
   QUOTE_VERSION_SIGNED
   /// Customer declined a sent quote via portal share token (Epic 13 + 54).
   QUOTE_VERSION_DECLINED_PORTAL
+  /// Customer requested edits on a sent quote via portal; version stays SENT (Epic 13 + 54).
+  QUOTE_VERSION_CHANGE_REQUESTED_PORTAL
   QUOTE_VERSION_ACTIVATED
   FLOW_SHARE_MANAGED
   FLOW_SHARE_DELIVERED
@@ -942,6 +944,9 @@ model QuoteVersion {
   /// Set when status becomes DECLINED via customer portal (Epic 13 + 54).
   portalDeclinedAt      DateTime?
   portalDeclineReason   String?          @db.Text
+  /// Customer portal: non-terminal change request while version remains SENT (Epic 13 + 54).
+  portalChangeRequestedAt   DateTime?
+  portalChangeRequestMessage  String?          @db.Text
   proposalGroups        ProposalGroup[]
   quoteLineItems        QuoteLineItem[]
   auditEvents           AuditEvent[]

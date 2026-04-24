@@ -3,25 +3,24 @@
 import { useEffect, useMemo, useState } from "react";
 import type { WorkflowNodeKeyProjection } from "@/lib/workflow-snapshot-node-projection";
 
+export type TargetNodePickerCopyVariant = "quoteScopePinned" | "catalogLibraryHint";
+
 /**
- * QuoteLocalPacketItem `targetNodeKey` picker.
+ * `targetNodeKey` picker: loads projected node ids from `GET …/workflow-versions/:id/node-keys`
+ * when a workflow version id is supplied; otherwise free-text (compose validates later).
  *
- * - When a workflow is pinned: lazy-fetches a projected node-key list and
- *   renders a native <select> bound to the draft's targetNodeKey value.
- *   If the saved value is not present in the current snapshot, it surfaces
- *   inline as a "not in current snapshot" warning but is preserved so the
- *   author can keep, change, or clear it.
- * - When no workflow is pinned: degrades to the existing free-text input
- *   with explanatory copy. Compose validates `targetNodeKey` later.
+ * - **Quote scope**: pass the quote version&apos;s pinned workflow version id.
+ * - **Catalog library packet (office)**: pass the optional compose-hint published version id.
  *
- * The save contract on `targetNodeKey: string` is unchanged.
+ * The persisted `targetNodeKey: string` contract is unchanged.
  */
 
 type Props = {
-  pinnedWorkflowVersionId: string | null;
+  workflowVersionIdForNodeKeys: string | null;
   value: string;
   disabled?: boolean;
   onChange: (next: string) => void;
+  copyVariant?: TargetNodePickerCopyVariant;
 };
 
 type LoadState =
@@ -49,32 +48,46 @@ async function fetchNodeKeys(workflowVersionId: string): Promise<WorkflowNodeKey
   return body.data?.nodes ?? [];
 }
 
-export function TargetNodePicker({ pinnedWorkflowVersionId, value, disabled, onChange }: Props) {
-  if (pinnedWorkflowVersionId == null) {
-    return <FreeTextFallback value={value} disabled={disabled} onChange={onChange} />;
+export function TargetNodePicker({
+  workflowVersionIdForNodeKeys,
+  value,
+  disabled,
+  onChange,
+  copyVariant = "quoteScopePinned",
+}: Props) {
+  if (workflowVersionIdForNodeKeys == null || workflowVersionIdForNodeKeys === "") {
+    return (
+      <FreeTextFallback
+        value={value}
+        disabled={disabled}
+        onChange={onChange}
+        copyVariant={copyVariant}
+      />
+    );
   }
   return (
-    <PinnedWorkflowPicker
-      workflowVersionId={pinnedWorkflowVersionId}
+    <WorkflowSnapshotNodeKeyPicker
+      workflowVersionId={workflowVersionIdForNodeKeys}
       value={value}
       disabled={disabled}
       onChange={onChange}
+      copyVariant={copyVariant}
     />
   );
 }
 
-/* ─────────────────── Pinned-workflow select ─────────────────── */
-
-function PinnedWorkflowPicker({
+function WorkflowSnapshotNodeKeyPicker({
   workflowVersionId,
   value,
   disabled,
   onChange,
+  copyVariant,
 }: {
   workflowVersionId: string;
   value: string;
   disabled?: boolean;
   onChange: (next: string) => void;
+  copyVariant: TargetNodePickerCopyVariant;
 }) {
   const [load, setLoad] = useState<LoadState>({ kind: "idle" });
 
@@ -89,7 +102,7 @@ function PinnedWorkflowPicker({
         if (!cancelled) {
           setLoad({
             kind: "error",
-            message: err instanceof Error ? err.message : "Failed to load node keys.",
+            message: err instanceof Error ? err.message : "Failed to load workflow nodes.",
           });
         }
       },
@@ -105,6 +118,9 @@ function PinnedWorkflowPicker({
     if (trimmed === "") return null;
     return load.nodes.some((n) => n.nodeId === trimmed);
   }, [load, trimmed]);
+
+  const snapshotLabel =
+    copyVariant === "catalogLibraryHint" ? "selected compose-hint workflow snapshot" : "current pinned workflow snapshot";
 
   if (load.kind === "loading" || load.kind === "idle") {
     return (
@@ -123,6 +139,7 @@ function PinnedWorkflowPicker({
           value={value}
           disabled={disabled}
           onChange={onChange}
+          copyVariant={copyVariant}
           fallbackHint="Falling back to free-text entry."
         />
       </div>
@@ -132,13 +149,12 @@ function PinnedWorkflowPicker({
   if (load.nodes.length === 0) {
     return (
       <div className="space-y-1">
-        <p className="text-[10px] text-amber-400">
-          The pinned workflow snapshot has no addressable nodes.
-        </p>
+        <p className="text-[10px] text-amber-400">The workflow snapshot has no addressable nodes.</p>
         <FreeTextFallback
           value={value}
           disabled={disabled}
           onChange={onChange}
+          copyVariant={copyVariant}
           fallbackHint="Compose will validate this value when run."
         />
       </div>
@@ -166,31 +182,43 @@ function PinnedWorkflowPicker({
       </select>
       {valueIsKnown === false ? (
         <p className="text-[10px] text-amber-400">
-          Saved <span className="font-mono">{trimmed}</span> is not present on the current pinned
-          workflow snapshot. Compose will reject it; pick a node from the list to fix.
+          Saved <span className="font-mono">{trimmed}</span> is not present on the {snapshotLabel}. Compose will
+          reject it if the quote&apos;s pinned template does not include this id; pick a node from the list to fix.
         </p>
       ) : (
         <p className="text-[10px] text-zinc-500">
-          Choices come from the pinned workflow version&apos;s snapshot nodes.
+          {copyVariant === "catalogLibraryHint"
+            ? "Choices come from the selected published workflow version (compose hint only — the packet row still stores a plain string)."
+            : "Choices come from the pinned workflow version's snapshot nodes."}
         </p>
       )}
     </div>
   );
 }
 
-/* ─────────────────── Free-text fallback ─────────────────── */
-
 function FreeTextFallback({
   value,
   disabled,
   onChange,
+  copyVariant,
   fallbackHint,
 }: {
   value: string;
   disabled?: boolean;
   onChange: (next: string) => void;
+  copyVariant: TargetNodePickerCopyVariant;
   fallbackHint?: string;
 }) {
+  const placeholder =
+    copyVariant === "catalogLibraryHint"
+      ? "node id (e.g. install-node)"
+      : "node id on the pinned workflow snapshot";
+
+  const defaultHint =
+    copyVariant === "catalogLibraryHint"
+      ? "No compose-hint workflow selected — enter a node id that exists on the template you plan to pin, or choose a published version above."
+      : "No workflow is pinned to this quote version yet. Validity will be checked when compose runs.";
+
   return (
     <div className="space-y-1">
       <input
@@ -198,13 +226,10 @@ function FreeTextFallback({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
-        placeholder="node id on the pinned workflow snapshot"
+        placeholder={placeholder}
         className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-[11px] text-zinc-200 disabled:opacity-50"
       />
-      <p className="text-[10px] text-zinc-500">
-        {fallbackHint ??
-          "No workflow is pinned to this quote version yet. Validity will be checked when compose runs."}
-      </p>
+      <p className="text-[10px] text-zinc-500">{fallbackHint ?? defaultHint}</p>
     </div>
   );
 }

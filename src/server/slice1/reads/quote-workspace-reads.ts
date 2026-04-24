@@ -23,6 +23,8 @@ const VERSION_SELECT = {
   voidReason: true,
   portalDeclinedAt: true,
   portalDeclineReason: true,
+  portalChangeRequestedAt: true,
+  portalChangeRequestMessage: true,
 } as const;
 
 /** Aggregate summary of line items for a specific version. */

@@ -99,6 +99,14 @@ export function QuoteWorkspaceVersionHistory({ quoteId, versions, canOfficeMutat
                           Customer declined: {v.portalDeclineReason}
                         </p>
                       ) : null}
+                      {v.status === "SENT" &&
+                      v.portalChangeRequestedAt &&
+                      (v.portalChangeRequestMessage?.trim().length ?? 0) > 0 ? (
+                        <p className="max-w-[18rem] text-[10px] font-normal leading-snug text-amber-200/85">
+                          Customer requested changes ({new Date(v.portalChangeRequestedAt).toLocaleString()}):{" "}
+                          {v.portalChangeRequestMessage}
+                        </p>
+                      ) : null}
                       {v.status === "SUPERSEDED" ? (
                         <p className="max-w-[14rem] text-[10px] font-normal leading-snug text-zinc-500">
                           Replaced when a newer version was sent — not an active customer proposal.

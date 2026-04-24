@@ -50,7 +50,10 @@ export function QuoteWorkspaceActions({ quoteId, canOfficeMutate }: Props) {
   }
 
   return (
-    <section className="mb-6 rounded border border-zinc-700/80 bg-zinc-900/50 p-4 text-sm">
+    <section
+      id="revision-management"
+      className="mb-6 rounded border border-zinc-700/80 bg-zinc-900/50 p-4 text-sm"
+    >
       <h2 className="mb-2 text-sm font-medium text-zinc-200">Revision management</h2>
       {!canOfficeMutate ? (
         <p className="text-xs text-zinc-500">

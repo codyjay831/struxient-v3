@@ -2,6 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useLibraryPacketComposeHintWorkflowVersionId } from "@/components/catalog-packets/library-packet-compose-hint-workflow-provider";
+import { TargetNodePicker } from "@/components/quote-scope/target-node-picker";
 
 type Props = {
   scopePacketId: string;
@@ -10,6 +12,7 @@ type Props = {
 
 export function AddEmbeddedPacketTaskLineForm({ scopePacketId, scopePacketRevisionId }: Props) {
   const router = useRouter();
+  const hintWorkflowVersionId = useLibraryPacketComposeHintWorkflowVersionId();
   const [lineKey, setLineKey] = useState("");
   const [targetNodeKey, setTargetNodeKey] = useState("");
   const [title, setTitle] = useState("");
@@ -73,15 +76,16 @@ export function AddEmbeddedPacketTaskLineForm({ scopePacketId, scopePacketRevisi
           />
         </div>
         <div>
-          <label className="block text-[11px] font-medium text-zinc-500">targetNodeKey</label>
-          <input
-            required
-            value={targetNodeKey}
-            onChange={(e) => setTargetNodeKey(e.target.value)}
-            disabled={busy}
-            placeholder="install-node"
-            className="mt-0.5 w-full rounded border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100"
-          />
+          <span className="block text-[11px] font-medium text-zinc-500">targetNodeKey</span>
+          <div className="mt-0.5">
+            <TargetNodePicker
+              workflowVersionIdForNodeKeys={hintWorkflowVersionId}
+              value={targetNodeKey}
+              disabled={busy}
+              onChange={setTargetNodeKey}
+              copyVariant="catalogLibraryHint"
+            />
+          </div>
         </div>
       </div>
       <div>

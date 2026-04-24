@@ -12,6 +12,7 @@ import { deriveNewestSignedWithoutActivationTarget } from "@/lib/workspace/deriv
 import {
   deriveNewestPortalDeclinedSummary,
   deriveNewestSentSignTarget,
+  derivePortalChangeRequestOnSentTarget,
 } from "@/lib/workspace/derive-workspace-sent-sign-target";
 import { deriveQuoteHeadWorkspaceReadiness } from "@/lib/workspace/derive-quote-head-workspace-readiness";
 import { InvariantViolationError } from "@/server/slice1/errors";
@@ -113,6 +114,7 @@ export default async function DevQuoteWorkspacePage({ params }: PageProps) {
 
   const sentSignTarget = deriveNewestSentSignTarget(ws.versions);
   const portalDeclinedSummary = deriveNewestPortalDeclinedSummary(ws.versions);
+  const portalChangeRequestOnSent = derivePortalChangeRequestOnSentTarget(sentSignTarget, ws.versions);
   const signedActivateTarget = deriveNewestSignedWithoutActivationTarget(ws.versions);
   const executionEntryTarget = deriveNewestActivatedExecutionEntryTarget(ws.versions);
 
@@ -229,8 +231,10 @@ export default async function DevQuoteWorkspacePage({ params }: PageProps) {
               <QuoteWorkspaceSignSent
                 signTarget={sentSignTarget}
                 portalDeclinedSummary={portalDeclinedSummary}
+                portalChangeRequestOnSent={portalChangeRequestOnSent}
                 canOfficeMutate={canOfficeMutate}
                 appOrigin={appOrigin}
+                quoteWorkspaceRevisionSectionHref={`/dev/quotes/${quoteId}#revision-management`}
               />
             </QuoteWorkspacePipelineStep>
           </div>

@@ -28,6 +28,8 @@ function head(over: Partial<QuoteVersionHistoryItemDto> = {}): QuoteVersionHisto
     voidReason: null,
     portalDeclinedAt: null,
     portalDeclineReason: null,
+    portalChangeRequestedAt: null,
+    portalChangeRequestMessage: null,
     compareToPrior: null,
     ...over,
   };

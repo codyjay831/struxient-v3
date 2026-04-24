@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   deriveNewestPortalDeclinedSummary,
   deriveNewestSentSignTarget,
+  derivePortalChangeRequestOnSentTarget,
+  type SentSignTarget,
+  type VersionRowForPortalChangeRequest,
   type VersionRowForPortalDecline,
   type VersionRowForSign,
 } from "./derive-workspace-sent-sign-target";
@@ -85,6 +88,58 @@ describe("deriveNewestPortalDeclinedSummary", () => {
       portalDeclinedAtIso: "2026-04-21T01:00:00.000Z",
       portalDeclineReason: "Too expensive",
       portalQuoteShareToken: "tok2",
+    });
+  });
+});
+
+describe("derivePortalChangeRequestOnSentTarget", () => {
+  const signTarget: SentSignTarget = {
+    quoteVersionId: "qv-sent",
+    versionNumber: 2,
+    portalQuoteShareToken: "tok",
+  };
+
+  it("returns null when signTarget is null", () => {
+    const rows: VersionRowForPortalChangeRequest[] = [
+      {
+        id: "qv-sent",
+        versionNumber: 2,
+        status: "SENT",
+        portalChangeRequestedAt: "2026-04-21T12:00:00.000Z",
+        portalChangeRequestMessage: "Hi",
+      },
+    ];
+    expect(derivePortalChangeRequestOnSentTarget(null, rows)).toBeNull();
+  });
+
+  it("returns null when the sent row has no change request fields", () => {
+    const rows: VersionRowForPortalChangeRequest[] = [
+      {
+        id: "qv-sent",
+        versionNumber: 2,
+        status: "SENT",
+        portalChangeRequestedAt: null,
+        portalChangeRequestMessage: null,
+      },
+    ];
+    expect(derivePortalChangeRequestOnSentTarget(signTarget, rows)).toBeNull();
+  });
+
+  it("returns summary when the sign-target version has a persisted change request", () => {
+    const rows: VersionRowForPortalChangeRequest[] = [
+      {
+        id: "qv-sent",
+        versionNumber: 2,
+        status: "SENT",
+        portalChangeRequestedAt: "2026-04-21T12:00:00.000Z",
+        portalChangeRequestMessage: "  Please remove gutters.  ",
+      },
+    ];
+    expect(derivePortalChangeRequestOnSentTarget(signTarget, rows)).toEqual({
+      quoteVersionId: "qv-sent",
+      versionNumber: 2,
+      portalChangeRequestedAtIso: "2026-04-21T12:00:00.000Z",
+      portalChangeRequestMessage: "Please remove gutters.",
     });
   });
 });
