@@ -1,8 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { InternalActionResult } from "@/components/internal/internal-action-result";
+import { listPublishBlockingWorkflowSnapshotWarnings } from "@/lib/workflow-version-snapshot";
 
 type Props = {
   workflowVersionId: string;
@@ -25,6 +26,19 @@ export function ProcessTemplatesDraftSnapshotEditor({ workflowVersionId, templat
     message?: string;
     technicalDetails?: string;
   } | null>(null);
+
+  const parsedSnapshot = useMemo(() => {
+    try {
+      return { ok: true as const, value: JSON.parse(text) as unknown };
+    } catch {
+      return { ok: false as const };
+    }
+  }, [text]);
+
+  const publishBlockingWarnings = useMemo(() => {
+    if (!parsedSnapshot.ok) return [];
+    return listPublishBlockingWorkflowSnapshotWarnings(parsedSnapshot.value);
+  }, [parsedSnapshot]);
 
   async function saveSnapshot() {
     setBusySave(true);
@@ -126,6 +140,28 @@ export function ProcessTemplatesDraftSnapshotEditor({ workflowVersionId, templat
         className="w-full min-h-[280px] rounded-md border border-zinc-800 bg-zinc-950 p-3 font-mono text-xs text-zinc-200 leading-relaxed"
         disabled={busySave || busyPublish}
       />
+      {!parsedSnapshot.ok ? (
+        <div className="rounded-md border border-zinc-700/80 bg-zinc-900/40 px-3 py-2 text-xs text-zinc-400">
+          Invalid JSON — fix syntax to see publish readiness hints. Save will reject until the document parses.
+        </div>
+      ) : publishBlockingWarnings.length > 0 ? (
+        <div
+          className="rounded-md border border-amber-800/50 bg-amber-950/25 px-3 py-2 text-xs text-amber-100/95"
+          role="status"
+          aria-live="polite"
+        >
+          <p className="font-semibold text-amber-200/95">Publish readiness (non-blocking)</p>
+          <p className="mt-1 text-amber-100/80">
+            Save can still succeed for valid draft shapes (for example an empty <span className="font-mono">nodes</span>{" "}
+            WIP). Publish uses stricter checks:
+          </p>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            {publishBlockingWarnings.map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       <div className="flex flex-wrap gap-3">
         <button
           type="button"

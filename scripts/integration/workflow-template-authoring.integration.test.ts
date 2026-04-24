@@ -68,6 +68,14 @@ describe("workflow template authoring (mutations)", () => {
     ).rejects.toMatchObject({ code: "WORKFLOW_TEMPLATE_DRAFT_VERSION_EXISTS" });
 
     await expect(
+      replaceWorkflowVersionDraftSnapshotForTenant(prisma, {
+        tenantId,
+        workflowVersionId: draft1.id,
+        snapshotJson: { nodes: [{ id: "dup" }, { id: "dup" }] },
+      }),
+    ).rejects.toMatchObject({ code: "WORKFLOW_VERSION_SNAPSHOT_INVALID" });
+
+    await expect(
       publishWorkflowVersionForTenant(prisma, {
         tenantId,
         workflowVersionId: draft1.id,
