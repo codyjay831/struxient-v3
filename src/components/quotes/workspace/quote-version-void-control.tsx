@@ -21,8 +21,9 @@ export function QuoteVersionVoidControl({ quoteVersionId, status, hasActivation,
 
   const otherNonVoid = versions.some((v) => v.id !== quoteVersionId && v.status !== "VOID");
   const canVoidSent = status === "SENT" && !hasActivation;
+  const canVoidDeclined = status === "DECLINED" && !hasActivation;
   const canVoidDraft = status === "DRAFT" && otherNonVoid;
-  const show = canOfficeMutate && (canVoidSent || canVoidDraft);
+  const show = canOfficeMutate && (canVoidSent || canVoidDeclined || canVoidDraft);
 
   if (!show) {
     return null;

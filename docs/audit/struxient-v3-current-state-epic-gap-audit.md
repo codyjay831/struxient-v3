@@ -71,7 +71,7 @@ The project is transitioning from **Phase 5 (Bridge: Freeze → Activation)** in
 
 | Epic # | Doc Name | Purpose | Status | Evidence (Code) | Gaps / Drift | Confidence |
 |---|---|---|---|---|---|---|
-| 01 | Leads | CRM Intake | **Partial** | Model in `prisma` | No dedicated API/UI beyond CRM basics | High |
+| 01 | Leads | CRM Intake | **Schema only** | `Lead` + `Quote.leadId` in `prisma/schema.prisma` (minimal MVP shape; **no** app CRUD) | **Prior audit row was wrong:** there was **no** Lead in Prisma until migration `20260424120000_add_lead_mvp_and_quote_lead_id`. Reads/mutations/UI/convert still absent | High |
 | 02 | Customers | Identity | **Mostly Complete** | `Customer` model; `customer-reads.ts` | Solid CRUD | High |
 | 03 | FlowGroup | Project Anchor | **Complete** | `FlowGroup` model; `flow-group-reads.ts` | Central anchor for Jobs/Quotes | High |
 | 07 | Quotes (shell) | Commercial Entry | **Mostly Complete** | `create-commercial-quote-shell.ts` | Code far exceeds Doc Grade (C+) | High |

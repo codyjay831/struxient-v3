@@ -34,6 +34,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     const freezeReadable =
       exists.status === "SENT" ||
       exists.status === "SIGNED" ||
+      exists.status === "DECLINED" ||
       exists.status === "VOID" ||
       exists.status === "SUPERSEDED";
     if (!freezeReadable) {

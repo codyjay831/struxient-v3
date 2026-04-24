@@ -3,7 +3,16 @@ import { PrismaClient } from "@prisma/client";
 
 const projectDir = process.cwd();
 
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
+/** Avoid `globalThis.prisma` — that name is generic and can collide with tooling or stale tutorials. */
+const PRISMA_SINGLETON_KEY = "__struxient_prisma_client__" as const;
+
+function getSingleton(): PrismaClient | undefined {
+  return (globalThis as Record<string, unknown>)[PRISMA_SINGLETON_KEY] as PrismaClient | undefined;
+}
+
+function setSingleton(client: PrismaClient | undefined): void {
+  (globalThis as Record<string, unknown>)[PRISMA_SINGLETON_KEY] = client;
+}
 
 let envLoaded = false;
 
@@ -14,14 +23,31 @@ function ensureEnvLoaded(): void {
 }
 
 /**
+ * After `prisma generate` adds a new model, Next dev can keep a cached `PrismaClient` on `globalThis`
+ * that was built from an older generated client (no `prisma.lead`, etc.). Drop that singleton so the
+ * next client matches the current `@prisma/client` + `.prisma/client` on disk.
+ */
+function leadDelegateMissing(client: PrismaClient): boolean {
+  const lead = (client as unknown as { lead?: { findMany?: unknown } }).lead;
+  return lead == null || typeof lead.findMany !== "function";
+}
+
+/**
  * Lazily construct Prisma after Next env files are loaded (fixes Turbopack / SSR where
  * `DATABASE_URL` was missing during eager `new PrismaClient()` at module init).
  */
 export function getPrisma(): PrismaClient {
   ensureEnvLoaded();
 
-  if (globalForPrisma.prisma) {
-    return globalForPrisma.prisma;
+  const cached = getSingleton();
+  if (cached && leadDelegateMissing(cached)) {
+    setSingleton(undefined);
+    void cached.$disconnect().catch(() => {});
+  }
+
+  const live = getSingleton();
+  if (live) {
+    return live;
   }
 
   const url = process.env.DATABASE_URL?.trim();
@@ -35,6 +61,6 @@ export function getPrisma(): PrismaClient {
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });
 
-  globalForPrisma.prisma = client;
+  setSingleton(client);
   return client;
 }

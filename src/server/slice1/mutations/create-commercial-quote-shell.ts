@@ -55,7 +55,9 @@ export type CreateCommercialQuoteShellResult =
   | { ok: false; kind: "quote_number_taken" }
   | { ok: false; kind: "customer_not_found" }
   | { ok: false; kind: "flow_group_not_found" }
-  | { ok: false; kind: "flow_group_customer_mismatch" };
+  | { ok: false; kind: "flow_group_customer_mismatch" }
+  | { ok: false; kind: "lead_not_found" }
+  | { ok: false; kind: "lead_not_open" };
 
 function normalizeName(raw: string, max: number): string | null {
   const t = raw.trim();
@@ -91,10 +93,18 @@ async function allocateUniqueQuoteNumber(tx: Prisma.TransactionClient, tenantId:
 }
 
 type TxOutcome =
+  | { kind: "invalid_customer_name" }
+  | { kind: "invalid_flow_group_name" }
+  | { kind: "invalid_quote_number" }
+  | { kind: "invalid_proposal_group_name" }
+  | { kind: "invalid_billing_address_json" }
+  | { kind: "billing_not_allowed_with_attach_customer" }
   | { kind: "quote_number_taken" }
   | { kind: "customer_not_found" }
   | { kind: "flow_group_not_found" }
   | { kind: "flow_group_customer_mismatch" }
+  | { kind: "lead_not_found" }
+  | { kind: "lead_not_open" }
   | {
       kind: "created";
       customer: { id: string; name: string };
@@ -103,6 +113,259 @@ type TxOutcome =
       quoteVersion: { id: string; quoteId: string; versionNumber: number; status: QuoteVersionStatus };
       proposalGroup: { id: string; quoteVersionId: string; name: string; sortOrder: number };
     };
+
+function mapTxOutcomeToShellResult(outcome: TxOutcome): CreateCommercialQuoteShellResult {
+  if (outcome.kind === "created") {
+    return {
+      ok: true,
+      data: {
+        customer: outcome.customer,
+        flowGroup: outcome.flowGroup,
+        quote: outcome.quote,
+        quoteVersion: outcome.quoteVersion,
+        proposalGroup: outcome.proposalGroup,
+      },
+    };
+  }
+  return { ok: false, kind: outcome.kind };
+}
+
+type ShellPrecompute =
+  | { ok: false; outcome: TxOutcome }
+  | {
+      ok: true;
+      proposalGroupNameResolved: string;
+      requestedNumber: string | null;
+      billingJson: object | null | undefined;
+    };
+
+/** Exported for `convertLeadToQuoteShell` so the same validation runs before an interactive transaction. */
+export function precomputeCommercialQuoteShellInput(input: CreateCommercialQuoteShellInput): ShellPrecompute {
+  const proposalGroupNameRaw = input.proposalGroupName;
+  const proposalGroupNameResolved =
+    proposalGroupNameRaw == null || proposalGroupNameRaw === ""
+      ? DEFAULT_PROPOSAL_GROUP_NAME
+      : normalizeName(proposalGroupNameRaw, MAX_FLOW_GROUP_NAME);
+  if (!proposalGroupNameResolved) {
+    return { ok: false, outcome: { kind: "invalid_proposal_group_name" } };
+  }
+
+  const requestedNumber = normalizeQuoteNumber(input.quoteNumber ?? null);
+  if (input.quoteNumber != null && input.quoteNumber !== "" && !requestedNumber) {
+    return { ok: false, outcome: { kind: "invalid_quote_number" } };
+  }
+
+  if (input.kind !== "new_customer_new_flow_group") {
+    const billing = "customerBillingAddressJson" in input ? input.customerBillingAddressJson : undefined;
+    if (billing !== undefined && billing !== null) {
+      return { ok: false, outcome: { kind: "billing_not_allowed_with_attach_customer" } };
+    }
+  }
+
+  let billingJson: object | null | undefined = undefined;
+  if (input.kind === "new_customer_new_flow_group") {
+    const b = input.customerBillingAddressJson;
+    if (b !== undefined && b !== null) {
+      if (typeof b !== "object" || Array.isArray(b)) {
+        return { ok: false, outcome: { kind: "invalid_billing_address_json" } };
+      }
+      billingJson = b as object;
+    }
+  }
+
+  if (input.kind === "new_customer_new_flow_group") {
+    const customerName = normalizeName(input.customerName, MAX_CUSTOMER_NAME);
+    if (!customerName) {
+      return { ok: false, outcome: { kind: "invalid_customer_name" } };
+    }
+    const flowGroupName = normalizeName(input.flowGroupName, MAX_FLOW_GROUP_NAME);
+    if (!flowGroupName) {
+      return { ok: false, outcome: { kind: "invalid_flow_group_name" } };
+    }
+  } else if (input.kind === "attach_customer_new_flow_group") {
+    const flowGroupName = normalizeName(input.flowGroupName, MAX_FLOW_GROUP_NAME);
+    if (!flowGroupName) {
+      return { ok: false, outcome: { kind: "invalid_flow_group_name" } };
+    }
+  }
+
+  return { ok: true, proposalGroupNameResolved, requestedNumber, billingJson };
+}
+
+export type CreateCommercialQuoteShellTxParams = {
+  tenantId: string;
+  createdByUserId: string;
+  input: CreateCommercialQuoteShellInput;
+  /** When set, `Quote.leadId` is written and the lead must exist in the tenant with status `OPEN` (convert path). */
+  leadId?: string | null;
+};
+
+export type CommercialQuoteShellTxInput = CreateCommercialQuoteShellTxParams & {
+  proposalGroupNameResolved: string;
+  requestedNumber: string | null;
+  billingJson: object | null | undefined;
+};
+
+/**
+ * Core shell creation using an existing transaction client (e.g. nested in lead convert).
+ */
+export async function createCommercialQuoteShellInTransaction(
+  tx: Prisma.TransactionClient,
+  params: CommercialQuoteShellTxInput,
+): Promise<TxOutcome> {
+  const input = params.input;
+  const proposalGroupNameResolved = params.proposalGroupNameResolved;
+  const requestedNumber = params.requestedNumber;
+  const billingJson = params.billingJson;
+
+  const quoteNumber = requestedNumber ?? (await allocateUniqueQuoteNumber(tx, params.tenantId));
+
+  if (requestedNumber) {
+    const taken = await tx.quote.findFirst({
+      where: { tenantId: params.tenantId, quoteNumber: requestedNumber },
+      select: { id: true },
+    });
+    if (taken) {
+      return { kind: "quote_number_taken" };
+    }
+  }
+
+  const actor = await tx.user.findFirst({
+    where: { id: params.createdByUserId, tenantId: params.tenantId },
+    select: { id: true },
+  });
+  if (!actor) {
+    throw new Error("CREATED_BY_NOT_IN_TENANT");
+  }
+
+  const leadIdTrimmed = params.leadId?.trim() ?? "";
+  const leadId = leadIdTrimmed.length > 0 ? leadIdTrimmed : null;
+  if (leadId) {
+    const leadRow = await tx.lead.findFirst({
+      where: { id: leadId, tenantId: params.tenantId },
+      select: { id: true, status: true },
+    });
+    if (!leadRow) {
+      return { kind: "lead_not_found" };
+    }
+    if (leadRow.status !== "OPEN") {
+      return { kind: "lead_not_open" };
+    }
+  }
+
+  let customer: { id: string; name: string };
+  let flowGroup: { id: string; name: string; customerId: string };
+
+  if (input.kind === "new_customer_new_flow_group") {
+    const customerName = normalizeName(input.customerName, MAX_CUSTOMER_NAME)!;
+    const flowGroupName = normalizeName(input.flowGroupName, MAX_FLOW_GROUP_NAME)!;
+
+    customer = await tx.customer.create({
+      data: {
+        tenantId: params.tenantId,
+        name: customerName,
+        ...(billingJson !== undefined ? { billingAddressJson: billingJson as Prisma.InputJsonValue } : {}),
+      },
+      select: { id: true, name: true },
+    });
+
+    flowGroup = await tx.flowGroup.create({
+      data: {
+        tenantId: params.tenantId,
+        customerId: customer.id,
+        name: flowGroupName,
+      },
+      select: { id: true, name: true, customerId: true },
+    });
+  } else if (input.kind === "attach_customer_new_flow_group") {
+    const flowGroupName = normalizeName(input.flowGroupName, MAX_FLOW_GROUP_NAME)!;
+
+    const row = await tx.customer.findFirst({
+      where: { id: input.customerId, tenantId: params.tenantId },
+      select: { id: true, name: true },
+    });
+    if (!row) {
+      return { kind: "customer_not_found" };
+    }
+    customer = row;
+
+    flowGroup = await tx.flowGroup.create({
+      data: {
+        tenantId: params.tenantId,
+        customerId: customer.id,
+        name: flowGroupName,
+      },
+      select: { id: true, name: true, customerId: true },
+    });
+  } else {
+    const rowC = await tx.customer.findFirst({
+      where: { id: input.customerId, tenantId: params.tenantId },
+      select: { id: true, name: true },
+    });
+    if (!rowC) {
+      return { kind: "customer_not_found" };
+    }
+    customer = rowC;
+
+    const rowFg = await tx.flowGroup.findFirst({
+      where: { id: input.flowGroupId, tenantId: params.tenantId },
+      select: { id: true, name: true, customerId: true },
+    });
+    if (!rowFg) {
+      return { kind: "flow_group_not_found" };
+    }
+    if (rowFg.customerId !== customer.id) {
+      return { kind: "flow_group_customer_mismatch" };
+    }
+    flowGroup = rowFg;
+  }
+
+  const quote = await tx.quote.create({
+    data: {
+      tenantId: params.tenantId,
+      customerId: customer.id,
+      flowGroupId: flowGroup.id,
+      quoteNumber,
+      ...(leadId ? { leadId } : {}),
+    },
+    select: { id: true, quoteNumber: true, customerId: true, flowGroupId: true },
+  });
+
+  const quoteVersion = await tx.quoteVersion.create({
+    data: {
+      quoteId: quote.id,
+      versionNumber: 1,
+      status: "DRAFT",
+      createdById: actor.id,
+      title: null,
+      pinnedWorkflowVersionId: null,
+    },
+    select: { id: true, quoteId: true, versionNumber: true, status: true },
+  });
+
+  const proposalGroup = await tx.proposalGroup.create({
+    data: {
+      quoteVersionId: quoteVersion.id,
+      name: proposalGroupNameResolved,
+      sortOrder: 0,
+    },
+    select: { id: true, quoteVersionId: true, name: true, sortOrder: true },
+  });
+
+  return {
+    kind: "created",
+    customer,
+    flowGroup,
+    quote,
+    quoteVersion: {
+      id: quoteVersion.id,
+      quoteId: quoteVersion.quoteId,
+      versionNumber: quoteVersion.versionNumber,
+      status: quoteVersion.status,
+    },
+    proposalGroup,
+  };
+}
 
 /**
  * One transaction: (optional new Customer) + (optional new FlowGroup) + Quote + first DRAFT QuoteVersion + default ProposalGroup.
@@ -114,217 +377,25 @@ export async function createCommercialQuoteShellForTenant(
     tenantId: string;
     createdByUserId: string;
     input: CreateCommercialQuoteShellInput;
+    leadId?: string | null;
   },
 ): Promise<CreateCommercialQuoteShellResult> {
-  const input = params.input;
-
-  const proposalGroupNameRaw = input.proposalGroupName;
-  const proposalGroupNameResolved =
-    proposalGroupNameRaw == null || proposalGroupNameRaw === ""
-      ? DEFAULT_PROPOSAL_GROUP_NAME
-      : normalizeName(proposalGroupNameRaw, MAX_FLOW_GROUP_NAME);
-  if (!proposalGroupNameResolved) {
-    return { ok: false, kind: "invalid_proposal_group_name" };
+  const pre = precomputeCommercialQuoteShellInput(params.input);
+  if (!pre.ok) {
+    return mapTxOutcomeToShellResult(pre.outcome);
   }
 
-  const requestedNumber = normalizeQuoteNumber(input.quoteNumber ?? null);
-  if (input.quoteNumber != null && input.quoteNumber !== "" && !requestedNumber) {
-    return { ok: false, kind: "invalid_quote_number" };
-  }
+  const outcome = await prisma.$transaction(async (tx) =>
+    createCommercialQuoteShellInTransaction(tx, {
+      tenantId: params.tenantId,
+      createdByUserId: params.createdByUserId,
+      input: params.input,
+      leadId: params.leadId,
+      proposalGroupNameResolved: pre.proposalGroupNameResolved,
+      requestedNumber: pre.requestedNumber,
+      billingJson: pre.billingJson,
+    }),
+  );
 
-  if (input.kind !== "new_customer_new_flow_group") {
-    const billing = "customerBillingAddressJson" in input ? input.customerBillingAddressJson : undefined;
-    if (billing !== undefined && billing !== null) {
-      return { ok: false, kind: "billing_not_allowed_with_attach_customer" };
-    }
-  }
-
-  let billingJson: object | null | undefined = undefined;
-  if (input.kind === "new_customer_new_flow_group") {
-    const b = input.customerBillingAddressJson;
-    if (b !== undefined && b !== null) {
-      if (typeof b !== "object" || Array.isArray(b)) {
-        return { ok: false, kind: "invalid_billing_address_json" };
-      }
-      billingJson = b as object;
-    }
-  }
-
-  if (input.kind === "new_customer_new_flow_group") {
-    const customerName = normalizeName(input.customerName, MAX_CUSTOMER_NAME);
-    if (!customerName) {
-      return { ok: false, kind: "invalid_customer_name" };
-    }
-    const flowGroupName = normalizeName(input.flowGroupName, MAX_FLOW_GROUP_NAME);
-    if (!flowGroupName) {
-      return { ok: false, kind: "invalid_flow_group_name" };
-    }
-  } else if (input.kind === "attach_customer_new_flow_group") {
-    const flowGroupName = normalizeName(input.flowGroupName, MAX_FLOW_GROUP_NAME);
-    if (!flowGroupName) {
-      return { ok: false, kind: "invalid_flow_group_name" };
-    }
-  }
-
-  const outcome = await prisma.$transaction(async (tx): Promise<TxOutcome> => {
-    const quoteNumber = requestedNumber ?? (await allocateUniqueQuoteNumber(tx, params.tenantId));
-
-    if (requestedNumber) {
-      const taken = await tx.quote.findFirst({
-        where: { tenantId: params.tenantId, quoteNumber: requestedNumber },
-        select: { id: true },
-      });
-      if (taken) {
-        return { kind: "quote_number_taken" };
-      }
-    }
-
-    const actor = await tx.user.findFirst({
-      where: { id: params.createdByUserId, tenantId: params.tenantId },
-      select: { id: true },
-    });
-    if (!actor) {
-      throw new Error("CREATED_BY_NOT_IN_TENANT");
-    }
-
-    let customer: { id: string; name: string };
-    let flowGroup: { id: string; name: string; customerId: string };
-
-    if (input.kind === "new_customer_new_flow_group") {
-      const customerName = normalizeName(input.customerName, MAX_CUSTOMER_NAME)!;
-      const flowGroupName = normalizeName(input.flowGroupName, MAX_FLOW_GROUP_NAME)!;
-
-      customer = await tx.customer.create({
-        data: {
-          tenantId: params.tenantId,
-          name: customerName,
-          ...(billingJson !== undefined ? { billingAddressJson: billingJson } : {}),
-        },
-        select: { id: true, name: true },
-      });
-
-      flowGroup = await tx.flowGroup.create({
-        data: {
-          tenantId: params.tenantId,
-          customerId: customer.id,
-          name: flowGroupName,
-        },
-        select: { id: true, name: true, customerId: true },
-      });
-    } else if (input.kind === "attach_customer_new_flow_group") {
-      const flowGroupName = normalizeName(input.flowGroupName, MAX_FLOW_GROUP_NAME)!;
-
-      const row = await tx.customer.findFirst({
-        where: { id: input.customerId, tenantId: params.tenantId },
-        select: { id: true, name: true },
-      });
-      if (!row) {
-        return { kind: "customer_not_found" };
-      }
-      customer = row;
-
-      flowGroup = await tx.flowGroup.create({
-        data: {
-          tenantId: params.tenantId,
-          customerId: customer.id,
-          name: flowGroupName,
-        },
-        select: { id: true, name: true, customerId: true },
-      });
-    } else {
-      const rowC = await tx.customer.findFirst({
-        where: { id: input.customerId, tenantId: params.tenantId },
-        select: { id: true, name: true },
-      });
-      if (!rowC) {
-        return { kind: "customer_not_found" };
-      }
-      customer = rowC;
-
-      const rowFg = await tx.flowGroup.findFirst({
-        where: { id: input.flowGroupId, tenantId: params.tenantId },
-        select: { id: true, name: true, customerId: true },
-      });
-      if (!rowFg) {
-        return { kind: "flow_group_not_found" };
-      }
-      if (rowFg.customerId !== customer.id) {
-        return { kind: "flow_group_customer_mismatch" };
-      }
-      flowGroup = rowFg;
-    }
-
-    const quote = await tx.quote.create({
-      data: {
-        tenantId: params.tenantId,
-        customerId: customer.id,
-        flowGroupId: flowGroup.id,
-        quoteNumber,
-      },
-      select: { id: true, quoteNumber: true, customerId: true, flowGroupId: true },
-    });
-
-    const quoteVersion = await tx.quoteVersion.create({
-      data: {
-        quoteId: quote.id,
-        versionNumber: 1,
-        status: "DRAFT",
-        createdById: actor.id,
-        title: null,
-        pinnedWorkflowVersionId: null,
-      },
-      select: { id: true, quoteId: true, versionNumber: true, status: true },
-    });
-
-    const proposalGroup = await tx.proposalGroup.create({
-      data: {
-        quoteVersionId: quoteVersion.id,
-        name: proposalGroupNameResolved,
-        sortOrder: 0,
-      },
-      select: { id: true, quoteVersionId: true, name: true, sortOrder: true },
-    });
-
-    return {
-      kind: "created",
-      customer,
-      flowGroup,
-      quote,
-      quoteVersion: {
-        id: quoteVersion.id,
-        quoteId: quoteVersion.quoteId,
-        versionNumber: quoteVersion.versionNumber,
-        status: quoteVersion.status,
-      },
-      proposalGroup,
-    };
-  });
-
-  switch (outcome.kind) {
-    case "quote_number_taken":
-      return { ok: false, kind: "quote_number_taken" };
-    case "customer_not_found":
-      return { ok: false, kind: "customer_not_found" };
-    case "flow_group_not_found":
-      return { ok: false, kind: "flow_group_not_found" };
-    case "flow_group_customer_mismatch":
-      return { ok: false, kind: "flow_group_customer_mismatch" };
-    case "created":
-      break;
-    default: {
-      const _e: never = outcome;
-      return _e;
-    }
-  }
-
-  return {
-    ok: true,
-    data: {
-      customer: outcome.customer,
-      flowGroup: outcome.flowGroup,
-      quote: outcome.quote,
-      quoteVersion: outcome.quoteVersion,
-      proposalGroup: outcome.proposalGroup,
-    },
-  };
+  return mapTxOutcomeToShellResult(outcome);
 }

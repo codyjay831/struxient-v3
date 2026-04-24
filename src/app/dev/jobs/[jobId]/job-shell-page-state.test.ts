@@ -254,6 +254,8 @@ describe("deriveJobHeaderContext", () => {
     flowGroup: { id: "fg_1", name: "Acme HVAC", customerId: "c_1" },
     customer: { id: "c_1", name: "Acme Co" },
     flows: [],
+    paymentGates: [],
+    activeOperationalHolds: [],
     ...overrides,
   });
 

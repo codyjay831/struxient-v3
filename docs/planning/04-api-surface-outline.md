@@ -22,7 +22,7 @@
 
 **Responsibilities**
 
-- Leads, customers, flow groups, contacts, contact methods, polymorphic notes/files **attach APIs**.
+- Leads, customers, flow groups, contacts, contact methods, polymorphic notes/files **attach APIs** (as of the minimal Lead schema slice, **Lead rows exist in Prisma** but **no** lead HTTP/API surface is wired yet — `/crm/leads` remains **planned**).
 - Duplicate warnings (epics 01–02) — **compute** only, **no** merge in MVP.
 
 **Owns**

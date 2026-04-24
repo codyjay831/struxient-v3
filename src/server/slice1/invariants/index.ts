@@ -26,3 +26,15 @@ export {
 } from "./scope-packet-revision-fork";
 export { assertQuoteLocalPacketItemLineKindPayload } from "./quote-local-packet-item";
 export { assertQuoteVersionDraft } from "./quote-version";
+export {
+  assertLeadStatusTransitionAllowed,
+  isLeadContentImmutable,
+  LEAD_DISPLAY_NAME_MAX,
+  LEAD_EMAIL_MAX,
+  LEAD_LOST_REASON_MAX,
+  LEAD_PHONE_MAX,
+  LEAD_SOURCE_MAX,
+  LEAD_SUMMARY_MAX,
+  LEAD_EDITABLE_STATUSES,
+  LEAD_STATUS_TERMINAL_FOR_MANUAL_STATUS,
+} from "./lead";

@@ -2,6 +2,16 @@
 
 ---
 
+## 0. Implementation status (repo truth — read first)
+
+- **Epic spec** below remains the **north-star** product definition.
+- **Prior state:** Leads were **not** in the database; some audits incorrectly claimed a Lead model already existed — that was **doc drift**.
+- **Current slice (schema only):** Prisma includes a **minimal** `Lead` model, `LeadStatus`, optional **`Quote.leadId`**, and conversion pointers on `Lead` (`convertedCustomerId`, `convertedFlowGroupId`, `convertedAt`). Migration: `prisma/migrations/20260424120000_add_lead_mvp_and_quote_lead_id`.
+- **MVP direction:** **Thin, conversion-first** layer on top of the existing **`createCommercialQuoteShellForTenant`** spine — **not** a full CRM in one release. **PreJobTask** stays **site-scoped optional ops**, not lead intake or missing-field debt.
+- **Not shipped yet:** tenant-scoped lead **reads/mutations**, API routes, office **`/leads`** UI, convert workflow, populating `Quote.leadId` from app code.
+
+---
+
 ## 1. Epic title
 
 Lead management

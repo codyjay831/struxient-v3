@@ -40,13 +40,19 @@ Not applicable.
 
 **Sections:** Today, Upcoming (informational schedule only), **Blocked** (with reasons).
 
-**Pre-Job section:** `PreJobTask` items (site surveys, utility checks) appear with a `PRE_JOB` badge. These are anchored to a `FlowGroup` and do not require an activated `Job`.
+### 9a. Target vision (merged actionable feed)
 
-**Row:** Task title, job (or FlowGroup for pre-job), node, **kind** badge (`PRE_JOB` / `SKELETON` / `RUNTIME`), **elapsed** if in progress, **Start** button state.
+**Long-term:** A single **merged** list of actionable rows with explicit **kind** (`PRE_JOB` / `SKELETON` / `RUNTIME`), **node** (where applicable), **elapsed** when in progress, **Start** wired to the **same eligibility** story as task detail, and **PRE_JOB** badge for `PreJobTask` rows. **Pre-job** rows are **FlowGroup**-anchored and do **not** require an activated `Job`.
 
 **Empty actionable:** “No tasks ready — check **Blocked** tab for holds or payments.”
 
 **Pagination:** infinite scroll with **cursor** by `(jobId, taskId)`.
+
+### 9b. Slice 1 repo truth (do not overclaim)
+
+**Implemented today:** Tenant-wide office **`/work`** and **`GET /api/work-feed`** include a **separate** **read-only** pre-job table: open `PreJobTask` rows (lifecycle `status` only — **no** payment/hold/actionability merge), deep links to **quote workspace** or **project shell**, **no** per-row **Start** / **Complete** for pre-job, **no** `PRE_JOB` badge in a unified row model, **no** `TaskExecution` linkage. **Skeleton** and **runtime** sections reuse flow actionability; **pre-job** does **not**.
+
+**Canon alignment:** This satisfies **discovery** and **identity** for pre-job work without implying **execution parity** with runtime/skeleton. **Future (optional):** merged rows, badges, start/complete, and normalized evidence — **only when** product chooses to deepen the lifecycle; **not** a prerequisite for keeping `PreJobTask` narrow and lightly used.
 
 ## 10. Edit behavior
 
@@ -74,7 +80,7 @@ User prefs: `defaultSort`, `showCompletedToday`.
 
 ## 16. Field definitions and validations
 
-- **Start** button calls same **eligibility** API as detail (30) — **no** duplicate client logic.
+- **Start** button calls same **eligibility** API as detail (30) — **no** duplicate client logic (**runtime/skeleton** today; **pre-job** when/if start exists — see §9b).
 
 ## 17. Status / lifecycle rules
 
@@ -83,13 +89,13 @@ N/A.
 ## 18. Search / filter / sort behavior
 
 - Search **task name**, **job #** substring.
-- Filters: **job**, **node**, **kind** (`pre_job`/`skeleton`/`runtime`), **blocked reason**.
+- Filters: **job**, **node**, **kind** (`pre_job`/`skeleton`/`runtime`), **blocked reason** (**target** unified feed; **Slice 1** may list pre-job in a **separate** section without node/kind merge — see §9b).
 - Sort: **priority** (tenant rule), **node order**, **manual** — default **node order** then **task order**.
 
 ## 19. Relationships to other objects
 
 - Pulls **Flow**, **Job**, **Effective projection**, **Holds**, **Gates**.
-- Pulls **PreJobTask** records from assigned `FlowGroups` for pre-quote operational work.
+- Pulls **`PreJobTask`** rows for pre-quote operational work. **Slice 1 implementation:** tenant-wide open rows (not yet filtered to “assigned FlowGroups only”); **target** may narrow by assignment/permission (epic 59).
 
 ## 20. Permissions / visibility
 

@@ -124,6 +124,14 @@ export type Slice1InvariantCode =
   | "SCOPE_PACKET_TASK_LINE_MUTATION_NOT_DRAFT"
   | "SCOPE_PACKET_TASK_LINE_LINE_KEY_TAKEN"
   | "SCOPE_PACKET_TASK_LINE_NOT_FOUND"
+  /** LIBRARY line authoring: TaskDefinition must be PUBLISHED (same contract as publish readiness). */
+  | "SCOPE_PACKET_TASK_LINE_TASK_DEFINITION_NOT_PUBLISHED"
+  /** DRAFT revision reorder: cannot move past first/last line in canonical order. */
+  | "SCOPE_PACKET_TASK_LINE_REORDER_AT_BOUNDARY"
+  /** DRAFT line edit: no allowed fields supplied. */
+  | "SCOPE_PACKET_TASK_LINE_EDIT_EMPTY_PATCH"
+  /** DRAFT line edit: title/taskKind apply only to EMBEDDED lines. */
+  | "SCOPE_PACKET_TASK_LINE_EDIT_EMBEDDED_FIELDS_ON_LIBRARY"
   // Epic 29 / 48 — operational holds (distinct from PaymentGate).
   | "HOLD_NOT_FOUND"
   | "HOLD_RELEASE_NOT_ACTIVE"

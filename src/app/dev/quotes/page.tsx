@@ -20,6 +20,8 @@ function getNextStepHint(status: QuoteVersionStatus, hasActivation: boolean): st
       return "Waiting for signature";
     case "SIGNED":
       return "Ready to activate";
+    case "DECLINED":
+      return "Customer declined";
     default:
       return null;
   }

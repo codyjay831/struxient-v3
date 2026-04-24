@@ -4,9 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { InternalActionResult } from "@/components/internal/internal-action-result";
-import type { SentSignTarget } from "@/lib/workspace/derive-workspace-sent-sign-target";
+import type { PortalDeclinedSummary, SentSignTarget } from "@/lib/workspace/derive-workspace-sent-sign-target";
 
-export type { SentSignTarget };
+export type { PortalDeclinedSummary, SentSignTarget };
 
 type DeliveryRow = {
   id: string;
@@ -22,6 +22,8 @@ type DeliveryRow = {
 
 type Props = {
   signTarget: SentSignTarget | null;
+  /** Newest portal decline in history (Epic 13 + 54); shown even when a newer SENT exists. */
+  portalDeclinedSummary: PortalDeclinedSummary | null;
   canOfficeMutate: boolean;
   /** Public site origin for copy + email links (e.g. `https://app.example.com`). */
   appOrigin: string;
@@ -32,7 +34,7 @@ type Props = {
  * `POST /api/quote-versions/:id/sign` — body unused; actor from session.
  * Portal share: copy / email via comms / manual audit / regenerate token (Epic 54 follow-up).
  */
-export function QuoteWorkspaceSignSent({ signTarget, canOfficeMutate, appOrigin }: Props) {
+export function QuoteWorkspaceSignSent({ signTarget, portalDeclinedSummary, canOfficeMutate, appOrigin }: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ kind: "success" | "error"; title: string; message?: string; technicalDetails?: string } | null>(null);
@@ -338,11 +340,50 @@ export function QuoteWorkspaceSignSent({ signTarget, canOfficeMutate, appOrigin 
   }
 
   if (!signTarget) {
+    if (portalDeclinedSummary) {
+      const declinedPortalUrl =
+        portalDeclinedSummary.portalQuoteShareToken ?
+          `${appOrigin.replace(/\/$/, "")}/portal/quotes/${encodeURIComponent(portalDeclinedSummary.portalQuoteShareToken)}`
+        : null;
+      return (
+        <section className="mb-6 rounded border border-orange-900/35 bg-orange-950/15 p-4 text-sm">
+          <h2 className="mb-1 text-sm font-medium text-orange-100">Customer declined (portal)</h2>
+          <p className="text-xs text-orange-200/75">
+            Version {portalDeclinedSummary.versionNumber} was declined on the portal
+            {portalDeclinedSummary.portalDeclinedAtIso ?
+              ` (${new Date(portalDeclinedSummary.portalDeclinedAtIso).toLocaleString()})`
+            : ""}
+            . Your team can see this in-product — no separate thread required for basic outcome visibility.
+          </p>
+          <p className="mt-3 text-xs font-medium text-orange-100/95">Reason recorded from customer</p>
+          <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-orange-50/90">
+            {portalDeclinedSummary.portalDeclineReason}
+          </p>
+          {declinedPortalUrl ? (
+            <p className="mt-3 text-[11px] text-orange-200/70">
+              <Link
+                href={declinedPortalUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-orange-300 underline hover:text-orange-200"
+              >
+                Open customer-facing confirmation (new tab)
+              </Link>
+            </p>
+          ) : null}
+          <p className="mt-3 text-[11px] text-zinc-500">
+            Technical id:{" "}
+            <span className="font-mono text-zinc-400">{portalDeclinedSummary.quoteVersionId}</span>
+          </p>
+        </section>
+      );
+    }
     return (
       <section className="mb-6 rounded border border-zinc-800 bg-zinc-950/30 p-4 text-sm">
         <h2 className="mb-1 text-sm font-medium text-zinc-200">Record signature</h2>
         <p className="text-xs text-zinc-500">
-          Quote signed. Next step: <span className="font-medium text-teal-400">Activate execution</span>.
+          No sent revision is waiting on a signature from this workspace view. If the customer already signed, use{" "}
+          <span className="font-medium text-teal-400">Activate execution</span> when eligible.
         </p>
       </section>
     );
@@ -352,6 +393,21 @@ export function QuoteWorkspaceSignSent({ signTarget, canOfficeMutate, appOrigin 
     <section className="mb-6 rounded border border-zinc-800 bg-zinc-950/30 p-4 text-sm border-violet-900/20 bg-violet-950/5">
       <h2 className="mb-1 text-sm font-medium text-zinc-200">Record signature</h2>
       <p className="text-xs text-zinc-500">Formal customer approval for v{signTarget.versionNumber}.</p>
+
+      {portalDeclinedSummary &&
+      portalDeclinedSummary.quoteVersionId !== signTarget.quoteVersionId ? (
+        <div className="mt-3 rounded border border-orange-900/40 bg-orange-950/20 px-3 py-2 text-xs text-orange-100/90">
+          <p className="font-medium text-orange-200/95">
+            v{portalDeclinedSummary.versionNumber} was declined on the portal
+            {portalDeclinedSummary.portalDeclinedAtIso ?
+              ` · ${new Date(portalDeclinedSummary.portalDeclinedAtIso).toLocaleString()}`
+            : ""}
+          </p>
+          <p className="mt-1 whitespace-pre-wrap text-[11px] leading-relaxed text-orange-50/88">
+            {portalDeclinedSummary.portalDeclineReason}
+          </p>
+        </div>
+      ) : null}
 
       {signTarget.portalQuoteShareToken ? (
         <div className="mt-3 rounded border border-sky-900/40 bg-sky-950/20 px-3 py-2 text-xs text-sky-100/90">

@@ -26,10 +26,38 @@ export {
 export { renameProposalGroupForTenant } from "./mutations/rename-proposal-group";
 export {
   createCommercialQuoteShellForTenant,
+  createCommercialQuoteShellInTransaction,
+  precomputeCommercialQuoteShellInput,
   type CommercialQuoteShellDto,
+  type CommercialQuoteShellTxInput,
   type CreateCommercialQuoteShellInput,
   type CreateCommercialQuoteShellResult,
+  type CreateCommercialQuoteShellTxParams,
 } from "./mutations/create-commercial-quote-shell";
+export {
+  convertLeadToQuoteShellForTenant,
+  type ConvertLeadToQuoteShellFailKind,
+  type ConvertLeadToQuoteShellInput,
+  type ConvertLeadToQuoteShellResult,
+} from "./mutations/convert-lead-to-quote-shell";
+export {
+  createLeadForTenant,
+  setLeadStatusForTenant,
+  updateLeadForTenant,
+  type CreateLeadForTenantInput,
+  type CreateLeadForTenantResult,
+  type SetLeadStatusForTenantInput,
+  type SetLeadStatusForTenantResult,
+  type UpdateLeadForTenantInput,
+  type UpdateLeadForTenantResult,
+} from "./mutations/lead-mutations";
+export {
+  clampLeadListLimit,
+  getLeadForTenant,
+  listLeadsForTenant,
+  type LeadDetailDto,
+  type LeadSummaryDto,
+} from "./reads/lead-reads";
 export {
   clampQuoteShellListLimit,
   getCommercialQuoteShellForTenant,
@@ -203,6 +231,12 @@ export {
   type SignQuoteVersionViaPortalResult,
   type SignQuoteVersionViaPortalSuccessDto,
 } from "./mutations/sign-quote-version-via-portal";
+export {
+  declineQuoteVersionViaPortalShareToken,
+  type DeclineQuoteVersionViaPortalRequestBody,
+  type DeclineQuoteVersionViaPortalResult,
+  type DeclineQuoteVersionViaPortalSuccessDto,
+} from "./mutations/decline-quote-version-via-portal";
 export {
   retryQuotePortalShareDeliveryForTenant,
   sendQuotePortalShareForTenant,

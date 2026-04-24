@@ -36,7 +36,7 @@
 **Delivers**
 
 - `Customer`, `FlowGroup` (project/site), minimal `User` assignment optional (`epics 02–03`).
-- Optional: `Lead` **after** quote path works — **not** on spine critical path (`epic 01` defer friendly).
+- **`Lead` (minimal) + optional `Quote.leadId`** — relational slice landed in migration `20260424120000_add_lead_mvp_and_quote_lead_id`; **office/API/convert** remain **optional** and **not** on the quote-to-execution spine until explicitly built (`epic 01` still defer-friendly for **app** work).
 
 **Dependencies**
 

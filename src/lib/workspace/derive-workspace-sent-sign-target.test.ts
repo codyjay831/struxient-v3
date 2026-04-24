@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { deriveNewestSentSignTarget, type VersionRowForSign } from "./derive-workspace-sent-sign-target";
+import {
+  deriveNewestPortalDeclinedSummary,
+  deriveNewestSentSignTarget,
+  type VersionRowForPortalDecline,
+  type VersionRowForSign,
+} from "./derive-workspace-sent-sign-target";
 
 describe("deriveNewestSentSignTarget", () => {
   it("returns null when no SENT", () => {
@@ -43,5 +48,43 @@ describe("deriveNewestSentSignTarget", () => {
       { id: "qv2", versionNumber: 2, status: "SENT" },
     ];
     expect(deriveNewestSentSignTarget(rows)?.quoteVersionId).toBe("qv3");
+  });
+});
+
+describe("deriveNewestPortalDeclinedSummary", () => {
+  it("returns null when no DECLINED with reason", () => {
+    expect(deriveNewestPortalDeclinedSummary([])).toBeNull();
+    const rows: VersionRowForPortalDecline[] = [
+      { id: "a", versionNumber: 2, status: "SENT", portalDeclinedAt: null, portalDeclineReason: null },
+    ];
+    expect(deriveNewestPortalDeclinedSummary(rows)).toBeNull();
+  });
+
+  it("returns newest DECLINED in newest-first order", () => {
+    const rows: VersionRowForPortalDecline[] = [
+      { id: "qv3", versionNumber: 3, status: "DRAFT", portalDeclinedAt: null, portalDeclineReason: null },
+      {
+        id: "qv2",
+        versionNumber: 2,
+        status: "DECLINED",
+        portalQuoteShareToken: "tok2",
+        portalDeclinedAt: "2026-04-21T01:00:00.000Z",
+        portalDeclineReason: "Too expensive",
+      },
+      {
+        id: "qv1",
+        versionNumber: 1,
+        status: "DECLINED",
+        portalDeclinedAt: "2026-04-20T01:00:00.000Z",
+        portalDeclineReason: "Older decline",
+      },
+    ];
+    expect(deriveNewestPortalDeclinedSummary(rows)).toEqual({
+      quoteVersionId: "qv2",
+      versionNumber: 2,
+      portalDeclinedAtIso: "2026-04-21T01:00:00.000Z",
+      portalDeclineReason: "Too expensive",
+      portalQuoteShareToken: "tok2",
+    });
   });
 });

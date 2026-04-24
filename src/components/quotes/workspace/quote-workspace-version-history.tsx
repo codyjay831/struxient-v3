@@ -94,6 +94,11 @@ export function QuoteWorkspaceVersionHistory({ quoteId, versions, canOfficeMutat
                           {v.voidReason}
                         </p>
                       ) : null}
+                      {v.status === "DECLINED" && v.portalDeclineReason ? (
+                        <p className="max-w-[14rem] text-[10px] font-normal leading-snug text-orange-200/85">
+                          Customer declined: {v.portalDeclineReason}
+                        </p>
+                      ) : null}
                       {v.status === "SUPERSEDED" ? (
                         <p className="max-w-[14rem] text-[10px] font-normal leading-snug text-zinc-500">
                           Replaced when a newer version was sent — not an active customer proposal.

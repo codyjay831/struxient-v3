@@ -9,7 +9,10 @@ import {
 } from "@/lib/auth/api-principal";
 import { deriveNewestActivatedExecutionEntryTarget } from "@/lib/workspace/derive-workspace-execution-entry-target";
 import { deriveNewestSignedWithoutActivationTarget } from "@/lib/workspace/derive-workspace-signed-activate-target";
-import { deriveNewestSentSignTarget } from "@/lib/workspace/derive-workspace-sent-sign-target";
+import {
+  deriveNewestPortalDeclinedSummary,
+  deriveNewestSentSignTarget,
+} from "@/lib/workspace/derive-workspace-sent-sign-target";
 import { deriveQuoteHeadWorkspaceReadiness } from "@/lib/workspace/derive-quote-head-workspace-readiness";
 import { InvariantViolationError } from "@/server/slice1/errors";
 import { InternalBreadcrumb } from "@/components/internal/internal-breadcrumb";
@@ -109,6 +112,7 @@ export default async function DevQuoteWorkspacePage({ params }: PageProps) {
     deriveHeadDraftPipelineTargets(head);
 
   const sentSignTarget = deriveNewestSentSignTarget(ws.versions);
+  const portalDeclinedSummary = deriveNewestPortalDeclinedSummary(ws.versions);
   const signedActivateTarget = deriveNewestSignedWithoutActivationTarget(ws.versions);
   const executionEntryTarget = deriveNewestActivatedExecutionEntryTarget(ws.versions);
 
@@ -224,6 +228,7 @@ export default async function DevQuoteWorkspacePage({ params }: PageProps) {
             >
               <QuoteWorkspaceSignSent
                 signTarget={sentSignTarget}
+                portalDeclinedSummary={portalDeclinedSummary}
                 canOfficeMutate={canOfficeMutate}
                 appOrigin={appOrigin}
               />

@@ -120,15 +120,39 @@ For each primitive: **what it is** · **what it owns** · **what it does not own
 
 ## Pre-job task (PreJobTask)
 
-**Canon:** An **operational work item** anchored to a **FlowGroup** that represents work performed **before** a signed quote is activated — site surveys, utility checks, feasibility reviews, photo requests, scope clarification. Uses the same task primitives as runtime execution (photos, evidence, structured inputs) but is **not** part of the activated `Job` execution graph.
+**Canon:** A **first-class optional row** for **real human operational work** anchored to a **FlowGroup**, performed **before** sign/activation — e.g. site surveys, utility checks, feasibility reconnaissance, coordinated access visits, deliberate photo/evidence gathering, AHJ-related site checks. It is **not** part of the activated `Job` execution graph and **must not** be used as a **junk drawer** for **record completeness** or **missing CRM fields** (those are **readiness debt on the owning record**: customer, quote version, structured intake, job-card policy, etc.).
 
-**Owns:** **Pre-quote operational evidence** (photos, measurements, structured data), **scheduling reference**, **completion status**.
+**Boundary (normative):**
 
-**Does not own:** **Contracted execution truth** (that belongs to `RuntimeTaskInstance` after activation). **Commercial pricing** (that belongs to the quote).
+- **Should be `PreJobTask`:** A **discrete, assignable human action** tied to the **site/project** (the `FlowGroup`) that is **not** the same thing as “fill in the form until the record validates.”
+- **Should not be `PreJobTask`:** **Missing phone numbers**, **incomplete customer profile**, **incomplete job-card fields**, **generic “office readiness” checklists**, or **any chore that exists only to satisfy validation** on another entity — model those as **readiness / completeness** (or the appropriate domain object), not as pre-job tasks.
 
-**Must not collapse into:** A **RuntimeTaskInstance** (which requires an activated Job) or a **Lead** activity (leads are person-centric, pre-job tasks are site-centric).
+**Owns:** **Operational intent and lifecycle on the site anchor** (title, status, optional assignee, optional due/schedule timestamps, optional `quoteVersionId` for traceability), **independent of activation**.
 
-**Lifecycle:** Created on a `FlowGroup` before or during quoting. Completed evidence feeds the Quote Editor. After activation, `PreJobTask` stays on the `FlowGroup` as historical evidence — it is **not** migrated into the `Job`.
+**Does not own:** **Contracted execution truth** (that belongs to `RuntimeTaskInstance` / `TaskExecution` after activation). **Commercial pricing** (that belongs to the quote). **Authoritative “record is complete” truth** for customers or quotes (that belongs to readiness rules and the record).
+
+**Must not collapse into:** A **RuntimeTaskInstance** (which requires an activated Job) or a **Lead** activity (leads are person-centric; pre-job tasks are **site-centric**).
+
+**Lifecycle:** May exist on a `FlowGroup` before or during quoting. After activation, rows **remain** on the `FlowGroup` as **historical context** — they are **not** migrated into the `Job`.
+
+**Repo truth (Slice 1 — honest):** The relational model and **read-only** surfaces exist (quote workspace list, tenant work feed API, office `/work` pre-job section). There is **no** application-layer CRUD yet, **no** `TaskExecution` / `CompletionProof` linkage to `PreJobTask`, and **no** requirement that the product ship full start/complete parity with runtime/skeleton before using the primitive narrowly. **Directional:** When evidence is needed for pre-quote work, prefer **explicit attachments or structured children** in a future slice rather than overloading unrelated tables — canon does **not** mandate that those exist in v1.
+
+**Light use:** **Allowed.** Low frequency is fine when the boundary above is respected.
+
+**Illustrative classification (non-exhaustive):**
+
+| Example | Typically |
+|--------|-----------|
+| Schedule / perform **site visit** | **PreJobTask** |
+| **Request more photos** from site (operational) | **PreJobTask** |
+| **Review uploaded photos** as a **owned QA step** | **PreJobTask** if a discrete assignable action; else **in-quote / readiness** UX only |
+| **Call customer for access** | **PreJobTask** |
+| **Fill missing phone** on Customer | **Readiness on Customer** — **not** PreJobTask |
+| **Complete customer profile** / **job card fields** | **Readiness on record** — **not** PreJobTask |
+| **Upload required document** (policy file) | **Customer / quote document model** — **not** PreJobTask unless explicitly modeled as **site visit deliverable** |
+| **Confirm equipment choice** (commercial truth) | **Quote / structured scope** — **ambiguous** only if framed as **pre-quote site recon** with an owner |
+| **Submit drafting intake** | **Quote authoring / structured intake** — usually **not** PreJobTask |
+| **Verify AHJ requirement** on site | **PreJobTask** when it is **field reconnaissance**; **readiness flag** when it is only “checkbox complete” |
 
 ---
 

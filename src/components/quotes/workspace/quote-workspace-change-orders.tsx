@@ -1,5 +1,8 @@
 "use client";
-import { QuoteWorkspaceChangeOrderDto } from "@/server/slice1/reads/quote-workspace-reads";
+import {
+  QuoteWorkspaceChangeOrderDto,
+  shouldShowPortalDeclineVoidExplanation,
+} from "@/server/slice1/reads/quote-workspace-reads";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { InternalActionResult } from "@/components/internal/internal-action-result";
@@ -119,6 +122,30 @@ export function QuoteWorkspaceChangeOrders({ quoteId, jobId, changeOrders, canOf
                   </span>
                 </div>
                 <p className="text-zinc-300 mb-2">{co.reason}</p>
+                {shouldShowPortalDeclineVoidExplanation(co) ? (
+                  <div className="mb-2 rounded border border-orange-900/40 bg-orange-950/25 px-2.5 py-2 text-[11px] leading-relaxed text-orange-100/95">
+                    <p className="font-semibold text-orange-200/95">Customer declined (portal)</p>
+                    <p className="mt-1 text-orange-100/85">
+                      This change order was closed because the customer declined the linked proposal draft on the
+                      portal — not because the office voided it manually from this list.
+                    </p>
+                    {co.draftQuotePortalDeclinedAtIso ? (
+                      <p className="mt-1.5 text-orange-200/75">
+                        Declined {new Date(co.draftQuotePortalDeclinedAtIso).toLocaleString()}
+                      </p>
+                    ) : null}
+                    {co.draftQuotePortalDeclineReason ? (
+                      <>
+                        <p className="mt-2 text-[10px] font-medium uppercase tracking-wide text-orange-200/90">
+                          Reason recorded from customer
+                        </p>
+                        <p className="mt-0.5 whitespace-pre-wrap text-orange-50/90">{co.draftQuotePortalDeclineReason}</p>
+                      </>
+                    ) : (
+                      <p className="mt-2 text-orange-200/70">No decline reason text was stored on the draft revision.</p>
+                    )}
+                  </div>
+                ) : null}
                 {co.status === "PENDING_CUSTOMER" ? (
                   <p className="mb-2 text-[10px] leading-relaxed text-amber-200/85">
                     Awaiting customer acceptance on the sent proposal link.

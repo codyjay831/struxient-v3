@@ -92,7 +92,7 @@ export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput 
         ? head.hasPinnedWorkflow
           ? "Required before send; the template provides the node/stage skeleton compose places line items onto."
           : "Missing — pin a published process template so packets can be composed onto its nodes."
-        : status === "SENT" || status === "SIGNED"
+        : status === "SENT" || status === "SIGNED" || status === "DECLINED"
           ? head.hasPinnedWorkflow
             ? "Expected after a normal send (snapshots are tied to a process template version)."
             : "Unusual for sent/signed — verify data or history."
@@ -112,7 +112,9 @@ export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput 
       head.hasActivation ? "yes" : "no",
       status === "DRAFT" || status === "SENT"
         ? "Activation follows sign in the normal pipeline (not expected on draft/sent-only)."
-        : status === "SIGNED"
+        : status === "DECLINED"
+          ? "Customer declined this revision on the portal — not eligible for activation."
+          : status === "SIGNED"
           ? head.hasActivation
             ? "Post-activate — use lifecycle + runtime reads as appropriate."
             : "Signed but not activated — POST activate when prerequisites are met."
@@ -174,6 +176,12 @@ export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput 
       recommendedStepIndex = null; // Done
       likelyNextSteps.push("Activation exists: follow runtime / flow-group execution reads (not shown in this workspace slice).");
     }
+  } else if (status === "DECLINED") {
+    recommendedStepIndex = null;
+    honestyNotes.push(
+      "This revision was declined by the customer on the portal. Frozen payloads are retained for audit; it is not signable.",
+    );
+    likelyNextSteps.push("Review decline reason in version history or the signature step panel, then prepare a new draft if appropriate.");
   } else if (status === "VOID") {
     recommendedStepIndex = null;
     honestyNotes.push("This revision was voided (withdrawn). Frozen payloads are retained for audit; it is not signable.");

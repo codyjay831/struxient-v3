@@ -214,6 +214,9 @@ function invariantToHttpStatus(code: Slice1InvariantCode): number {
     case "CUSTOMER_NOTE_BODY_INVALID":
     case "HOLD_INVALID_REASON":
     case "HOLD_RUNTIME_TASK_NOT_ON_JOB":
+    case "SCOPE_PACKET_TASK_LINE_REORDER_AT_BOUNDARY":
+    case "SCOPE_PACKET_TASK_LINE_EDIT_EMPTY_PATCH":
+    case "SCOPE_PACKET_TASK_LINE_EDIT_EMBEDDED_FIELDS_ON_LIBRARY":
       return 400;
     case "CUSTOMER_NOTE_UPDATE_NOT_AUTHORIZED":
       return 403;

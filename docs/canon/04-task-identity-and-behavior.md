@@ -11,12 +11,12 @@
 | **Task definition** | Library record: **meaning** + structured **field templates** | **Yes** (catalog library) | **No** (not an instance) | **Yes** (defaults for meaning) |
 | **Packet task line** | Row inside a **scope packet**: placement + embedded or referenced meaning | **Yes** (as part of packet) | **No** | **Yes** (merged defaults) |
 | **Skeleton task** | Task inside **published process template** on a **node** | **Yes** (per template version) | **Yes** (as snapshot task id) | **Optional** (template author) |
-| **Pre-job task** | Operational work on a **FlowGroup** before sign/activation | **No** (per project) | **Yes** (in Work Station) | **Optional** |
+| **Pre-job task** | **Human operational work** on a **FlowGroup** before sign/activation (site-centric; **not** record-readiness chores) | **No** (per project) | **Target:** yes in work discovery; **Slice 1 product:** read-only lists + deep links (no `TaskExecution` row) | **Optional** |
 | **Runtime task instance** | **Materialized** unit for **manifest** work on a **flow** | **No** (per job/flow instance) | **Yes** | **Inherits** from frozen plan + overrides; **actuals** live in **execution truth** |
 
-**Canon:** **Executable** in the field means: can appear in **actionable work projections** and accumulate completion evidence when started/completed — **skeleton**, **runtime instance**, and **pre-job task** all can; **task definition** and **packet task line** cannot without **freeze + activation** (or in the case of pre-job tasks, direct FlowGroup anchoring).
+**Canon — “executable” (precision):** For **skeleton** and **runtime** instances, **executable** means: participates in **eligibility** (`TaskExecution`), **start/complete** APIs, and **completion evidence** tied to that execution universe. **Pre-job tasks** use the **same English word only at the product level** (“someone must go do something on site”); they are **not** part of that **same technical execution graph**. **Task definition** and **packet task line** are **not** executable instances without **freeze + activation** (they are definitions/placement).
 
-**Pre-job task boundary:** `PreJobTask` is **not** part of the activated execution graph. It lives on the `FlowGroup` and is completed independently of job activation. Its evidence (photos, structured inputs) feeds quote authoring. After activation, it remains as historical evidence on the `FlowGroup`.
+**Pre-job task boundary:** `PreJobTask` is **not** part of the activated execution graph. It lives on the `FlowGroup` and tracks **operational lifecycle** (`status`, optional assignee/due) **independently** of activation. It **must not** absorb **missing customer fields**, **incomplete forms**, or **generic readiness debt** — those belong to **readiness/completeness** on the **record** (see `02-core-primitives.md`). After activation, rows remain as **historical context** on the `FlowGroup`. **Normalized pre-job evidence** (photos, structured answers) is **directional** — not a claim that every current build wires `CompletionProof` to `PreJobTask`.
 
 **Rationale from v2 evidence:** `TaskDefinition` vs `PacketTaskLine` vs design-time `Task` in snapshot vs `RuntimeTask` + effective merge + activation source filter.
 
@@ -95,7 +95,7 @@
 1. **Task definitions know; they do not place.**  
 2. **Packet task lines compose and place; they are not field instances.**  
 3. **Runtime instances execute sold/manual manifest work on nodes; skeleton tasks execute template structure.**  
-4. **Pre-job tasks capture pre-quote evidence on site; they do not enter the execution graph.**
+4. **Pre-job tasks capture discrete human pre-activation work on the site anchor; they do not enter the execution graph — and they are not the substitute for record readiness/completeness.**
 
 ---
 

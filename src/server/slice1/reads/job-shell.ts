@@ -31,6 +31,8 @@ export type JobShellPaymentGateRead = {
   id: string;
   status: "UNSATISFIED" | "SATISFIED";
   title: string;
+  /** Present when status is SATISFIED (office/job UI parity with quote workspace). */
+  satisfiedAt: Date | null;
   targets: { taskId: string; taskKind: "RUNTIME" | "SKELETON" }[];
 };
 
@@ -128,6 +130,7 @@ export async function getJobShellReadModel(
           id: true,
           status: true,
           title: true,
+          satisfiedAt: true,
           targets: {
             select: { taskId: true, taskKind: true },
           },
@@ -182,6 +185,7 @@ export async function getJobShellReadModel(
       id: g.id,
       status: g.status as "UNSATISFIED" | "SATISFIED",
       title: g.title,
+      satisfiedAt: g.satisfiedAt,
       targets: g.targets.map((tg) => ({
         taskId: tg.taskId,
         taskKind: tg.taskKind as "RUNTIME" | "SKELETON",

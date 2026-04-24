@@ -104,6 +104,12 @@ describe("deriveScopeVersionContext", () => {
     expect(r.tone).toBe("amber");
   });
 
+  it("DECLINED + isLatest = frozen_latest (read-only, same as other frozen statuses)", () => {
+    const r = deriveScopeVersionContext({ status: "DECLINED", isLatest: true, versionNumber: 3 });
+    expect(r.kind).toBe("frozen_latest");
+    expect(r.tone).toBe("amber");
+  });
+
   it("SENT + !isLatest = frozen_older (zinc, audit-only)", () => {
     const r = deriveScopeVersionContext({ status: "SENT", isLatest: false, versionNumber: 2 });
     expect(r.kind).toBe("frozen_older");

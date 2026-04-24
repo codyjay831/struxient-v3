@@ -1,21 +1,24 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { AddEmbeddedPacketTaskLineForm } from "@/components/catalog-packets/add-embedded-packet-task-line-form";
+import { AddLibraryPacketTaskLineForm } from "@/components/catalog-packets/add-library-packet-task-line-form";
 import { DeletePacketTaskLineButton } from "@/components/catalog-packets/delete-packet-task-line-button";
+import { EditPacketTaskLineForm } from "@/components/catalog-packets/edit-packet-task-line-form";
+import { ReorderPacketTaskLineButtons } from "@/components/catalog-packets/reorder-packet-task-line-buttons";
 import { PublishRevisionForm } from "@/components/catalog-packets/publish-revision-form";
 import { principalHasCapability, tryGetApiPrincipal } from "@/lib/auth/api-principal";
 import { getPrisma } from "@/server/db/prisma";
 import { getScopePacketRevisionDetailForTenant } from "@/server/slice1/reads/scope-packet-catalog-reads";
+import { listTaskDefinitionsForTenant } from "@/server/slice1/reads/task-definition-reads";
 
 /**
  * Office-surface packet revision detail: inspector plus a **narrow** Epic 16 slice —
- * add/delete **EMBEDDED** lines on **DRAFT** revisions when the principal has
- * `office_mutate`, and interim publish when readiness is satisfied.
+ * add/delete **EMBEDDED** and **LIBRARY** (published TaskDefinition ref) lines on **DRAFT**
+ * revisions when the principal has `office_mutate`, and interim publish when readiness is satisfied.
  *
  * Reuses `getScopePacketRevisionDetailForTenant` and the shared readiness
- * predicate (same canon truth as `/dev/...`). Full catalog designer,
- * LIBRARY-line authoring, reorder/edit-in-place, and workflow/template
- * integration remain out of scope.
+ * predicate (same canon truth as `/dev/...`). Full catalog designer and
+ * workflow/template integration remain out of scope.
  */
 export const dynamic = "force-dynamic";
 
@@ -59,6 +62,14 @@ export default async function OfficeLibraryPacketRevisionPage({ params }: PagePr
 
   const canMutate = principalHasCapability(auth.principal, "office_mutate");
   const draftAuthoring = canMutate && detail.revision.status === "DRAFT";
+
+  const publishedTaskDefinitions = draftAuthoring
+    ? await listTaskDefinitionsForTenant(getPrisma(), {
+        tenantId: auth.principal.tenantId,
+        limit: 200,
+        statuses: ["PUBLISHED"],
+      })
+    : [];
 
   const totalLines = detail.packetTaskLines.length;
   const tieredLines = detail.packetTaskLines.filter(
@@ -181,7 +192,7 @@ export default async function OfficeLibraryPacketRevisionPage({ params }: PagePr
             </ul>
             <p className="mt-3 text-[11px] leading-relaxed text-amber-400/70">
               {draftAuthoring
-                ? "For greenfield packets, add at least one embedded line with a non-empty title and valid target below. Promoted revisions may still need fixes in the source quote-local packet before re-promoting."
+                ? "For greenfield packets, add at least one task line (embedded or library-backed with a published task definition) that satisfies the gates above. Promoted revisions may still need fixes in the source quote-local packet before re-promoting."
                 : "Inspection only. Resolve these blockers in the source quote-local packet before re-promoting, or wait for the catalog-edit workflow."}
             </p>
           </div>
@@ -189,10 +200,19 @@ export default async function OfficeLibraryPacketRevisionPage({ params }: PagePr
       </section>
 
       {draftAuthoring ? (
-        <section className="mb-6">
+        <section className="mb-6 space-y-4">
           <AddEmbeddedPacketTaskLineForm
             scopePacketId={detail.scopePacketId}
             scopePacketRevisionId={detail.revision.id}
+          />
+          <AddLibraryPacketTaskLineForm
+            scopePacketId={detail.scopePacketId}
+            scopePacketRevisionId={detail.revision.id}
+            publishedTaskDefinitions={publishedTaskDefinitions.map((d) => ({
+              id: d.id,
+              taskKey: d.taskKey,
+              displayName: d.displayName,
+            }))}
           />
         </section>
       ) : null}
@@ -207,7 +227,7 @@ export default async function OfficeLibraryPacketRevisionPage({ params }: PagePr
           </p>
         ) : (
           <ul className="space-y-2">
-            {detail.packetTaskLines.map((line) => (
+            {detail.packetTaskLines.map((line, lineIndex) => (
               <li
                 key={line.id}
                 className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4"
@@ -233,13 +253,24 @@ export default async function OfficeLibraryPacketRevisionPage({ params }: PagePr
                       </span>
                     )}
                   </div>
-                  {draftAuthoring && line.lineKind === "EMBEDDED" ? (
-                    <DeletePacketTaskLineButton
-                      scopePacketId={detail.scopePacketId}
-                      scopePacketRevisionId={detail.revision.id}
-                      packetTaskLineId={line.id}
-                      lineKey={line.lineKey}
-                    />
+                  {draftAuthoring && (line.lineKind === "EMBEDDED" || line.lineKind === "LIBRARY") ? (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {detail.packetTaskLines.length > 1 ? (
+                        <ReorderPacketTaskLineButtons
+                          scopePacketId={detail.scopePacketId}
+                          scopePacketRevisionId={detail.revision.id}
+                          packetTaskLineId={line.id}
+                          canMoveUp={lineIndex > 0}
+                          canMoveDown={lineIndex < detail.packetTaskLines.length - 1}
+                        />
+                      ) : null}
+                      <DeletePacketTaskLineButton
+                        scopePacketId={detail.scopePacketId}
+                        scopePacketRevisionId={detail.revision.id}
+                        packetTaskLineId={line.id}
+                        lineKey={line.lineKey}
+                      />
+                    </div>
                   ) : null}
                 </div>
 
@@ -284,6 +315,18 @@ export default async function OfficeLibraryPacketRevisionPage({ params }: PagePr
                     <span className="text-zinc-500 italic">empty</span>
                   )}
                 </div>
+
+                {draftAuthoring && (line.lineKind === "EMBEDDED" || line.lineKind === "LIBRARY") ? (
+                  <EditPacketTaskLineForm
+                    scopePacketId={detail.scopePacketId}
+                    scopePacketRevisionId={detail.revision.id}
+                    packetTaskLineId={line.id}
+                    lineKind={line.lineKind}
+                    initialTargetNodeKey={line.targetNodeKey}
+                    initialTierCode={line.tierCode}
+                    embeddedPayloadJson={line.embeddedPayloadJson}
+                  />
+                ) : null}
               </li>
             ))}
           </ul>

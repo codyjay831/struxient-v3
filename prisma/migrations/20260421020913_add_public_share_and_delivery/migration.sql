@@ -1,4 +1,4 @@
-﻿-- CreateEnum
+-- CreateEnum
 CREATE TYPE "PublicShareDeliveryMethod" AS ENUM ('EMAIL', 'SMS', 'MANUAL_LINK');
 
 -- CreateEnum

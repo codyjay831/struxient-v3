@@ -57,6 +57,8 @@ Without a quote shell, versioned proposals float without a stable home. Users ca
 - **FlowGroup** — required parent relationship (site/project anchor).
 - **Lead** — optional back-link when quote originates from lead conversion.
 
+**Schema note (repo truth):** `Quote.leadId` is implemented in Prisma as an optional FK to `Lead` (same migration as the minimal `Lead` table). **Application code** does not yet populate it; all existing quotes and new shells keep `leadId` **NULL** until a later convert/shell slice sets it.
+
 ---
 
 ## 7. Where it lives in the product

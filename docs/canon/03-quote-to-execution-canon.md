@@ -10,7 +10,11 @@
 
 ### Pre-job operational work (before quoting)
 
-**PreJobTask** records anchored to a **FlowGroup** capture site surveys, utility checks, feasibility reviews, and similar operational work that happens **before** a quote is authored or sent. This work feeds the Quote Editor with evidence (photos, measurements, structured inputs) but does **not** create a `Job` or enter the execution graph. See `02-core-primitives.md` for the `PreJobTask` primitive.
+**PreJobTask** records anchored to a **FlowGroup** capture **real human operational work on the site/project** that happens **before** sign/activation — site surveys, utility checks, feasibility reconnaissance, access-coordination visits, and similar **dispatchable** work. They do **not** create a `Job` or enter the **execution graph** (`planTaskId` / manifest / `TaskExecution` universe). See `02-core-primitives.md` for the full boundary (**including what must not become a PreJobTask**: record completeness and generic readiness debt stay on the **owning record**, not as automatic PreJobTasks).
+
+**Honest product slice:** Today the codebase exposes **schema + read-only visibility** (quote workspace + global work feed); full lifecycle authoring, start/complete APIs, and normalized pre-job evidence are **optional later** — canon does **not** require shipping them immediately to keep `PreJobTask` valid.
+
+**Directional (when built):** Evidence and structured capture for pre-quote site work should **inform** quoting; until dedicated pre-job evidence tables exist, avoid implying every photo or measurement lives on the `PreJobTask` row itself.
 
 ### Quote-time scope entry
 

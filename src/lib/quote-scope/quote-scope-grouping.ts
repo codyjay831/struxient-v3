@@ -131,6 +131,7 @@ export function deriveScopeVersionContext(input: ScopeVersionContextInput): Scop
   const isFrozen =
     input.status === "SENT" ||
     input.status === "SIGNED" ||
+    input.status === "DECLINED" ||
     input.status === "VOID" ||
     input.status === "SUPERSEDED";
 

@@ -119,7 +119,7 @@ export async function sendQuoteVersionForTenant(
           ok: false,
           kind: "idempotency_conflict",
           message:
-            locked.status === "VOID" || locked.status === "SUPERSEDED"
+            locked.status === "VOID" || locked.status === "SUPERSEDED" || locked.status === "DECLINED"
               ? `This quote version is ${locked.status.toLowerCase()} and cannot be sent. Open a draft revision or review version history.`
               : `Quote version status ${locked.status} cannot be sent; only draft rows are sendable.`,
         };
@@ -259,18 +259,18 @@ export async function sendQuoteVersionForTenant(
         data: { status: "PENDING_CUSTOMER" },
       });
 
-      const priorSent = await tx.quoteVersion.findMany({
+      const priorSupersedable = await tx.quoteVersion.findMany({
         where: {
           quoteId: model.quoteId,
           id: { not: locked.id },
-          status: "SENT",
+          status: { in: ["SENT", "DECLINED"] },
           versionNumber: { lt: model.versionNumber },
         },
         select: { id: true },
       });
-      if (priorSent.length > 0) {
+      if (priorSupersedable.length > 0) {
         await tx.quoteVersion.updateMany({
-          where: { id: { in: priorSent.map((r) => r.id) } },
+          where: { id: { in: priorSupersedable.map((r) => r.id) } },
           data: { status: "SUPERSEDED" },
         });
         await tx.auditEvent.create({
@@ -280,7 +280,7 @@ export async function sendQuoteVersionForTenant(
             actorId: actor.id,
             targetQuoteVersionId: locked.id,
             payloadJson: {
-              supersededQuoteVersionIds: priorSent.map((r) => r.id),
+              supersededQuoteVersionIds: priorSupersedable.map((r) => r.id),
               newSentQuoteVersionId: locked.id,
             },
           },
@@ -297,7 +297,7 @@ export async function sendQuoteVersionForTenant(
             planSnapshotSha256: planHash,
             packageSnapshotSha256: pkgHash,
             sendClientRequestId: sendKey,
-            supersededQuoteVersionIds: priorSent.map((r) => r.id),
+            supersededQuoteVersionIds: priorSupersedable.map((r) => r.id),
           },
         },
       });

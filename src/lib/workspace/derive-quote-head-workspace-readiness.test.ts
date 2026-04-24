@@ -126,4 +126,14 @@ describe("deriveQuoteHeadWorkspaceReadiness", () => {
     expect(r.recommendedStepIndex).toBeNull();
     expect(r.honestyNotes.some((s) => s.toLowerCase().includes("voided"))).toBe(true);
   });
+
+  it("declined head: no recommended step and portal decline honesty note", () => {
+    const r = deriveQuoteHeadWorkspaceReadiness(
+      base({ status: "DECLINED", lineItemCount: 1, hasPinnedWorkflow: true, hasFrozenArtifacts: true }),
+    );
+    expect(r.kind).toBe("head");
+    if (r.kind !== "head") return;
+    expect(r.recommendedStepIndex).toBeNull();
+    expect(r.honestyNotes.some((s) => s.toLowerCase().includes("declined"))).toBe(true);
+  });
 });

@@ -243,7 +243,7 @@ Not requested in the prompt list but **required** to avoid confusion:
 
 **Normative:** This section locks **how** `planTaskId` (and downstream `packageTaskId` binding to `planTaskIds`) is defined so **library** and **quote-local** scope paths remain **distinct**, **collision-free**, and **preview-stable ≡ send-stable** when inputs are unchanged.
 
-**Scope:** **Quote-selected scope** on a **`quoteVersionId`** with **pinned `workflowVersionId`**. **PreJobTask** does **not** produce `planTaskId` rows — it is not part of the generated plan (`canon/02`).
+**Scope:** **Quote-selected scope** on a **`quoteVersionId`** with **pinned `workflowVersionId`**. **PreJobTask** does **not** produce `planTaskId` rows — it is not part of the generated plan (`canon/02`). **PreJobTask** is also **not** where **readiness/completeness debt** for customers or quotes should be stored — that identity work stays on the **owning record** and readiness models, not in the plan graph.
 
 ---
 

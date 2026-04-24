@@ -285,6 +285,21 @@ export async function POST(request: NextRequest) {
             { error: { code: "QUOTE_NUMBER_TAKEN", message: "quoteNumber is already in use for this tenant." } },
             { status: 409 },
           );
+        case "lead_not_found":
+          return NextResponse.json(
+            { error: { code: "LEAD_NOT_FOUND", message: "Lead not found for this tenant." } },
+            { status: 404 },
+          );
+        case "lead_not_open":
+          return NextResponse.json(
+            {
+              error: {
+                code: "LEAD_NOT_OPEN",
+                message: "Quote shell with leadId requires the lead to exist with status OPEN.",
+              },
+            },
+            { status: 400 },
+          );
         default: {
           const _exhaustive: never = result;
           return _exhaustive;

@@ -51,6 +51,9 @@ export type QuoteVersionHistoryItemDto = {
   /** Present when status is VOID (Epic 14). */
   voidedAt: string | null;
   voidReason: string | null;
+  /** Present when customer declined on the portal (Epic 13 + 54). */
+  portalDeclinedAt: string | null;
+  portalDeclineReason: string | null;
   /**
    * Compare to the next row in `versions` (older `versionNumber`), or `null` for the oldest row.
    */
@@ -80,6 +83,8 @@ export function mapQuoteVersionRowToHistoryItem(row: {
   portalQuoteShareToken: string | null;
   voidedAt: Date | null;
   voidReason: string | null;
+  portalDeclinedAt: Date | null;
+  portalDeclineReason: string | null;
 }): QuoteVersionHistoryItemDto {
   return {
     id: row.id,
@@ -98,6 +103,8 @@ export function mapQuoteVersionRowToHistoryItem(row: {
     portalQuoteShareToken: row.portalQuoteShareToken,
     voidedAt: row.voidedAt?.toISOString() ?? null,
     voidReason: row.voidReason,
+    portalDeclinedAt: row.portalDeclinedAt?.toISOString() ?? null,
+    portalDeclineReason: row.portalDeclineReason,
     compareToPrior: null,
   };
 }
@@ -175,6 +182,8 @@ export async function getQuoteVersionHistoryForTenant(
           portalQuoteShareToken: true,
           voidedAt: true,
           voidReason: true,
+          portalDeclinedAt: true,
+          portalDeclineReason: true,
         },
       },
     },

@@ -4,6 +4,8 @@
 **Starting Point:** Marketing Lead Intake or Manual Entry
 **Preconditions:** Tenant is active; user is logged in as Staff.
 
+**Repo truth (2026-04):** Prisma has a **minimal** `Lead` table, `LeadStatus` (e.g. `OPEN`, not `NEW`), and optional **`Quote.leadId`**. **No** office `/leads` flow or convert mutations exist yet — intake in product is still primarily **new quote shell** (Customer + FlowGroup + Quote). Align future UI with **`LeadStatus`** enum names.
+
 ---
 
 ## Main Success Path (Step-by-Step)

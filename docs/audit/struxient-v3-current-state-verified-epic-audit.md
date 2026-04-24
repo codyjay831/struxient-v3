@@ -21,7 +21,7 @@
 
 **Biggest Doc↔Code Drift Risks:**
 1. **QuoteLocalPacket Usage:** Canon implies `QuoteLocalPacket` is the fork center, but `QuoteLineItem` can bypass it to point directly at library revisions.
-2. **PreJobTask Invisibility:** Structurally present in schema but invisible in API read models and UI.
+2. **PreJobTask doc lag (resolved in canon 2026):** Schema and **read paths** exist (quote workspace, global work feed, office `/work`); earlier notes claiming total invisibility were **stale**. Remaining gap is **mutations / full lifecycle**, not discovery.
 3. **Doc-Maturity Gap:** The implementation for core lifecycle (Epics 07, 08, 12, 13, 33) is significantly more detailed and robust than the current "thin" documentation in those files.
 
 ---
@@ -68,7 +68,7 @@
 ## 3. Epic inventory
 | Epic / File | Purpose | Status | Verified Doc Evidence | Verified Code Evidence | Gaps / Drift | Confidence |
 |---|---|---|---|---|---|---|
-| 01-leads | CRM Intake | **Partial** | Reference grade doc | Schema present; no mutations | No lead conversion logic | High |
+| 01-leads | CRM Intake | **Not started (app)** | Reference-grade epic spec | **`Lead` model + `Quote.leadId` in Prisma** (migration `20260424120000_add_lead_mvp_and_quote_lead_id`); **no** lead reads/mutations/routes/UI yet | Intake today remains **Customer → FlowGroup → quote shell**; conversion-first lead app layer still to build | High |
 | 02-customers | Identity | **Complete** | Solid CRUD doc | `Customer` model; `customer-reads.ts` | None | High |
 | 03-flowgroup | Anchor | **Complete** | Structural anchor doc | `FlowGroup` model; `flow-group-reads.ts` | Central anchor for all work | High |
 | 07-quotes | Shell | **Mostly Complete** | Graded C+ in scorecard | `create-commercial-quote-shell.ts` | Code is better than doc | High |
@@ -115,8 +115,8 @@
 - **Confidence:** High.
 
 ### PreJobTask
-- **Design:** Site work on FlowGroup.
-- **Code Status:** **Inactive**. Schema exists, but no mutations or read-path visibility found.
+- **Design:** **Human operational** site work on `FlowGroup` before activation; **not** record-readiness junk drawer (see `docs/canon/02-core-primitives.md`).
+- **Code Status:** **Partial.** **Schema** + **read-only** visibility: `getQuoteWorkspaceForTenant` (`preJobTasks`), `getGlobalWorkFeedReadModelForTenant` / `GET /api/work-feed`, office `src/app/(office)/work/page.tsx` + quote workspace UI. **No** application CRUD mutations or `TaskExecution` linkage yet.
 - **Confidence:** High.
 
 ### Compose Preview
@@ -151,7 +151,7 @@
 |---|---|---|---|---|
 | `QuoteLocalPacket` is the fork center. | `QuoteLineItem` links directly to local OR library packet. | `prisma/schema.prisma` fields. | Confused authoring ownership. | **Canon wins:** UI should force forking. |
 | FlowSpec is process skeleton. | Tables named `WorkflowTemplate` / `Version`. | `prisma/schema.prisma`. | Naming confusion. | **Docs win:** Code is functional; docs provide better product naming. |
-| PreJobTasks live on FlowGroup. | Model present, but unused in workspace. | `QuoteWorkspaceDto` absence. | Discovery loss for field surveys. | **Code wins:** Needs read-path wireup. |
+| PreJobTasks live on FlowGroup. | Model present; **read paths wired** (workspace + work feed). | `quote-workspace-reads.ts`, `global-work-feed-reads.ts`. | Lifecycle/evidence still thin. | **Optional later:** CRUD + evidence; **canon** narrows what belongs here vs readiness. |
 | AI drafts local packets. | No AI logic in mutations. | `rg "AI"` in server. | False sense of AI capability. | **Unresolved:** Needs decision on AI integration layer. |
 
 ---
@@ -181,7 +181,7 @@
 
 ### UI/Workspace Incomplete
 - **Phase 6 Production UI:** Themed layout, production routes. (Confidence: High)
-- **PreJobTask Visibility:** Wire site survey tasks into the workspace. (Confidence: High)
+- **PreJobTask lifecycle (optional):** Read visibility exists; **authoring/start/complete** and normalized evidence remain **product choice**, not a blocker for keeping the primitive narrow. (Confidence: Medium)
 
 ---
 

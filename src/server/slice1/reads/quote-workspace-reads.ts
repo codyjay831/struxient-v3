@@ -21,6 +21,8 @@ const VERSION_SELECT = {
   portalQuoteShareToken: true,
   voidedAt: true,
   voidReason: true,
+  portalDeclinedAt: true,
+  portalDeclineReason: true,
 } as const;
 
 /** Aggregate summary of line items for a specific version. */
@@ -61,7 +63,17 @@ export type QuoteWorkspaceChangeOrderDto = {
   /** Present when the CO draft was sent for portal review (Epic 37). */
   draftQuotePortalShareToken: string | null;
   draftQuoteVersionStatus: string | null;
+  /** When the linked draft exists and was declined on the customer portal (read from `QuoteVersion`). */
+  draftQuotePortalDeclinedAtIso: string | null;
+  draftQuotePortalDeclineReason: string | null;
 };
+
+/** VOID change order whose linked draft was declined on the portal — show explicit office explanation (Epic 37 + 54). */
+export function shouldShowPortalDeclineVoidExplanation(
+  co: Pick<QuoteWorkspaceChangeOrderDto, "status" | "draftQuoteVersionStatus">,
+): boolean {
+  return co.status === "VOID" && co.draftQuoteVersionStatus === "DECLINED";
+}
 
 /** Compact visibility for media evidence. */
 export type QuoteWorkspaceEvidenceDto = {
@@ -265,11 +277,17 @@ export async function getQuoteWorkspaceForTenant(
         createdAt: true,
         draftQuoteVersionId: true,
         draftQuoteVersion: {
-          select: { portalQuoteShareToken: true, status: true },
+          select: {
+            portalQuoteShareToken: true,
+            status: true,
+            portalDeclinedAt: true,
+            portalDeclineReason: true,
+          },
         },
       },
     });
     for (const co of cos) {
+      const draft = co.draftQuoteVersion;
       changeOrders.push({
         id: co.id,
         status: co.status as QuoteWorkspaceChangeOrderDto["status"],
@@ -277,8 +295,10 @@ export async function getQuoteWorkspaceForTenant(
         appliedAt: co.appliedAt?.toISOString() ?? null,
         createdAt: co.createdAt.toISOString(),
         draftQuoteVersionId: co.draftQuoteVersionId,
-        draftQuotePortalShareToken: co.draftQuoteVersion?.portalQuoteShareToken ?? null,
-        draftQuoteVersionStatus: co.draftQuoteVersion?.status ?? null,
+        draftQuotePortalShareToken: draft?.portalQuoteShareToken ?? null,
+        draftQuoteVersionStatus: draft?.status ?? null,
+        draftQuotePortalDeclinedAtIso: draft?.portalDeclinedAt?.toISOString() ?? null,
+        draftQuotePortalDeclineReason: draft?.portalDeclineReason ?? null,
       });
     }
 

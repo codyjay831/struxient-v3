@@ -26,6 +26,8 @@ function head(over: Partial<QuoteVersionHistoryItemDto> = {}): QuoteVersionHisto
     portalQuoteShareToken: null,
     voidedAt: null,
     voidReason: null,
+    portalDeclinedAt: null,
+    portalDeclineReason: null,
     compareToPrior: null,
     ...over,
   };

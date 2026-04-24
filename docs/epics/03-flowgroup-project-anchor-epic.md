@@ -117,7 +117,7 @@ See §9. Global search (epic 58) should index FlowGroup nickname + address + cus
 
 - **Customer 1—* FlowGroup**
 - **FlowGroup 1—* Quote** (over time)
-- **FlowGroup 1—* PreJobTask** (site surveys, utility checks, feasibility work — completed before quoting; historical evidence survives after activation)
+- **FlowGroup 1—* PreJobTask** (site surveys, utility checks, feasibility work — **human operational** items on the site anchor; **not** a substitute for **customer/profile completeness** or **quote readiness checklists** — those live on the owning records; historical rows survive after activation)
 - **FlowGroup 1—1 Job** (business anchor per decision `04` — **one job** per flow group for default trade wedge; multi-flow O2 deferred)
 
 ## 20. Permissions / visibility

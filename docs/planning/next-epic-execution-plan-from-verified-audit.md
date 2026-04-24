@@ -32,7 +32,7 @@
 | **Payment Gating Backbone** | Verified "Decision 02" gating logic is not implemented. | `prisma` enums only; no server engine. | `Core Business Flow` | High | High |
 | **Catalog / Template Editor** | Managing trades requires code (seeds). | No routes for packet/template CRUD. | `Foundational blocker` | Medium | High |
 | **Change Order Engine** | Real jobs drift; system currently rigid post-sign. | No mutations for `ChangeOrder`. | `Core Business Flow` | Medium | High |
-| **PreJobTask Visibility** | "Site Survey" work is invisible to estimators. | `PreJobTask` model unused in reads. | `Operational Visibility` | Low | High |
+| **PreJobTask depth (optional)** | Estimators may want **authoring + completion** for site work, not only lists. | Reads exist; **no** app mutations. | `Operational Visibility` | Low | Medium |
 | **Customer Portal** | Customers must have signature recorded by office. | No public-facing route/auth. | `Future / Optional` | Low | High |
 
 ---
@@ -59,7 +59,7 @@
 4. **Change Order Engine (Epic 37):** Implement post-activation scope deltas.
    - *Why now:* Handles real-world job drift.
    - *Unlocks:* Production hardening.
-5. **PreJobTask Integration:** Close the "Before the Quote" survey gap.
+5. **PreJobTask (optional):** If product needs more than **read-only discovery**, add **narrow** CRUD + lifecycle — **after** boundary canon is stable; **not** required to ship core quote→activate spine.
 
 ---
 

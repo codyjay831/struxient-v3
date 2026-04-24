@@ -93,7 +93,7 @@ export async function voidQuoteVersionForTenant(
       }
     }
 
-    if (qv.status !== "SENT" && qv.status !== "DRAFT") {
+    if (qv.status !== "SENT" && qv.status !== "DRAFT" && qv.status !== "DECLINED") {
       return { ok: false, kind: "invalid_body", message: `Version status ${qv.status} cannot be voided.` };
     }
 

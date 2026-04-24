@@ -4,6 +4,7 @@ const tone: Record<QuoteVersionStatus, string> = {
   DRAFT: "border-amber-800/80 bg-amber-950/50 text-amber-200",
   SENT: "border-sky-800/80 bg-sky-950/50 text-sky-200",
   SIGNED: "border-violet-800/80 bg-violet-950/50 text-violet-200",
+  DECLINED: "border-orange-900/60 bg-orange-950/35 text-orange-100",
   VOID: "border-rose-900/60 bg-rose-950/40 text-rose-200",
   SUPERSEDED: "border-zinc-700 bg-zinc-900/80 text-zinc-400",
 };

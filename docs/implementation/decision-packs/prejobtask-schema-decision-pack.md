@@ -12,11 +12,19 @@
 
 ---
 
+## Product boundary (anti–junk-drawer)
+
+**Normative with canon (`02`, `04`):** Use `PreJobTask` only for **real human operational actions** on the **FlowGroup** (site/project) before activation. **Do not** create PreJobTasks for **missing customer phone**, **incomplete profile**, **job-card field gaps**, or **generic office readiness** — express those as **readiness / completeness on the owning record** (and policies), not as tasks.
+
+**Light use is allowed:** The primitive may remain **narrow and infrequent**; that is **not** a signal to remove it.
+
+---
+
 ## Current evidence
 
-- Canon defines **Pre-job task** as FlowGroup-anchored operational work **before** activation; it **does not** enter the activated execution graph (`02-core-primitives.md`).
+- Canon defines **Pre-job task** as FlowGroup-anchored **human operational** work **before** activation; it **does not** enter the activated execution graph (`02-core-primitives.md`).
 - Slice 1 schema planning today has **no** edges from quote domain to `Flow` / `Job` / `RuntimeTask` (`04-slice-1-relations-and-invariants.md`). PreJobTask **extends** the pre-activation world without violating that boundary.
-- Epic 39 requires **PRE_JOB** visibility in the Work Station; that implies a **queryable row** with stable identity, not only JSON blobs.
+- **Work Station / Epic 39 — honest split:** **Queryable rows** with stable identity are required for discovery (`global-work-feed-reads`, quote workspace, office `/work`). **Merged-row PRE_JOB badges, node column, and Start parity** with runtime/skeleton are **target vision**; **current** implementation is **read-only pre-job visibility** in a **separate** section (see `docs/epics/39-work-station-actionable-work-feed-epic.md` §9b).
 
 ---
 
@@ -120,7 +128,8 @@ Align product copy with engine rules; values are **planning-level**:
 2. **`isPreJob` flag on `RuntimeTaskInstance`** — **forbidden**.  
 3. **Creating a `Job`** to schedule a survey — **forbidden** (epic 34).  
 4. **Storing survey evidence only in unstructured Lead notes** when the data must drive quote authoring — use PreJobTask + file/structured child (when added).  
-5. **Implicit carry-forward** of PreJobTask into activation — **forbidden** without explicit future canon + migration rules.
+5. **Implicit carry-forward** of PreJobTask into activation — **forbidden** without explicit future canon + migration rules.  
+6. **Using `PreJobTask` as a dumping ground for record completeness** — **forbidden**; use **readiness** on the **Customer**, **QuoteVersion**, or other owning record (see canon `02`).
 
 ---
 

@@ -3,7 +3,7 @@ import type { QuoteVersionScopeDb } from "./quote-version-scope";
 
 export type QuoteVersionFreezeReadModel = {
   id: string;
-  status: "SENT" | "SIGNED" | "VOID" | "SUPERSEDED";
+  status: "SENT" | "SIGNED" | "DECLINED" | "VOID" | "SUPERSEDED";
   sentAt: Date;
   sentById: string;
   pinnedWorkflowVersionId: string | null;
@@ -14,7 +14,7 @@ export type QuoteVersionFreezeReadModel = {
 };
 
 /**
- * Tenant-scoped read of frozen snapshots; SENT/SIGNED and withdrawn SUPERSEDED or VOID rows
+ * Tenant-scoped read of frozen snapshots; SENT/SIGNED/DECLINED and withdrawn SUPERSEDED or VOID rows
  * that still carry send-time payloads (audit / compare; Epic 14).
  */
 export async function getQuoteVersionFreezeReadModel(
@@ -24,7 +24,7 @@ export async function getQuoteVersionFreezeReadModel(
   const row = await client.quoteVersion.findFirst({
     where: {
       id: params.quoteVersionId,
-      status: { in: ["SENT", "SIGNED", "VOID", "SUPERSEDED"] },
+      status: { in: ["SENT", "SIGNED", "DECLINED", "VOID", "SUPERSEDED"] },
       quote: { tenantId: params.tenantId },
     },
     select: {

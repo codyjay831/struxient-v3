@@ -1,6 +1,7 @@
 import { getPrisma } from "@/server/db/prisma";
 import { getQuotePortalPresentationByShareToken } from "@/server/slice1/reads/quote-portal-reads";
 import { InternalNotFoundState } from "@/components/internal/internal-state-feedback";
+import { PortalQuoteDeclineForm } from "@/components/portal/portal-quote-decline-form";
 import { PortalQuoteSignForm } from "@/components/portal/portal-quote-sign-form";
 
 type Props = { params: Promise<{ shareToken: string }> };
@@ -30,6 +31,7 @@ export default async function PortalQuoteReviewPage({ params }: Props) {
   }
 
   const isSigned = model.status === "SIGNED";
+  const isDeclined = model.status === "DECLINED";
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -47,6 +49,19 @@ export default async function PortalQuoteReviewPage({ params }: Props) {
               This quote has already been accepted
               {model.portalSignerLabel ? ` (${model.portalSignerLabel})` : ""}.
             </p>
+          ) : null}
+          {isDeclined && model.portalDeclineReason ? (
+            <div className="mt-3 rounded border border-orange-900/40 bg-orange-950/25 px-3 py-2 text-sm text-orange-100/95">
+              <p className="font-medium text-orange-200/95">You declined this proposal</p>
+              {model.portalDeclinedAtIso ? (
+                <p className="mt-1 text-xs text-orange-200/70">
+                  Recorded {new Date(model.portalDeclinedAtIso).toLocaleString()}
+                </p>
+              ) : null}
+              <p className="mt-2 text-xs leading-relaxed text-orange-100/90">
+                <span className="font-semibold text-orange-200/95">Reason you provided:</span> {model.portalDeclineReason}
+              </p>
+            </div>
           ) : null}
         </header>
 
@@ -81,7 +96,12 @@ export default async function PortalQuoteReviewPage({ params }: Props) {
           )}
         </section>
 
-        {!isSigned ? <PortalQuoteSignForm shareToken={shareToken} /> : null}
+        {!isSigned && !isDeclined ? (
+          <>
+            <PortalQuoteSignForm shareToken={shareToken} />
+            <PortalQuoteDeclineForm shareToken={shareToken} />
+          </>
+        ) : null}
       </main>
     </div>
   );

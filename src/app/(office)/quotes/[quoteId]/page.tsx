@@ -4,7 +4,10 @@ import { getQuoteWorkspaceForTenant } from "@/server/slice1/reads/quote-workspac
 import { principalHasCapability, tryGetApiPrincipal } from "@/lib/auth/api-principal";
 import { deriveNewestActivatedExecutionEntryTarget } from "@/lib/workspace/derive-workspace-execution-entry-target";
 import { deriveNewestSignedWithoutActivationTarget } from "@/lib/workspace/derive-workspace-signed-activate-target";
-import { deriveNewestSentSignTarget } from "@/lib/workspace/derive-workspace-sent-sign-target";
+import {
+  deriveNewestPortalDeclinedSummary,
+  deriveNewestSentSignTarget,
+} from "@/lib/workspace/derive-workspace-sent-sign-target";
 import { 
   deriveQuoteHeadWorkspaceReadiness, 
   type QuoteHeadReadinessInput 
@@ -92,6 +95,7 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
   } : null;
 
   const sentSignTarget = deriveNewestSentSignTarget(ws.versions);
+  const portalDeclinedSummary = deriveNewestPortalDeclinedSummary(ws.versions);
   const signedActivateTarget = deriveNewestSignedWithoutActivationTarget(ws.versions);
   const executionEntryTarget = deriveNewestActivatedExecutionEntryTarget(ws.versions);
 
@@ -220,6 +224,7 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
                 >
                   <QuoteWorkspaceSignSent
                     signTarget={sentSignTarget}
+                    portalDeclinedSummary={portalDeclinedSummary}
                     canOfficeMutate={canOfficeMutate}
                     appOrigin={appOrigin}
                   />

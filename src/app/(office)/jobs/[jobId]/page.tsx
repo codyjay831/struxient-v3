@@ -14,6 +14,7 @@ import type { TaskStartBlockReason } from "@/server/slice1/eligibility/task-acti
 import { getJobHandoffForTenant } from "@/server/slice1/reads/job-handoff-reads";
 import { toJobHandoffApiDto } from "@/lib/job-handoff-dto";
 import { JobHandoffPanel } from "@/components/jobs/job-handoff-panel";
+import { JobBlockersConsole } from "@/components/jobs/job-blockers-console";
 
 /**
  * Office-surface job-anchor inspector.
@@ -115,6 +116,15 @@ export default async function OfficeJobDetailPage({ params }: OfficeJobDetailPag
     summary: summarizeFlowRuntimeTasks(flow),
   }));
 
+  const canOfficeMutate = principalHasCapability(auth.principal, "office_mutate");
+  const runtimeTaskOptions = dto.flows.flatMap((f) =>
+    f.runtimeTasks.map((t) => ({
+      id: t.id,
+      displayTitle: t.displayTitle,
+      quoteNumber: f.quoteNumber,
+    })),
+  );
+
   return (
     <div className="p-8 max-w-5xl mx-auto">
       <div className="mb-2">
@@ -154,11 +164,19 @@ export default async function OfficeJobDetailPage({ params }: OfficeJobDetailPag
         </div>
       </div>
 
+      <JobBlockersConsole
+        jobId={jobId}
+        paymentGates={dto.paymentGates}
+        activeOperationalHolds={dto.activeOperationalHolds}
+        runtimeTaskOptions={runtimeTaskOptions}
+        canOfficeMutate={canOfficeMutate}
+      />
+
       <JobHandoffPanel
         jobId={jobId}
         initial={handoffInitial}
         hasActivation={header.hasActivatedFlow}
-        canOfficeMutate={principalHasCapability(auth.principal, "office_mutate")}
+        canOfficeMutate={canOfficeMutate}
         canFieldExecute={principalHasCapability(auth.principal, "field_execute")}
       />
 

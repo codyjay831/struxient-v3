@@ -8,7 +8,7 @@ export type QuotePortalPlanRowDto = {
 
 export type QuotePortalPresentationReadModel = {
   quoteVersionId: string;
-  status: "SENT" | "SIGNED";
+  status: "SENT" | "SIGNED" | "DECLINED";
   quoteNumber: string;
   customerName: string;
   versionNumber: number;
@@ -16,6 +16,9 @@ export type QuotePortalPresentationReadModel = {
   signedAtIso: string | null;
   signatureMethod: string | null;
   portalSignerLabel: string | null;
+  /** Present when customer declined on the portal (Epic 13 + 54). */
+  portalDeclinedAtIso: string | null;
+  portalDeclineReason: string | null;
   planRows: QuotePortalPlanRowDto[];
   /** When this sent quote version is a change-order draft, surface frozen office-authored reason (Epic 37). */
   changeOrderSummary: { reason: string } | null;
@@ -47,7 +50,7 @@ function parseFrozenPlanRowsForPortal(generatedPlanSnapshot: Prisma.JsonValue): 
 }
 
 /**
- * Token-scoped read for customer portal: only `portalQuoteShareToken` + SENT/SIGNED + frozen plan JSON.
+ * Token-scoped read for customer portal: only `portalQuoteShareToken` + SENT/SIGNED/DECLINED + frozen plan JSON.
  * No draft rows; no tenant id in URL.
  */
 export async function getQuotePortalPresentationByShareToken(
@@ -61,7 +64,7 @@ export async function getQuotePortalPresentationByShareToken(
     where: {
       portalQuoteShareToken: token,
       /** VOID / SUPERSEDED excluded: portal must not treat withdrawn or replaced proposals as current (Epic 14). */
-      status: { in: ["SENT", "SIGNED"] },
+      status: { in: ["SENT", "SIGNED", "DECLINED"] },
     },
     select: {
       id: true,
@@ -69,6 +72,8 @@ export async function getQuotePortalPresentationByShareToken(
       versionNumber: true,
       sentAt: true,
       signedAt: true,
+      portalDeclinedAt: true,
+      portalDeclineReason: true,
       generatedPlanSnapshot: true,
       quote: {
         select: {
@@ -89,13 +94,16 @@ export async function getQuotePortalPresentationByShareToken(
   const planRows = parseFrozenPlanRowsForPortal(row.generatedPlanSnapshot);
 
   const co = await client.changeOrder.findFirst({
-    where: { draftQuoteVersionId: row.id },
+    where: {
+      draftQuoteVersionId: row.id,
+      status: { in: ["DRAFT", "PENDING_CUSTOMER", "READY_TO_APPLY", "APPLIED"] },
+    },
     select: { reason: true },
   });
 
   return {
     quoteVersionId: row.id,
-    status: row.status as "SENT" | "SIGNED",
+    status: row.status as "SENT" | "SIGNED" | "DECLINED",
     quoteNumber: row.quote.quoteNumber,
     customerName: row.quote.customer.name,
     versionNumber: row.versionNumber,
@@ -103,6 +111,8 @@ export async function getQuotePortalPresentationByShareToken(
     signedAtIso: row.signedAt?.toISOString() ?? null,
     signatureMethod: row.quoteSignature?.method ?? null,
     portalSignerLabel: row.quoteSignature?.portalSignerLabel ?? null,
+    portalDeclinedAtIso: row.portalDeclinedAt?.toISOString() ?? null,
+    portalDeclineReason: row.portalDeclineReason,
     planRows,
     changeOrderSummary: co ? { reason: co.reason } : null,
   };

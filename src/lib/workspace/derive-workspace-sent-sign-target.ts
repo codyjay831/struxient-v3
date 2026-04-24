@@ -35,3 +35,46 @@ export function deriveNewestSentSignTarget(
     portalQuoteShareToken: row.portalQuoteShareToken ?? null,
   };
 }
+
+/** Subset of workspace/history version row used for portal-decline office visibility. */
+export type VersionRowForPortalDecline = {
+  id: string;
+  versionNumber: number;
+  status: string;
+  portalQuoteShareToken?: string | null;
+  portalDeclinedAt: string | null;
+  portalDeclineReason: string | null;
+};
+
+export type PortalDeclinedSummary = {
+  quoteVersionId: string;
+  versionNumber: number;
+  portalDeclinedAtIso: string;
+  portalDeclineReason: string;
+  portalQuoteShareToken: string | null;
+};
+
+/**
+ * Newest-first: first **DECLINED** row with persisted decline metadata (portal path).
+ */
+export function deriveNewestPortalDeclinedSummary(
+  versionsOrderedNewestFirst: VersionRowForPortalDecline[],
+): PortalDeclinedSummary | null {
+  const row = versionsOrderedNewestFirst.find(
+    (v) =>
+      v.status === "DECLINED" &&
+      v.portalDeclinedAt != null &&
+      v.portalDeclinedAt !== "" &&
+      (v.portalDeclineReason?.trim().length ?? 0) > 0,
+  );
+  if (!row?.portalDeclinedAt || !row.portalDeclineReason) {
+    return null;
+  }
+  return {
+    quoteVersionId: row.id,
+    versionNumber: row.versionNumber,
+    portalDeclinedAtIso: row.portalDeclinedAt,
+    portalDeclineReason: row.portalDeclineReason,
+    portalQuoteShareToken: row.portalQuoteShareToken ?? null,
+  };
+}

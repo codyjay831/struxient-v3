@@ -50,17 +50,29 @@ export type JobShellFlowApiDto = {
   runtimeTasks: JobShellRuntimeTaskApiDto[];
 };
 
+/** Job-scoped payment gates for office blockers console (Epic 47/48). */
+export type JobShellPaymentGateApiDto = {
+  id: string;
+  status: "UNSATISFIED" | "SATISFIED";
+  title: string;
+  targetCount: number;
+  satisfiedAt: string | null;
+};
+
+export type JobShellOperationalHoldApiDto = {
+  id: string;
+  runtimeTaskId: string | null;
+  holdType: string;
+  reason: string;
+};
+
 export type JobShellApiDto = {
   job: { id: string; createdAt: string; flowGroupId: string };
   flowGroup: { id: string; name: string; customerId: string };
   customer: { id: string; name: string };
   flows: JobShellFlowApiDto[];
-  activeOperationalHolds: {
-    id: string;
-    runtimeTaskId: string | null;
-    holdType: string;
-    reason: string;
-  }[];
+  paymentGates: JobShellPaymentGateApiDto[];
+  activeOperationalHolds: JobShellOperationalHoldApiDto[];
 };
 
 export function toJobShellApiDto(m: JobShellReadModel): JobShellApiDto {
@@ -122,6 +134,13 @@ export function toJobShellApiDto(m: JobShellReadModel): JobShellApiDto {
           instructions: t.instructions,
         };
       }),
+    })),
+    paymentGates: m.paymentGates.map((g) => ({
+      id: g.id,
+      status: g.status,
+      title: g.title,
+      targetCount: g.targets.length,
+      satisfiedAt: g.satisfiedAt ? g.satisfiedAt.toISOString() : null,
     })),
     activeOperationalHolds: m.activeOperationalHolds.map((h) => ({
       id: h.id,
