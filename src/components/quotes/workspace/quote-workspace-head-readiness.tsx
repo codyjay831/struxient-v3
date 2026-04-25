@@ -36,7 +36,7 @@ export function QuoteWorkspaceHeadReadiness({ head, headLineItemCount = 0 }: Pro
   if (r.kind === "no_versions") {
     return (
       <section className="mb-6 rounded-lg border border-dashed border-zinc-800 bg-zinc-950/30 p-6 text-sm">
-        <h2 className="text-base font-semibold text-zinc-200">Quote readiness</h2>
+        <h2 className="text-base font-semibold text-zinc-200">Before you can send</h2>
         <p className="mt-2 text-zinc-500">No versions have been created for this quote yet.</p>
       </section>
     );
@@ -51,8 +51,11 @@ export function QuoteWorkspaceHeadReadiness({ head, headLineItemCount = 0 }: Pro
     <section className="mb-10 rounded-xl border border-zinc-800 bg-zinc-900/20 p-6 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-800 pb-4">
         <div>
-          <h2 className="text-lg font-semibold text-zinc-100">Workspace readiness</h2>
-          <p className="text-xs text-zinc-500">
+          <h2 className="text-lg font-semibold text-zinc-100">Before you can send</h2>
+          <p className="mt-1 text-xs text-zinc-400">
+            Fix anything marked needs attention before sending this quote.
+          </p>
+          <p className="mt-2 text-[11px] text-zinc-500">
             Latest revision (v{r.versionNumber}) · <span className="text-zinc-400 font-medium uppercase tracking-wider">{r.status}</span>
           </p>
         </div>

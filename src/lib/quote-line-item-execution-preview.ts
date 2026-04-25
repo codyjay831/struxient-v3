@@ -370,19 +370,19 @@ export function projectLineItemExecutionPreview(
  *   - Repeated stages are deduped *in first-seen order*, so a task list of
  *     [survey, survey, install, install, closeout] renders as
  *     "Site Survey → Install → Closeout".
- *   - Empty preview (`tasks.length === 0`) returns "Creates 0 tasks" — the
+ *   - Empty preview (`tasks.length === 0`) returns "0 crew tasks" — the
  *     caller decides whether to render it (we already render an explicit
- *     "no task lines yet" note for empty packets, so callers typically skip
+ *     "no work yet" note for empty templates, so callers typically skip
  *     this string in that case).
  *   - Pure: only depends on the tasks array; no I/O, no side effects.
  *   - Stable order: relies on the projection's task sort (sortOrder, lineKey),
- *     so stage order is deterministic for any given packet.
+ *     so stage order is deterministic for any given template.
  */
 export function buildExecutionPreviewSummary(
   tasks: ReadonlyArray<{ stage: { displayLabel: string } }>,
 ): string {
   const taskCount = tasks.length;
-  const taskWord = taskCount === 1 ? "task" : "tasks";
+  const taskWord = taskCount === 1 ? "crew task" : "crew tasks";
 
   const seen = new Set<string>();
   const stages: string[] = [];
@@ -394,7 +394,7 @@ export function buildExecutionPreviewSummary(
   }
 
   if (stages.length === 0) {
-    return `Creates ${taskCount} ${taskWord}`;
+    return `${taskCount} ${taskWord}`;
   }
-  return `Creates ${taskCount} ${taskWord} across ${stages.join(" → ")}`;
+  return `${taskCount} ${taskWord} — at ${stages.join(" → ")}`;
 }

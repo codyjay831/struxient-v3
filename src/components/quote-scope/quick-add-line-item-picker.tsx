@@ -12,6 +12,13 @@ import {
   buildFieldsFromPreset,
   type PresetUnusableReason,
 } from "@/lib/quote-line-item-prefill";
+import { formatExecutionModeLabel } from "@/lib/quote-line-item-execution-mode-label";
+import {
+  CATALOG_TRADES,
+  inferPacketTrade,
+  inferPresetTrade,
+  type CatalogTrade,
+} from "@/lib/quote-catalog-trade-inference";
 import type { LineItemPresetSummaryDto } from "@/server/slice1/reads/line-item-preset-reads";
 import type { ScopePacketSummaryDto } from "@/server/slice1/reads/scope-packet-catalog-reads";
 
@@ -96,11 +103,13 @@ const RECENT_LIMIT = 3;
 function unusableReasonLabel(reason: PresetUnusableReason): string {
   switch (reason) {
     case "manifest_packet_missing":
-      return "Linked packet was deleted — re-link before using this preset.";
+      return "Linked work template was deleted — re-link before using this saved line.";
     case "manifest_no_published_revision":
-      return "Linked packet has no PUBLISHED revision yet — publish before using.";
+      return "Linked work template has no published version yet — publish before using.";
   }
 }
+
+type TradeFilter = "All" | CatalogTrade;
 
 export function QuickAddLineItemPicker({
   availableLibraryPackets,
@@ -111,6 +120,9 @@ export function QuickAddLineItemPicker({
   onClose,
 }: QuickAddLineItemPickerProps) {
   const [query, setQuery] = useState("");
+  // Slice F prototype — local UI filter only. NEVER written to prefill,
+  // line-item, preset, packet, or quote payloads.
+  const [selectedTrade, setSelectedTrade] = useState<TradeFilter>("All");
 
   const pinnable = useMemo(
     () => filterPinnableLibraryPackets(availableLibraryPackets),
@@ -146,6 +158,52 @@ export function QuickAddLineItemPicker({
     return m;
   }, [presetEntries]);
 
+  // Slice F: tag each query-filtered row with its inferred trade. Counts and
+  // the trade filter both consume these maps; selection callbacks remain
+  // unchanged (trade is presentation-only).
+  const presetTradeById = useMemo(() => {
+    const m = new Map<string, CatalogTrade>();
+    for (const p of filteredPresets) m.set(p.id, inferPresetTrade(p));
+    return m;
+  }, [filteredPresets]);
+
+  const packetTradeById = useMemo(() => {
+    const m = new Map<string, CatalogTrade>();
+    for (const p of filtered) m.set(p.id, inferPacketTrade(p));
+    return m;
+  }, [filtered]);
+
+  /**
+   * Counts are computed on the query-filtered universe (so the user sees how
+   * many entries each chip would yield given the current search). They sum
+   * presets + packets without de-duping a preset and its linked work
+   * template — acceptable for this prototype per the slice spec.
+   */
+  const tradeCounts = useMemo(() => {
+    const counts: Record<TradeFilter, number> = {
+      All: filteredPresets.length + filtered.length,
+      Roofing: 0,
+      Electrical: 0,
+      Solar: 0,
+      HVAC: 0,
+      Gutters: 0,
+      General: 0,
+    };
+    for (const t of presetTradeById.values()) counts[t] += 1;
+    for (const t of packetTradeById.values()) counts[t] += 1;
+    return counts;
+  }, [filteredPresets.length, filtered.length, presetTradeById, packetTradeById]);
+
+  const presetsForRender = useMemo(() => {
+    if (selectedTrade === "All") return filteredPresets;
+    return filteredPresets.filter((p) => presetTradeById.get(p.id) === selectedTrade);
+  }, [filteredPresets, presetTradeById, selectedTrade]);
+
+  const packetsForRender = useMemo(() => {
+    if (selectedTrade === "All") return filtered;
+    return filtered.filter((p) => packetTradeById.get(p.id) === selectedTrade);
+  }, [filtered, packetTradeById, selectedTrade]);
+
   const recentPackets = useMemo(() => {
     if (query.trim().length > 0) return [];
     const recentIds = computeRecentLibraryPacketIds(recentLineItems, RECENT_LIMIT);
@@ -157,19 +215,23 @@ export function QuickAddLineItemPicker({
       const p = byId.get(id);
       if (p) out.push(p);
     }
-    return out;
-  }, [pinnable, recentLineItems, query]);
+    if (selectedTrade === "All") return out;
+    // Keep the recent strip consistent with the selected trade so a Roofing
+    // chip never surfaces an HVAC recent.
+    return out.filter((p) => inferPacketTrade(p) === selectedTrade);
+  }, [pinnable, recentLineItems, query, selectedTrade]);
 
   const totalAvailable = availableLibraryPackets.length;
   const totalPinnable = pinnable.length;
   const totalPresets = availablePresets.length;
   const hasPresetSection = totalPresets > 0;
+  const tradeFilterActive = selectedTrade !== "All";
 
   return (
     <div className="rounded border border-zinc-700 bg-zinc-950 p-3 space-y-2">
       <div className="flex items-center gap-2">
         <p className="flex-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
-          Insert from library
+          Insert saved line
         </p>
         <button
           type="button"
@@ -181,9 +243,15 @@ export function QuickAddLineItemPicker({
       </div>
 
       <p className="text-[10px] text-zinc-500 leading-relaxed">
-        Saved line items prefill price + scope. Library packets pin scope only — set price after
-        adding. Either way, you still click <span className="text-zinc-300">Create</span>.
+        Pick a saved line with price, or choose a work-only template and set price after adding.
+        Either way, you still click <span className="text-zinc-300">Create</span>.
       </p>
+
+      <TradeChipStrip
+        selected={selectedTrade}
+        counts={tradeCounts}
+        onSelect={setSelectedTrade}
+      />
 
       <input
         type="text"
@@ -196,9 +264,10 @@ export function QuickAddLineItemPicker({
 
       {hasPresetSection ? (
         <PresetSection
-          entries={filteredPresets.map((p) => presetEntryById.get(p.id)!).filter(Boolean)}
+          entries={presetsForRender.map((p) => presetEntryById.get(p.id)!).filter(Boolean)}
           totalPresets={totalPresets}
           query={query}
+          selectedTrade={selectedTrade}
           onSelectPreset={onSelectPreset}
         />
       ) : null}
@@ -230,17 +299,19 @@ export function QuickAddLineItemPicker({
 
       <div className="space-y-1">
         <p className="text-[9px] font-semibold uppercase tracking-wider text-zinc-500">
-          Library packets
+          Saved work templates
         </p>
         {totalPinnable === 0 ? (
           <EmptyState totalAvailable={totalAvailable} />
-        ) : filtered.length === 0 ? (
+        ) : packetsForRender.length === 0 ? (
           <p className="px-2 py-3 text-[11px] text-zinc-500">
-            No library-packet matches for &ldquo;{query}&rdquo;.
+            {tradeFilterActive
+              ? `No saved work templates found for ${selectedTrade}${query.trim().length > 0 ? ` matching “${query}”` : ""}.`
+              : `No saved work template matches for “${query}”.`}
           </p>
         ) : (
           <ul className="max-h-64 overflow-y-auto divide-y divide-zinc-800 rounded border border-zinc-800">
-            {filtered.map((p) => (
+            {packetsForRender.map((p) => (
               <li key={p.id}>
                 <button
                   type="button"
@@ -255,14 +326,20 @@ export function QuickAddLineItemPicker({
                   </div>
                   <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[9px] uppercase tracking-wider text-zinc-500">
                     <span className="rounded border border-zinc-700/60 bg-zinc-900/40 px-1 text-zinc-300 normal-case">
-                      Library packet
+                      Saved work template
+                    </span>
+                    <span
+                      className="rounded border border-amber-800/60 bg-amber-950/30 px-1 text-amber-300 normal-case"
+                      title="Work-only template. The form opens with no price — set it before saving."
+                    >
+                      Set price after adding
                     </span>
                     <span className="rounded border border-emerald-800/60 bg-emerald-950/30 px-1 text-emerald-300 normal-case">
                       v{p.latestPublishedRevisionNumber ?? "?"} published
                     </span>
                     {p.publishedRevisionCount > 1 ? (
                       <span className="rounded border border-zinc-700/60 bg-zinc-900/40 px-1 text-zinc-500 normal-case">
-                        {p.publishedRevisionCount} published revisions
+                        {p.publishedRevisionCount} published versions
                       </span>
                     ) : null}
                   </div>
@@ -286,23 +363,28 @@ function PresetSection({
   entries,
   totalPresets,
   query,
+  selectedTrade,
   onSelectPreset,
 }: {
   entries: PresetEntry[];
   totalPresets: number;
   query: string;
+  selectedTrade: TradeFilter;
   onSelectPreset: ((preset: LineItemPresetSummaryDto) => void) | undefined;
 }) {
+  const tradeFilterActive = selectedTrade !== "All";
   return (
     <div className="space-y-1">
       <p className="text-[9px] font-semibold uppercase tracking-wider text-zinc-500">
-        Saved line items
+        Saved lines
       </p>
       {entries.length === 0 ? (
         <p className="px-2 py-3 text-[11px] text-zinc-500">
-          {query.trim().length > 0
-            ? `No saved line item matches for "${query}".`
-            : `No saved line items on this tenant yet (${totalPresets} total).`}
+          {tradeFilterActive
+            ? `No saved lines found for ${selectedTrade}${query.trim().length > 0 ? ` matching “${query}”` : ""}.`
+            : query.trim().length > 0
+              ? `No saved line matches for “${query}”.`
+              : `No saved lines yet (${totalPresets} total).`}
         </p>
       ) : (
         <ul className="max-h-64 overflow-y-auto divide-y divide-zinc-800 rounded border border-zinc-800">
@@ -355,31 +437,46 @@ function PresetRow({
         </div>
         <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[9px] uppercase tracking-wider text-zinc-500">
           <span className="rounded border border-violet-800/60 bg-violet-950/30 px-1 text-violet-200 normal-case">
-            Saved line item
+            Saved line
           </span>
           <span className="rounded border border-zinc-700/60 bg-zinc-900/40 px-1 text-zinc-400 normal-case">
-            {preset.defaultExecutionMode === "MANIFEST" ? "Manifest" : "Sold scope"}
+            {formatExecutionModeLabel(preset.defaultExecutionMode)}
           </span>
+          {preset.defaultUnitPriceCents != null ? (
+            <span
+              className="rounded border border-emerald-800/60 bg-emerald-950/30 px-1 text-emerald-300 normal-case"
+              title="This saved line includes a default price. You can still edit it before saving."
+            >
+              Includes price
+            </span>
+          ) : (
+            <span
+              className="rounded border border-amber-800/60 bg-amber-950/30 px-1 text-amber-300 normal-case"
+              title="No default price on this saved line — set it before saving."
+            >
+              Set price after adding
+            </span>
+          )}
           {preset.defaultScopePacket ? (
             <span
               className="rounded border border-zinc-700/60 bg-zinc-900/40 px-1 text-zinc-300 normal-case truncate max-w-[16rem]"
               title={preset.defaultScopePacket.displayName}
             >
-              Packet: {preset.defaultScopePacket.displayName}
+              Work template: {preset.defaultScopePacket.displayName}
               {preset.defaultScopePacket.latestPublishedRevisionNumber != null
                 ? ` · v${preset.defaultScopePacket.latestPublishedRevisionNumber}`
                 : ""}
             </span>
           ) : preset.defaultExecutionMode === "MANIFEST" ? (
             <span className="rounded border border-amber-800/60 bg-amber-950/30 px-1 text-amber-300 normal-case">
-              Packet missing
+              Work template missing
             </span>
           ) : null}
           {!usable && reason ? (
             <span className="rounded border border-amber-800/60 bg-amber-950/30 px-1 text-amber-300 normal-case">
               {reason === "manifest_packet_missing"
                 ? "Re-link required"
-                : "No published revision"}
+                : "No published version"}
             </span>
           ) : null}
         </div>
@@ -391,19 +488,68 @@ function PresetRow({
   );
 }
 
+/**
+ * Trade-chip strip — Slice F prototype only.
+ *
+ * UI-only filter. The selected chip is local component state and is never
+ * threaded into prefill, line-item, preset, packet, or quote payloads.
+ */
+function TradeChipStrip({
+  selected,
+  counts,
+  onSelect,
+}: {
+  selected: TradeFilter;
+  counts: Record<TradeFilter, number>;
+  onSelect: (next: TradeFilter) => void;
+}) {
+  const chips: TradeFilter[] = ["All", ...CATALOG_TRADES];
+  return (
+    <ul
+      className="flex flex-wrap gap-1"
+      aria-label="Filter saved lines and work templates by trade"
+    >
+      {chips.map((chip) => {
+        const isSelected = chip === selected;
+        const count = counts[chip] ?? 0;
+        const className = isSelected
+          ? "rounded border border-sky-700/70 bg-sky-950/40 px-2 py-0.5 text-[10px] font-medium text-sky-100"
+          : "rounded border border-zinc-700 bg-zinc-900/40 px-2 py-0.5 text-[10px] text-zinc-300 hover:border-zinc-600 hover:text-zinc-100";
+        return (
+          <li key={chip}>
+            <button
+              type="button"
+              onClick={() => onSelect(chip)}
+              aria-pressed={isSelected}
+              className={className}
+              title={
+                chip === "All"
+                  ? `Show all saved lines and saved work templates (${count})`
+                  : `Show ${chip} saved lines and saved work templates (${count})`
+              }
+            >
+              {chip}
+              <span className="ml-1 font-mono text-zinc-500">({count})</span>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 function EmptyState({ totalAvailable }: { totalAvailable: number }) {
   if (totalAvailable === 0) {
     return (
       <p className="px-2 py-3 text-[11px] text-amber-400">
-        No library packets are visible to this tenant yet.
+        No saved work templates are available yet.
       </p>
     );
   }
   return (
     <p className="px-2 py-3 text-[11px] text-amber-400">
-      {totalAvailable} library packet{totalAvailable === 1 ? "" : "s"} exist on this tenant, but
-      none have a published revision yet. Publish a revision in Library → Packets to make it
-      pinnable.
+      {totalAvailable} saved work template{totalAvailable === 1 ? "" : "s"} exist, but none have a
+      published version yet. Publish a version in Library → Packets to make it usable.
     </p>
   );
 }

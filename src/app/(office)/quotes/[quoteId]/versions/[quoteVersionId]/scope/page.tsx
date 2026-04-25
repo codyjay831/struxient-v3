@@ -10,6 +10,7 @@ import {
   groupQuoteScopeLineItemsByProposalGroup,
   type ScopeVersionContext,
 } from "@/lib/quote-scope/quote-scope-grouping";
+import { formatExecutionModeLabel } from "@/lib/quote-line-item-execution-mode-label";
 
 /**
  * Office-surface read-only scope inspector for a *specific* quote version.
@@ -111,7 +112,7 @@ export default async function OfficeFrozenVersionScopePage({ params }: PageProps
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-bold text-zinc-50">
-                Scope · v{dto.quoteVersion.versionNumber}
+                Line items · v{dto.quoteVersion.versionNumber}
               </h1>
               <VersionStateBadge context={versionContext} status={dto.quoteVersion.status} />
             </div>
@@ -138,10 +139,10 @@ export default async function OfficeFrozenVersionScopePage({ params }: PageProps
       <section className="space-y-8">
         {grouping.groupsWithItems.length === 0 ? (
           <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-900/20 p-10 text-center">
-            <h2 className="text-zinc-200 font-medium">No scoped work in this version</h2>
+            <h2 className="text-zinc-200 font-medium">No line items in this version</h2>
             <p className="text-zinc-500 text-sm mt-1 max-w-md mx-auto">
               This version has no proposal groups with line items. If this is unexpected, check the
-              workspace for the head version.
+              workspace for the current draft.
             </p>
           </div>
         ) : (
@@ -162,7 +163,7 @@ export default async function OfficeFrozenVersionScopePage({ params }: PageProps
                     <tr>
                       <th className="px-4 py-2">Line title</th>
                       <th className="px-4 py-2 text-right">Qty</th>
-                      <th className="px-4 py-2 text-center">Execution</th>
+                      <th className="px-4 py-2 text-center">Type</th>
                       <th className="px-4 py-2 text-center">Source</th>
                     </tr>
                   </thead>
@@ -179,16 +180,18 @@ export default async function OfficeFrozenVersionScopePage({ params }: PageProps
                           {item.quantity}
                         </td>
                         <td className="px-4 py-2.5 text-center">
-                          <span className="text-[10px] text-zinc-500">{item.executionMode}</span>
+                          <span className="text-[10px] text-zinc-500">
+                            {formatExecutionModeLabel(item.executionMode)}
+                          </span>
                         </td>
                         <td className="px-4 py-2.5 text-center">
                           <SourceBadge
                             kind={item.scopePacketRevisionId ? "library" : "local"}
                             label={
                               item.scopePacketRevisionId
-                                ? "Library packet"
+                                ? "Saved work template"
                                 : item.quoteLocalPacket
-                                  ? "Custom packet"
+                                  ? "One-off work"
                                   : "—"
                             }
                           />

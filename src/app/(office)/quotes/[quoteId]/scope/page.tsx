@@ -176,11 +176,10 @@ export default async function OfficeQuoteScopePage({ params }: PageProps) {
         <ScopeBreadcrumb quoteId={quoteId} quoteNumber={ws.quote.quoteNumber} />
         <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-zinc-50">Scope editor</h1>
+            <h1 className="text-2xl font-bold text-zinc-50">Line items</h1>
             <p className="mt-1 text-sm text-zinc-400 max-w-2xl">
-              Author line items for {ws.customer.name} — {ws.flowGroup.name}. Edits apply only to
-              the head draft and require an office session with{" "}
-              <code className="text-zinc-500">office_mutate</code>.
+              Add, edit, or remove the line items on this draft for {ws.customer.name} —{" "}
+              {ws.flowGroup.name}.
             </p>
           </div>
           <Link

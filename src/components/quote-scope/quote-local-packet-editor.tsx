@@ -116,7 +116,7 @@ export function QuoteLocalPacketEditor({
 
   async function handleDeletePacket(packetId: string) {
     if (!editable) return;
-    if (!window.confirm("Delete this custom packet? Items will be removed too.")) return;
+    if (!window.confirm("Delete this one-off work? All its tasks will be removed too.")) return;
     setBusy(true);
     setGlobalError(null);
     try {
@@ -237,7 +237,7 @@ export function QuoteLocalPacketEditor({
 
   async function handleDeleteItem(packetId: string, itemId: string) {
     if (!editable) return;
-    if (!window.confirm("Delete this packet item?")) return;
+    if (!window.confirm("Delete this task?")) return;
     setBusy(true);
     setGlobalError(null);
     try {
@@ -266,20 +266,20 @@ export function QuoteLocalPacketEditor({
     <section className="space-y-6">
       <div className="flex items-baseline justify-between border-b border-zinc-800 pb-2">
         <h2 className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
-          Custom packets for this quote
+          One-off work for this quote
         </h2>
         <span className="text-[10px] uppercase font-medium text-zinc-500">
-          {packets.length} {packets.length === 1 ? "Packet" : "Packets"}
+          {packets.length} {packets.length === 1 ? "Item" : "Items"}
         </span>
       </div>
 
       {!isDraft ? (
         <p className="rounded border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-300/90">
-          This quote version is not in DRAFT status. Custom packet authoring is locked.
+          This quote version is no longer a draft. One-off work can&rsquo;t be edited here.
         </p>
       ) : !canOfficeMutate ? (
         <p className="rounded border border-zinc-800 bg-zinc-900/40 px-3 py-2 text-[11px] text-zinc-400">
-          Sign in as an office user with <code className="text-zinc-300">office_mutate</code> to add or edit custom packets.
+          Sign in as an office user with <code className="text-zinc-300">office_mutate</code> to add or edit one-off work.
         </p>
       ) : null}
 
@@ -291,7 +291,7 @@ export function QuoteLocalPacketEditor({
 
       {packets.length === 0 ? (
         <p className="rounded border border-dashed border-zinc-800 bg-zinc-950/30 px-3 py-3 text-[11px] text-zinc-500">
-          No custom packets on this quote yet. Add one below to author task lines for this quote without forking the catalog.
+          No one-off work on this quote yet. Add some below to author crew tasks for this quote without changing the saved templates.
         </p>
       ) : (
         <ul className="space-y-4">
@@ -316,7 +316,7 @@ export function QuoteLocalPacketEditor({
       {editable ? (
         <div className="rounded border border-zinc-800 bg-zinc-900/40 p-3 space-y-2">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-            New custom packet
+            New one-off work
           </p>
           <input
             type="text"
@@ -341,7 +341,7 @@ export function QuoteLocalPacketEditor({
               onClick={() => void handleCreatePacket()}
               className="rounded bg-emerald-800/90 px-3 py-1 text-[11px] font-medium text-emerald-50 hover:bg-emerald-700 disabled:opacity-50"
             >
-              {busy ? "Working…" : "Create packet"}
+              {busy ? "Working…" : "Create one-off work"}
             </button>
           </div>
         </div>
@@ -501,7 +501,7 @@ function PacketRow({
               title={
                 pinned
                   ? "Detach pinning line items first."
-                  : "Delete this packet and all its items."
+                  : "Delete this one-off work and all its tasks."
               }
               className="rounded border border-red-900/60 px-2 py-0.5 text-[10px] text-red-400 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
             >

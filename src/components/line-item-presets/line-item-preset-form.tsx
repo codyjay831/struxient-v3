@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { ScopePacketSummaryDto } from "@/server/slice1/reads/scope-packet-catalog-reads";
 import type { LineItemPresetDetailDto } from "@/server/slice1/reads/line-item-preset-reads";
+import { formatExecutionModeLabel } from "@/lib/quote-line-item-execution-mode-label";
 
 /**
  * Shared admin form for creating and editing a `LineItemPreset` (Phase 2 /
@@ -356,9 +357,11 @@ export function LineItemPresetForm(props: LineItemPresetFormProps) {
               className="mt-0.5 h-4 w-4 border-zinc-700 bg-zinc-950 text-sky-500 focus:ring-sky-600"
             />
             <span>
-              <span className="block font-medium text-zinc-200">Manifest</span>
+              <span className="block font-medium text-zinc-200">
+                {formatExecutionModeLabel("MANIFEST")}
+              </span>
               <span className="block text-[11px] text-zinc-500 mt-0.5">
-                Creates runtime tasks through the attached Library packet.
+                Uses a saved work template to create crew tasks after the quote is approved.
               </span>
             </span>
           </label>
@@ -373,9 +376,11 @@ export function LineItemPresetForm(props: LineItemPresetFormProps) {
               className="mt-0.5 h-4 w-4 border-zinc-700 bg-zinc-950 text-sky-500 focus:ring-sky-600"
             />
             <span>
-              <span className="block font-medium text-zinc-200">Sold scope</span>
+              <span className="block font-medium text-zinc-200">
+                {formatExecutionModeLabel("SOLD_SCOPE")}
+              </span>
               <span className="block text-[11px] text-zinc-500 mt-0.5">
-                Commercial-only, no runtime tasks.
+                Appears on the quote but doesn&rsquo;t create any crew work.
               </span>
             </span>
           </label>
@@ -384,7 +389,7 @@ export function LineItemPresetForm(props: LineItemPresetFormProps) {
         {fields.defaultExecutionMode === "MANIFEST" ? (
           <div>
             <label className="block text-xs">
-              <span className="font-medium text-zinc-400">Library packet</span>
+              <span className="font-medium text-zinc-400">Saved work template</span>
               <select
                 required
                 value={fields.defaultScopePacketId}
@@ -392,11 +397,11 @@ export function LineItemPresetForm(props: LineItemPresetFormProps) {
                 disabled={busy || packetOptions.length === 0}
                 className="mt-1 w-full rounded border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 disabled:opacity-50"
               >
-                <option value="">— Pick a packet —</option>
+                <option value="">— Pick a saved work template —</option>
                 {packetOptions.map((p) => {
                   const ver =
                     p.latestPublishedRevisionNumber == null
-                      ? "no published revision"
+                      ? "no published version"
                       : `v${p.latestPublishedRevisionNumber}`;
                   return (
                     <option key={p.id} value={p.id}>
@@ -408,7 +413,7 @@ export function LineItemPresetForm(props: LineItemPresetFormProps) {
             </label>
             {packetOptions.length === 0 ? (
               <p className="mt-2 text-[11px] text-rose-400/90">
-                No Library packets exist in this tenant yet. Create one first under
+                No saved work templates are available yet. Create one first under
                 <Link href="/library/packets/new" className="ml-1 underline hover:text-rose-300">
                   Library &rarr; Packets
                 </Link>
@@ -416,11 +421,12 @@ export function LineItemPresetForm(props: LineItemPresetFormProps) {
               </p>
             ) : selectedPacket && selectedPacket.latestPublishedRevisionId == null ? (
               <p className="mt-2 rounded border border-amber-800/60 bg-amber-950/30 px-3 py-2 text-[11px] text-amber-300">
-                Preset can be saved, but cannot be used until packet has a published revision.
+                Saved line can be saved, but it can&rsquo;t be used until the work template has a
+                published version.
               </p>
             ) : selectedPacket ? (
               <p className="mt-2 text-[11px] text-emerald-400/90">
-                Latest revision: v{selectedPacket.latestPublishedRevisionNumber}.
+                Latest version: v{selectedPacket.latestPublishedRevisionNumber}.
               </p>
             ) : null}
           </div>

@@ -159,12 +159,13 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
               <div id="step-1">
                 <QuoteWorkspacePipelineStep
                   step={1}
-                  title="Review Scope & Line Items"
-                  hint="Line items and their packets are the primary scope authoring object — they define the sold work."
+                  title="Build the quote"
+                  hint="Add the line items the customer is buying. Some lines just appear on the proposal; others create work for your crew after approval."
                   isRecommended={recommendedStep === 1}
                 >
                   <div id="line-items" className="space-y-6">
                     <QuoteWorkspaceLineItemSummary
+                      quoteId={quoteId}
                       versionNumber={head?.versionNumber ?? null}
                       summary={ws.headLineItemSummary}
                     />
@@ -183,10 +184,10 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
                         href={`/quotes/${quoteId}/scope`}
                         className="rounded bg-sky-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-600 transition-colors"
                       >
-                        Open Scope Editor →
+                        Edit line items →
                       </Link>
                       <span className="text-[11px] text-zinc-500">
-                        Add, edit, or remove line items on the head draft.
+                        Open the editor to write a custom line or insert one of your saved lines.
                       </span>
                     </div>
 

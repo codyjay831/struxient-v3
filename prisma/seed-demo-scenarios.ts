@@ -107,6 +107,10 @@ async function wipeDemoTenant(prisma: PrismaClient): Promise<void> {
   await prisma.customerContact.deleteMany({ where: { tenantId: TENANT_ID } });
   await prisma.customer.deleteMany({ where: { tenantId: TENANT_ID } });
   await prisma.lead.deleteMany({ where: { tenantId: TENANT_ID } });
+  // LineItemPreset has `onDelete: SetNull` on its packet FK, but wipe presets
+  // before scope packets so we never observe an intermediate "preset with
+  // nulled packet id" state during a re-seed.
+  await prisma.lineItemPreset.deleteMany({ where: { tenantId: TENANT_ID } });
   await prisma.packetTaskLine.deleteMany({
     where: { scopePacketRevision: { scopePacket: { tenantId: TENANT_ID } } },
   });
@@ -436,7 +440,12 @@ type PacketKey =
   | "pkt-reroof-30sq"
   | "pkt-chimney-flash"
   | "pkt-roof-builtup-repair"
-  | "pkt-ev-charger-install";
+  | "pkt-ev-charger-install"
+  // Slice E catalog expansion — HVAC, Gutters, General/permit, maintenance.
+  | "pkt-hvac-condenser-3t"
+  | "pkt-gutter-replacement"
+  | "pkt-permit-residential"
+  | "pkt-roof-annual-inspection";
 
 type PacketLineSpec = {
   /** Use a numeric prefix so lex(lineKey) matches sort/pipeline order. */
@@ -601,6 +610,106 @@ const PACKET_SPECS: PacketSpec[] = [
       },
     ],
   },
+  // ── Slice E: catalog expansion ────────────────────────────────────────────
+  // Embedded-only PacketTaskLines (no TaskDefinition link) — these packets
+  // exist so the demo catalog covers HVAC, Gutters, General/permit, and a
+  // maintenance inspection. They use node keys already present on the seeded
+  // workflow templates so the editor doesn't surface stage-not-on-snapshot
+  // warnings when paired with the existing roofing / solar / ev workflows.
+  {
+    packetKey: "pkt-hvac-condenser-3t",
+    displayName: "HVAC Condenser Changeout — 3 Ton (R-410A)",
+    lines: [
+      {
+        lineKey: "pl-01-prep",
+        sortOrder: 0,
+        targetNodeKey: "node-site-survey",
+        taskKind: "INSPECTION",
+        embeddedTitle: "Pre-job equipment + clearance check",
+      },
+      {
+        lineKey: "pl-02-recover",
+        sortOrder: 1,
+        targetNodeKey: "node-install",
+        taskKind: "DEMO",
+        embeddedTitle: "Recover refrigerant + remove existing condenser",
+      },
+      {
+        lineKey: "pl-03-set-new",
+        sortOrder: 2,
+        targetNodeKey: "node-install",
+        taskKind: "INSTALL",
+        embeddedTitle: "Set new 3-ton condenser + line set + electrical reconnect",
+      },
+      {
+        lineKey: "pl-04-commission",
+        sortOrder: 3,
+        targetNodeKey: "node-cleanup",
+        taskKind: "COMMISSION",
+        embeddedTitle: "Pressure test + system commissioning + customer walk-through",
+      },
+    ],
+  },
+  {
+    packetKey: "pkt-gutter-replacement",
+    displayName: "Gutter Replacement — 5\" K-Style Aluminum (per linear foot)",
+    lines: [
+      {
+        lineKey: "pl-01-tear-off",
+        sortOrder: 0,
+        targetNodeKey: "node-tear-off",
+        taskKind: "DEMO",
+        embeddedTitle: "Tear off existing gutters + downspouts",
+      },
+      {
+        lineKey: "pl-02-install",
+        sortOrder: 1,
+        targetNodeKey: "node-install",
+        taskKind: "INSTALL",
+        embeddedTitle: "Install new K-style gutters, hangers, and downspouts",
+      },
+      {
+        lineKey: "pl-03-cleanup",
+        sortOrder: 2,
+        targetNodeKey: "node-cleanup",
+        taskKind: "CLEANUP",
+        embeddedTitle: "Site cleanup + magnet sweep + haul-off",
+      },
+    ],
+  },
+  {
+    packetKey: "pkt-permit-residential",
+    displayName: "Residential Building Permit — Standard Pull",
+    lines: [
+      {
+        lineKey: "pl-01-submit",
+        sortOrder: 0,
+        targetNodeKey: "node-permit",
+        taskKind: "ADMIN",
+        embeddedTitle: "Submit permit application to local AHJ",
+      },
+      {
+        lineKey: "pl-02-track",
+        sortOrder: 1,
+        targetNodeKey: "node-permit",
+        taskKind: "ADMIN",
+        embeddedTitle: "Track permit status + post issued permit on-site",
+      },
+    ],
+  },
+  {
+    packetKey: "pkt-roof-annual-inspection",
+    displayName: "Annual Roof Inspection (5-Year Maintenance Plan)",
+    lines: [
+      {
+        lineKey: "pl-01-inspect",
+        sortOrder: 0,
+        targetNodeKey: "node-site-survey",
+        taskKind: "INSPECTION",
+        embeddedTitle: "Annual roof inspection + photo report + customer summary",
+      },
+    ],
+  },
 ];
 
 async function createCatalogPackets(
@@ -645,6 +754,243 @@ async function createCatalogPackets(
     revIds.set(spec.packetKey, revision.id);
   }
   return revIds;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LineItemPresets — saved-line catalog (Slice E)
+//
+// Presets are commercial defaults only. They never participate in execution
+// (no compose, no activation, no RuntimeTask side-effects). The mutation
+// surface enforces:
+//   - MANIFEST  → defaultScopePacketId required
+//   - SOLD_SCOPE → defaultScopePacketId must be null
+//
+// We seed via direct `prisma.lineItemPreset.create` (matching the existing
+// catalog-packet style); the `wipeDemoTenant` step deletes presets first so
+// re-seeding is safe even if any field changes.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type PresetSpec = {
+  presetKey: string;
+  displayName: string;
+  defaultTitle: string;
+  defaultDescription: string;
+  defaultQuantity: number;
+  defaultUnitPriceCents: number;
+  defaultExecutionMode: "MANIFEST" | "SOLD_SCOPE";
+  /** Required for MANIFEST presets; must be null for SOLD_SCOPE. */
+  packetKey: PacketKey | null;
+  defaultPaymentBeforeWork?: boolean;
+  defaultPaymentGateTitleOverride?: string;
+};
+
+const PRESET_SPECS: PresetSpec[] = [
+  // ── Solar ────────────────────────────────────────────────────────────────
+  {
+    presetKey: "solar-8kw-standard",
+    displayName: "Standard 8.4 kW Solar Install",
+    defaultTitle: "8.4 kW residential solar PV — 24 modules + string inverter",
+    defaultDescription:
+      "Turn-key residential PV system: 24 × 350 W modules, string inverter, monitoring, rail mounting on composite shingle. Includes site verification, install, commissioning, and customer walk-through. Permit and utility interconnection billed separately.",
+    defaultQuantity: 1,
+    defaultUnitPriceCents: 24_500_00,
+    defaultExecutionMode: "MANIFEST",
+    packetKey: "pkt-solar-8kw",
+  },
+  // ── Electrical ───────────────────────────────────────────────────────────
+  {
+    presetKey: "service-panel-200a",
+    displayName: "Service Panel Upgrade — 200 A",
+    defaultTitle: "200 A residential service panel upgrade",
+    defaultDescription:
+      "Replace existing service panel with new 200 A main + breakers. Re-land and label all circuits. Includes meter coordination with utility. Does not include trenching or service entrance cable replacement.",
+    defaultQuantity: 1,
+    defaultUnitPriceCents: 3_200_00,
+    defaultExecutionMode: "MANIFEST",
+    packetKey: "pkt-panel-200a",
+  },
+  {
+    presetKey: "ev-charger-l2-install",
+    displayName: "Level 2 EV Charger Install (per unit)",
+    defaultTitle: "Level 2 EV charger install — 240 V dedicated circuit",
+    defaultDescription:
+      "Install one customer-supplied Level 2 EV charger on a new dedicated 240 V circuit from the existing sub-panel (≤ 30 ft run). Mount, energize, and verify a successful test charging session.",
+    defaultQuantity: 1,
+    defaultUnitPriceCents: 1_450_00,
+    defaultExecutionMode: "MANIFEST",
+    packetKey: "pkt-ev-charger-install",
+  },
+  // ── Roofing ──────────────────────────────────────────────────────────────
+  {
+    presetKey: "reroof-30sq-architectural",
+    displayName: "Reroof — 30 sq, GAF Timberline HDZ",
+    defaultTitle: "Tear-off + reroof, 30 squares, GAF Timberline HDZ architectural shingles",
+    defaultDescription:
+      "Full tear-off down to deck, deck repair as needed, ice & water shield at eaves and valleys, synthetic underlayment, GAF Timberline HDZ shingles, ridge cap, and final cleanup with magnetic sweep. 50% deposit due before crew mobilizes.",
+    defaultQuantity: 1,
+    defaultUnitPriceCents: 14_900_00,
+    defaultExecutionMode: "MANIFEST",
+    packetKey: "pkt-reroof-30sq",
+    defaultPaymentBeforeWork: true,
+    defaultPaymentGateTitleOverride: "Reroof deposit (50%)",
+  },
+  {
+    presetKey: "chimney-flashing-repair",
+    displayName: "Chimney Flashing Repair",
+    defaultTitle: "Remove and replace chimney step + counter-flashing",
+    defaultDescription:
+      "Remove damaged chimney flashing. Install new step flashing tucked under shingles and new counter-flashing cut into masonry. Seal all terminations with high-grade roofing sealant. Photo documentation provided.",
+    defaultQuantity: 1,
+    defaultUnitPriceCents: 850_00,
+    defaultExecutionMode: "MANIFEST",
+    packetKey: "pkt-chimney-flash",
+  },
+  {
+    presetKey: "commercial-bur-roof-patch",
+    displayName: "Commercial BUR Roof Patch",
+    defaultTitle: "Built-up roof patch repair (per location)",
+    defaultDescription:
+      "Inspection + targeted cut-and-patch repair of damaged built-up roofing membrane. Includes water-test verification of repaired area. Priced per discrete patch location up to 4 ft × 4 ft.",
+    defaultQuantity: 1,
+    defaultUnitPriceCents: 2_400_00,
+    defaultExecutionMode: "MANIFEST",
+    packetKey: "pkt-roof-builtup-repair",
+  },
+  // ── HVAC ─────────────────────────────────────────────────────────────────
+  {
+    presetKey: "hvac-condenser-changeout-3t",
+    displayName: "3-Ton AC Condenser Changeout",
+    defaultTitle: "3-ton residential A/C condenser changeout — R-410A",
+    defaultDescription:
+      "Recover existing refrigerant, remove failed condenser, set new 3-ton 14 SEER2 condenser on existing pad, reconnect line set and electrical, pressure test, evacuate, charge, and commission. Excludes line set replacement and electrical work beyond reconnect.",
+    defaultQuantity: 1,
+    defaultUnitPriceCents: 4_800_00,
+    defaultExecutionMode: "MANIFEST",
+    packetKey: "pkt-hvac-condenser-3t",
+  },
+  // ── Gutters ──────────────────────────────────────────────────────────────
+  {
+    presetKey: "gutter-replacement-5in",
+    displayName: "5\" K-Style Gutter Replacement (per linear foot)",
+    defaultTitle: "5\" K-style aluminum gutter replacement, including downspouts",
+    defaultDescription:
+      "Tear off existing gutters and downspouts, install new 5\" K-style seamless aluminum gutters with hidden hangers and matching downspouts, splash blocks at grade. Site cleanup with magnet sweep included. Quantity is linear feet; defaults to a typical single-story residence.",
+    defaultQuantity: 100,
+    defaultUnitPriceCents: 8_50,
+    defaultExecutionMode: "MANIFEST",
+    packetKey: "pkt-gutter-replacement",
+  },
+  // ── General / permit / maintenance ───────────────────────────────────────
+  {
+    presetKey: "permit-residential-standard",
+    displayName: "Standard Residential Permit Pull",
+    defaultTitle: "Pull standard residential building permit (office-managed)",
+    defaultDescription:
+      "Office prepares and submits the permit application package to the local AHJ, tracks status, and posts the issued permit on-site before crew mobilization. Permit fees billed separately as a pass-through.",
+    defaultQuantity: 1,
+    defaultUnitPriceCents: 475_00,
+    defaultExecutionMode: "MANIFEST",
+    packetKey: "pkt-permit-residential",
+    defaultPaymentBeforeWork: true,
+    defaultPaymentGateTitleOverride: "Permit pull fee",
+  },
+  {
+    presetKey: "annual-roof-inspection-y1",
+    displayName: "Annual Roof Inspection (year 1 of 5)",
+    defaultTitle: "Annual roof inspection + photo report — 5-year maintenance plan",
+    defaultDescription:
+      "Annual visual roof inspection with photo documentation and a written customer summary. Included with the 5-year maintenance plan; no additional charge in year 1.",
+    defaultQuantity: 1,
+    defaultUnitPriceCents: 0,
+    defaultExecutionMode: "MANIFEST",
+    packetKey: "pkt-roof-annual-inspection",
+  },
+  // ── Quote-only (SOLD_SCOPE) — admin / fee passthrough ────────────────────
+  {
+    presetKey: "permit-fee-passthrough",
+    displayName: "Permit Fee — City Pass-through",
+    defaultTitle: "Building permit fee (city pass-through)",
+    defaultDescription:
+      "Pass-through cost of the building permit fee charged by the AHJ. Quote-only line — appears on the proposal but does not create crew work. Update the unit price to match the actual permit invoice.",
+    defaultQuantity: 1,
+    defaultUnitPriceCents: 325_00,
+    defaultExecutionMode: "SOLD_SCOPE",
+    packetKey: null,
+  },
+  {
+    presetKey: "travel-mobilization-out-of-region",
+    displayName: "Travel & Mobilization (Out-of-Region)",
+    defaultTitle: "Travel + mobilization charge for out-of-region jobs",
+    defaultDescription:
+      "Per-trip travel and mobilization charge applied to projects outside the standard service radius. Quote-only line — covers fuel, drive time, and per-diem; does not create crew work on its own.",
+    defaultQuantity: 1,
+    defaultUnitPriceCents: 250_00,
+    defaultExecutionMode: "SOLD_SCOPE",
+    packetKey: null,
+  },
+];
+
+/**
+ * Look up parent ScopePacket ids by key after `createCatalogPackets` has run.
+ *
+ * `createCatalogPackets` returns revision ids (which scenarios consume to pin
+ * `scopePacketRevisionId` on quote line items); presets reference the parent
+ * packet, never a revision, so we read the freshly-created parents back from
+ * the database here. One small `findMany` keeps the catalog seed unchanged.
+ */
+async function loadScopePacketIdsByKey(
+  prisma: PrismaClient,
+): Promise<Map<PacketKey, string>> {
+  const rows = await prisma.scopePacket.findMany({
+    where: { tenantId: TENANT_ID },
+    select: { id: true, packetKey: true },
+  });
+  const out = new Map<PacketKey, string>();
+  for (const row of rows) {
+    out.set(row.packetKey as PacketKey, row.id);
+  }
+  return out;
+}
+
+async function createLineItemPresets(
+  prisma: PrismaClient,
+  packetIdsByKey: Map<PacketKey, string>,
+): Promise<number> {
+  let created = 0;
+  for (const spec of PRESET_SPECS) {
+    let defaultScopePacketId: string | null = null;
+    if (spec.defaultExecutionMode === "MANIFEST") {
+      if (spec.packetKey == null) {
+        throw new Error(
+          `[demo-seed] Preset ${spec.presetKey} is MANIFEST but has no packetKey.`,
+        );
+      }
+      const packetId = packetIdsByKey.get(spec.packetKey);
+      if (packetId == null) {
+        throw new Error(
+          `[demo-seed] Preset ${spec.presetKey} references missing packet ${spec.packetKey}.`,
+        );
+      }
+      defaultScopePacketId = packetId;
+    }
+    await prisma.lineItemPreset.create({
+      data: {
+        tenantId: TENANT_ID,
+        presetKey: spec.presetKey,
+        displayName: spec.displayName,
+        defaultTitle: spec.defaultTitle,
+        defaultDescription: spec.defaultDescription,
+        defaultQuantity: spec.defaultQuantity,
+        defaultUnitPriceCents: spec.defaultUnitPriceCents,
+        defaultExecutionMode: spec.defaultExecutionMode,
+        defaultPaymentBeforeWork: spec.defaultPaymentBeforeWork ?? null,
+        defaultPaymentGateTitleOverride: spec.defaultPaymentGateTitleOverride ?? null,
+        defaultScopePacketId,
+      },
+    });
+    created += 1;
+  }
+  return created;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1553,6 +1899,10 @@ async function main(): Promise<void> {
     const workflows = await createWorkflowTemplates(prisma);
     console.log("[demo-seed] Creating catalog packets…");
     const packets = await createCatalogPackets(prisma, taskDefs);
+    console.log("[demo-seed] Creating line-item presets (saved-line catalog)…");
+    const packetIdsByKey = await loadScopePacketIdsByKey(prisma);
+    const presetCount = await createLineItemPresets(prisma, packetIdsByKey);
+    console.log(`[demo-seed]   → ${presetCount} LineItemPreset rows created.`);
 
     console.log("[demo-seed] Scenario 1 — Maple (happy path + payment gate)…");
     const maple = await runScenarioMaple(prisma, workflows, packets);

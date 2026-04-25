@@ -18,6 +18,7 @@ import {
   buildFieldsFromPacket,
   buildFieldsFromPreset,
 } from "@/lib/quote-line-item-prefill";
+import { formatExecutionModeLabel } from "@/lib/quote-line-item-execution-mode-label";
 
 type ProposalGroup = QuoteVersionScopeApiDto["proposalGroups"][number];
 type LineItem = QuoteVersionScopeApiDto["orderedLineItems"][number];
@@ -71,7 +72,6 @@ type Props = {
 };
 
 type ExecutionMode = "SOLD_SCOPE" | "MANIFEST";
-const EXECUTION_MODES: ExecutionMode[] = ["SOLD_SCOPE", "MANIFEST"];
 
 type PacketSource = "none" | "library" | "local";
 
@@ -511,28 +511,33 @@ export function ScopeEditor({
                 </p>
               </div>
               {!isAddingHere && !isLibraryPickerHere ? (
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLibraryPickerForGroupId(group.id);
-                      setEditingLineItemId(null);
-                    }}
-                    className="rounded border border-sky-800/60 bg-sky-950/30 px-2.5 py-1 text-[11px] font-medium text-sky-200 hover:text-sky-100 hover:border-sky-700 transition-colors"
-                    title="Pick a published library packet to prefill a new line item"
-                  >
-                    Insert from library
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAddingForGroupId(group.id);
-                      setEditingLineItemId(null);
-                    }}
-                    className="rounded bg-sky-700 px-3 py-1 text-[11px] font-medium text-white hover:bg-sky-600 transition-colors"
-                  >
-                    + Add line item
-                  </button>
+                <div className="flex flex-col items-end gap-1">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLibraryPickerForGroupId(group.id);
+                        setEditingLineItemId(null);
+                      }}
+                      className="rounded border border-sky-800/60 bg-sky-950/30 px-2.5 py-1 text-[11px] font-medium text-sky-200 hover:text-sky-100 hover:border-sky-700 transition-colors"
+                      title="Pick a saved line or saved work template to prefill a new line"
+                    >
+                      Insert saved line
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAddingForGroupId(group.id);
+                        setEditingLineItemId(null);
+                      }}
+                      className="rounded bg-sky-700 px-3 py-1 text-[11px] font-medium text-white hover:bg-sky-600 transition-colors"
+                    >
+                      + Write a custom line
+                    </button>
+                  </div>
+                  <p className="hidden sm:block max-w-[18rem] text-right text-[10px] text-zinc-500 leading-snug">
+                    Write a custom line from scratch, or insert a saved line/work template.
+                  </p>
                 </div>
               ) : null}
             </header>
@@ -574,7 +579,8 @@ export function ScopeEditor({
 
             {group.items.length === 0 && !isAddingHere ? (
               <p className="px-4 py-6 text-xs text-zinc-500 text-center">
-                No line items in this group yet.
+                No line items in this group yet. Use the buttons above to write a custom line or
+                insert a saved line.
               </p>
             ) : (
               <ul className="divide-y divide-zinc-800">
@@ -645,9 +651,10 @@ function LineItemRow({
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-zinc-100 truncate">{item.title}</p>
-          <p className="mt-1 text-[11px] text-zinc-500 font-mono">
-            qty {item.quantity} · {item.executionMode}
-            {item.tierCode ? ` · tier ${item.tierCode}` : ""}
+          <p className="mt-1 text-[11px] text-zinc-500">
+            <span className="font-mono">qty {item.quantity}</span> ·{" "}
+            <span>{formatExecutionModeLabel(item.executionMode)}</span>
+            {item.tierCode ? <span className="font-mono"> · tier {item.tierCode}</span> : null}
             {item.paymentBeforeWork ? " · payment before work" : ""}
           </p>
           {packetSummary ? (
@@ -782,21 +789,6 @@ function LineItemForm({
           />
         </label>
         <label className="block text-xs">
-          <span className="text-zinc-400">Execution mode</span>
-          <select
-            value={fields.executionMode}
-            onChange={(e) => setExecutionMode(e.target.value as ExecutionMode)}
-            disabled={busy}
-            className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100 focus:border-sky-600 focus:outline-none disabled:opacity-60"
-          >
-            {EXECUTION_MODES.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="block text-xs">
           <span className="text-zinc-400">Unit price (cents, optional)</span>
           <input
             type="number"
@@ -810,6 +802,12 @@ function LineItemForm({
           />
         </label>
       </div>
+
+      <FieldWorkQuestion
+        executionMode={fields.executionMode}
+        busy={busy}
+        onChange={setExecutionMode}
+      />
 
       <PacketPicker
         executionMode={fields.executionMode}
@@ -883,6 +881,88 @@ function LineItemForm({
 }
 
 /**
+ * Contractor-friendly replacement for the raw `executionMode` select. Two
+ * radio choices wrap the same internal enum values:
+ *
+ *   - "No — quote-only"            => `executionMode = "SOLD_SCOPE"`
+ *   - "Yes — attach a work template" => `executionMode = "MANIFEST"`
+ *
+ * Both call the existing `setExecutionMode(...)` callback so the form's
+ * packet-clearing/preservation logic and the server invariant
+ * `MANIFEST_SCOPE_PIN_XOR` continue to be enforced unchanged. The submitted
+ * payload still carries the raw enum value.
+ */
+function FieldWorkQuestion({
+  executionMode,
+  busy,
+  onChange,
+}: {
+  executionMode: ExecutionMode;
+  busy: boolean;
+  onChange: (next: ExecutionMode) => void;
+}) {
+  return (
+    <fieldset className="rounded border border-zinc-800 bg-zinc-950/30 p-3 space-y-2">
+      <legend className="px-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+        Does this line create field work?
+      </legend>
+
+      <div className="space-y-2">
+        <label
+          className={`flex items-start gap-2 rounded border p-2 cursor-pointer transition-colors ${
+            executionMode === "SOLD_SCOPE"
+              ? "border-zinc-600 bg-zinc-900/60"
+              : "border-zinc-800 bg-zinc-950/40 hover:border-zinc-700"
+          } ${busy ? "opacity-60 cursor-not-allowed" : ""}`}
+        >
+          <input
+            type="radio"
+            name="executionMode"
+            value="SOLD_SCOPE"
+            checked={executionMode === "SOLD_SCOPE"}
+            onChange={() => onChange("SOLD_SCOPE")}
+            disabled={busy}
+            className="mt-0.5"
+          />
+          <span className="min-w-0">
+            <span className="block text-xs font-medium text-zinc-100">No — quote-only</span>
+            <span className="mt-0.5 block text-[11px] text-zinc-500">
+              Appears on the proposal but does not create crew work.
+            </span>
+          </span>
+        </label>
+
+        <label
+          className={`flex items-start gap-2 rounded border p-2 cursor-pointer transition-colors ${
+            executionMode === "MANIFEST"
+              ? "border-sky-700/70 bg-sky-950/30"
+              : "border-zinc-800 bg-zinc-950/40 hover:border-zinc-700"
+          } ${busy ? "opacity-60 cursor-not-allowed" : ""}`}
+        >
+          <input
+            type="radio"
+            name="executionMode"
+            value="MANIFEST"
+            checked={executionMode === "MANIFEST"}
+            onChange={() => onChange("MANIFEST")}
+            disabled={busy}
+            className="mt-0.5"
+          />
+          <span className="min-w-0">
+            <span className="block text-xs font-medium text-zinc-100">
+              Yes — attach a work template
+            </span>
+            <span className="mt-0.5 block text-[11px] text-zinc-500">
+              Creates crew work after approval using a saved work template or one-off work.
+            </span>
+          </span>
+        </label>
+      </div>
+    </fieldset>
+  );
+}
+
+/**
  * MANIFEST-only packet picker. Hidden for SOLD_SCOPE (replaced by an
  * informational note). For MANIFEST, the user must pick exactly one source
  * (library revision XOR quote-local packet); the server re-asserts this
@@ -947,7 +1027,8 @@ function PacketPicker({
   if (executionMode === "SOLD_SCOPE") {
     return (
       <p className="rounded border border-dashed border-zinc-800 bg-zinc-950/40 px-3 py-2 text-[11px] text-zinc-500">
-        Sold-scope is commercial-only. It does not pin a packet and does not create runtime tasks.
+        This line is quote-only. It will appear on the proposal but won&rsquo;t create any crew
+        work.
       </p>
     );
   }
@@ -958,7 +1039,7 @@ function PacketPicker({
   return (
     <fieldset className="rounded border border-zinc-800 bg-zinc-950/30 p-3 space-y-2">
       <legend className="px-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
-        Packet (required for MANIFEST)
+        Work template (required when this line creates field work)
       </legend>
 
       <div className="flex flex-wrap gap-3 text-xs text-zinc-300">
@@ -972,7 +1053,7 @@ function PacketPicker({
             disabled={busy || (!hasLibrary && !savedNonLatestLibrary)}
           />
           <span className={!hasLibrary && !savedNonLatestLibrary ? "text-zinc-600" : ""}>
-            Library packet
+            Saved work template
           </span>
         </label>
         <label className="inline-flex items-center gap-1.5">
@@ -984,7 +1065,7 @@ function PacketPicker({
             onChange={() => onSourceChange("local")}
             disabled={busy || !hasLocal}
           />
-          <span className={!hasLocal ? "text-zinc-600" : ""}>Custom packet for this quote</span>
+          <span className={!hasLocal ? "text-zinc-600" : ""}>One-off work for this quote</span>
         </label>
       </div>
 
@@ -996,14 +1077,14 @@ function PacketPicker({
             disabled={busy}
             className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-100 focus:border-sky-600 focus:outline-none disabled:opacity-60"
           >
-            <option value="">— Choose a library packet —</option>
+            <option value="">— Choose a saved work template —</option>
             {savedNonLatestLibrary ? (
               <option value={savedNonLatestLibrary.id}>
                 {savedNonLatestLibrary.parentDisplayName}
                 {savedNonLatestLibrary.parentPacketKey
                   ? ` (${savedNonLatestLibrary.parentPacketKey})`
                   : ""}{" "}
-                · saved revision (not latest)
+                · older saved version
               </option>
             ) : null}
             {pinnableLibraryPackets.map((p) => (
@@ -1014,7 +1095,7 @@ function PacketPicker({
           </select>
           {!hasLibrary ? (
             <p className="text-[10px] text-amber-400">
-              No published library packets are visible to this tenant. Create one in{" "}
+              No saved work templates are available yet. Create one in{" "}
               <Link
                 href="/library/packets"
                 className="underline underline-offset-2 hover:text-amber-300"
@@ -1025,9 +1106,8 @@ function PacketPicker({
             </p>
           ) : (
             <p className="text-[10px] text-zinc-500">
-              Pins the latest PUBLISHED revision of the chosen catalog packet. The line item
-              persists the revision id, not the packet id, so future republishes do not
-              retroactively change pinned scope.
+              Pins the latest published version of the chosen template. The line keeps that
+              version even if the template is republished later.
             </p>
           )}
         </div>
@@ -1041,7 +1121,7 @@ function PacketPicker({
             disabled={busy}
             className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-100 focus:border-sky-600 focus:outline-none disabled:opacity-60"
           >
-            <option value="">— Choose a custom packet —</option>
+            <option value="">— Choose one-off work —</option>
             {availableLocalPackets.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.displayName} · {p.itemCount} item{p.itemCount === 1 ? "" : "s"}
@@ -1050,12 +1130,12 @@ function PacketPicker({
           </select>
           {!hasLocal ? (
             <p className="text-[10px] text-amber-400">
-              No custom packets exist on this quote yet. Create one in the &ldquo;Custom packets for
-              this quote&rdquo; section below.
+              No one-off work has been authored on this quote yet. Create some in the
+              &ldquo;One-off work for this quote&rdquo; section below.
             </p>
           ) : (
             <p className="text-[10px] text-zinc-500">
-              Custom packets are authored on this quote and travel with it through freeze/send.
+              One-off work is authored on this quote and travels with it through freeze/send.
             </p>
           )}
         </div>
@@ -1063,9 +1143,8 @@ function PacketPicker({
 
       {packetSource === "none" ? (
         <p className="text-[10px] text-amber-400">
-          Pick a packet source above. MANIFEST line items must pin exactly one packet — either a
-          library packet or a custom packet for this quote. The server will reject saves that pin
-          neither.
+          Pick a work template above. Field-work lines must use exactly one — either a saved work
+          template or one-off work for this quote. Saves that pin neither will be rejected.
         </p>
       ) : null}
     </fieldset>
@@ -1159,9 +1238,10 @@ function ReadOnlyView({
                   <li key={item.id} className="px-4 py-3 space-y-2">
                     <div>
                       <p className="text-sm text-zinc-100">{item.title}</p>
-                      <p className="mt-1 text-[11px] text-zinc-500 font-mono">
-                        qty {item.quantity} · {item.executionMode}
-                        {item.tierCode ? ` · tier ${item.tierCode}` : ""}
+                      <p className="mt-1 text-[11px] text-zinc-500">
+                        <span className="font-mono">qty {item.quantity}</span> ·{" "}
+                        <span>{formatExecutionModeLabel(item.executionMode)}</span>
+                        {item.tierCode ? <span className="font-mono"> · tier {item.tierCode}</span> : null}
                         {item.paymentBeforeWork ? " · payment before work" : ""}
                       </p>
                       {packetSummary ? (
@@ -1201,26 +1281,26 @@ function LineItemExecutionPreviewBlock({ preview }: { preview: LineItemExecution
   if (preview.kind === "soldScopeCommercial") {
     return (
       <div className="rounded border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-[11px] text-zinc-400">
-        Commercial-only line. Does not create runtime tasks unless attached to a packet.
+        Quote-only line. Won&rsquo;t create any crew work unless a work template is attached.
       </div>
     );
   }
   if (preview.kind === "manifestNoPacket") {
     return (
       <div className="rounded border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-300">
-        No packet pinned · execution preview unavailable. MANIFEST lines compose runtime tasks
-        only when a library packet or a custom packet for this quote is attached.
+        No work template attached. Field-work lines create crew tasks only when a saved work
+        template or one-off work for this quote is attached.
       </div>
     );
   }
   if (preview.kind === "manifestLibraryMissing") {
     return (
       <div className="rounded border border-red-900/50 bg-red-950/20 px-3 py-2 text-[11px] text-red-300 space-y-1">
-        <p className="font-medium">Pinned library revision not loaded</p>
+        <p className="font-medium">Saved work template version isn&rsquo;t loaded</p>
         <p className="font-mono opacity-90">revisionId: {preview.scopePacketRevisionId}</p>
         <p className="opacity-80">
-          The packet may have been archived or moved out of this tenant. Re-pin the line to a
-          visible packet to clear this state.
+          The template may have been archived or moved out of this tenant. Re-attach the line to a
+          visible template to clear this state.
         </p>
       </div>
     );
@@ -1228,10 +1308,10 @@ function LineItemExecutionPreviewBlock({ preview }: { preview: LineItemExecution
   if (preview.kind === "manifestLocalMissing") {
     return (
       <div className="rounded border border-red-900/50 bg-red-950/20 px-3 py-2 text-[11px] text-red-300 space-y-1">
-        <p className="font-medium">Pinned custom packet not loaded</p>
+        <p className="font-medium">One-off work for this quote isn&rsquo;t loaded</p>
         <p className="font-mono opacity-90">quoteLocalPacketId: {preview.quoteLocalPacketId}</p>
         <p className="opacity-80">
-          The packet may have been deleted from this quote. Re-pin the line to a visible packet to
+          It may have been deleted from this quote. Re-attach the line to a visible template to
           clear this state.
         </p>
       </div>
@@ -1245,8 +1325,8 @@ function LineItemExecutionPreviewBlock({ preview }: { preview: LineItemExecution
   // catalog row if needed.
   const headerSubtitle =
     preview.kind === "manifestLibrary"
-      ? `library packet · ${preview.packetKey} · v${preview.revisionNumber} ${preview.revisionStatus}${preview.revisionIsLatest ? "" : " · not latest"}`
-      : "custom packet for this quote";
+      ? `Saved work template · ${preview.packetKey} · v${preview.revisionNumber} ${preview.revisionStatus}${preview.revisionIsLatest ? "" : " · older version"}`
+      : "One-off work for this quote";
   const headerTone =
     preview.kind === "manifestLibrary"
       ? preview.revisionIsLatest
@@ -1266,7 +1346,7 @@ function LineItemExecutionPreviewBlock({ preview }: { preview: LineItemExecution
       </div>
       {taskCount === 0 ? (
         <p className="text-[10px] text-zinc-500 italic">
-          Packet has no task lines yet — compose will produce zero runtime tasks for this line.
+          This template has no work yet — no crew tasks will be created for this line.
         </p>
       ) : (
         <>
@@ -1320,7 +1400,9 @@ function ExecutionPreviewTaskItem({
           </span>
           <span className="font-mono opacity-60">({task.stage.nodeId})</span>
           {!task.stage.isOnSnapshot ? (
-            <span className="text-amber-300 opacity-90">· not on snapshot</span>
+            <span className="text-amber-300 opacity-90">
+              · stage isn&rsquo;t in this process template
+            </span>
           ) : null}
         </span>
         {task.tierCode ? (
@@ -1370,24 +1452,26 @@ function describeAttachedPacket(
     );
     const isLatest =
       parent != null && parent.latestPublishedRevisionId === item.scopePacketRevisionId;
-    const namePart = parent ? `${parent.displayName} (${parent.packetKey})` : "Library packet";
+    const namePart = parent
+      ? `${parent.displayName} (${parent.packetKey})`
+      : "Saved work template";
     return {
       label: isLatest
-        ? `Library packet: ${namePart}`
-        : `Library packet: ${namePart} · saved revision (not latest)`,
+        ? `Saved work template: ${namePart}`
+        : `Saved work template: ${namePart} · older version`,
       tone: isLatest ? "text-sky-300" : "text-amber-400",
     };
   }
   if (item.quoteLocalPacketId && item.quoteLocalPacket) {
     return {
-      label: `Custom packet for this quote: ${item.quoteLocalPacket.displayName}`,
+      label: `One-off work for this quote: ${item.quoteLocalPacket.displayName}`,
       tone: "text-emerald-300",
     };
   }
   if (item.executionMode === "MANIFEST") {
     return {
       label:
-        "No packet attached — MANIFEST lines require one packet pin: choose a library packet or a custom packet for this quote (saving will be rejected).",
+        "No work template attached — field-work lines need exactly one. Choose a saved work template or one-off work for this quote (saves without one will be rejected).",
       tone: "text-amber-400",
     };
   }
@@ -1469,19 +1553,19 @@ function validateFields(fields: FormFields): ValidatedFields {
       return {
         ok: false,
         message:
-          "MANIFEST line items must pin exactly one packet — either a library packet or a custom packet for this quote. Pick a packet source above.",
+          "Field-work line items must use exactly one work template — either a saved work template or one-off work for this quote. Pick one above.",
       };
     }
     if (fields.packetSource === "library") {
       const id = fields.scopePacketRevisionId.trim();
       if (!id) {
-        return { ok: false, message: "Choose a library packet to pin." };
+        return { ok: false, message: "Choose a saved work template to attach." };
       }
       scopePacketRevisionId = id;
     } else {
       const id = fields.quoteLocalPacketId.trim();
       if (!id) {
-        return { ok: false, message: "Choose a custom packet to pin." };
+        return { ok: false, message: "Choose one-off work to attach." };
       }
       quoteLocalPacketId = id;
     }

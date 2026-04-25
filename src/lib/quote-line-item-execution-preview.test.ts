@@ -369,13 +369,13 @@ describe("buildExecutionPreviewSummary", () => {
     return { stage: { displayLabel } };
   }
 
-  it("returns 'Creates 0 tasks' when the task list is empty", () => {
-    expect(buildExecutionPreviewSummary([])).toBe("Creates 0 tasks");
+  it("returns '0 crew tasks' when the task list is empty", () => {
+    expect(buildExecutionPreviewSummary([])).toBe("0 crew tasks");
   });
 
-  it("uses singular 'task' for one task", () => {
+  it("uses singular 'crew task' for one task", () => {
     expect(buildExecutionPreviewSummary([row("Site Survey")])).toBe(
-      "Creates 1 task across Site Survey",
+      "1 crew task — at Site Survey",
     );
   });
 
@@ -387,7 +387,7 @@ describe("buildExecutionPreviewSummary", () => {
         row("Install"),
         row("Commissioning"),
       ]),
-    ).toBe("Creates 4 tasks across Site Survey → Install → Commissioning");
+    ).toBe("4 crew tasks — at Site Survey → Install → Commissioning");
   });
 
   it("dedupes repeated stages in first-seen order", () => {
@@ -401,7 +401,7 @@ describe("buildExecutionPreviewSummary", () => {
         row("Install"),
         row("Closeout"),
       ]),
-    ).toBe("Creates 5 tasks across Site Survey → Install → Closeout");
+    ).toBe("5 crew tasks — at Site Survey → Install → Closeout");
   });
 
   it("treats interleaved repeats as already-seen and keeps the original order", () => {
@@ -413,16 +413,16 @@ describe("buildExecutionPreviewSummary", () => {
         row("C"),
         row("B"),
       ]),
-    ).toBe("Creates 5 tasks across A → B → C");
+    ).toBe("5 crew tasks — at A → B → C");
   });
 
   it("falls back to bare task count when every stage label is empty", () => {
-    expect(buildExecutionPreviewSummary([row(""), row(""), row("")])).toBe("Creates 3 tasks");
+    expect(buildExecutionPreviewSummary([row(""), row(""), row("")])).toBe("3 crew tasks");
   });
 
   it("ignores empty stage labels but still surfaces non-empty ones", () => {
     expect(
       buildExecutionPreviewSummary([row(""), row("Install"), row(""), row("Closeout")]),
-    ).toBe("Creates 4 tasks across Install → Closeout");
+    ).toBe("4 crew tasks — at Install → Closeout");
   });
 });
