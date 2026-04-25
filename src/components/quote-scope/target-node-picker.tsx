@@ -1,18 +1,41 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { humanizeWorkflowNodeId } from "@/lib/workflow-node-display";
 import type { WorkflowNodeKeyProjection } from "@/lib/workflow-snapshot-node-projection";
 
-export type TargetNodePickerCopyVariant = "quoteScopePinned" | "catalogLibraryHint";
+/**
+ * Copy / behavior variant for the {@link TargetNodePicker}.
+ *
+ * - `quoteScopePinned` — quote-scope authoring (legacy variant). Falls back to
+ *   free-text entry when no workflow is pinned. Retained for back-compat with
+ *   any caller that has not yet opted into the safer `quoteScopeStage` mode.
+ * - `quoteScopeStage` — quote-scope "Stage" picker (Triangle Mode). When no
+ *   workflow is pinned, the picker LOCKS instead of falling back to free
+ *   text, so authoring cannot silently persist node ids that compose will
+ *   later reject. Renders human-friendly labels alongside the raw node id.
+ * - `catalogLibraryHint` — admin/library context (catalog packet revisions).
+ *   Free-text fallback is retained because the library row may target an
+ *   id on a not-yet-pinned future template.
+ */
+export type TargetNodePickerCopyVariant =
+  | "quoteScopePinned"
+  | "quoteScopeStage"
+  | "catalogLibraryHint";
 
 /**
  * `targetNodeKey` picker: loads projected node ids from `GET …/workflow-versions/:id/node-keys`
- * when a workflow version id is supplied; otherwise free-text (compose validates later).
+ * when a workflow version id is supplied; otherwise either free-text or a locked
+ * "pin a workflow first" state, depending on `copyVariant`.
  *
- * - **Quote scope**: pass the quote version&apos;s pinned workflow version id.
- * - **Catalog library packet (office)**: pass the optional compose-hint published version id.
+ * - **Quote scope (Triangle Mode)**: pass `copyVariant="quoteScopeStage"` and
+ *   the quote version&apos;s pinned workflow version id (or `null`).
+ * - **Catalog library packet (office)**: pass `copyVariant="catalogLibraryHint"`
+ *   and the optional compose-hint published version id.
  *
- * The persisted `targetNodeKey: string` contract is unchanged.
+ * The persisted `targetNodeKey: string` contract is unchanged. The label/id
+ * presentation is purely cosmetic — the underlying value remains the raw
+ * snapshot node id.
  */
 
 type Props = {
@@ -56,6 +79,9 @@ export function TargetNodePicker({
   copyVariant = "quoteScopePinned",
 }: Props) {
   if (workflowVersionIdForNodeKeys == null || workflowVersionIdForNodeKeys === "") {
+    if (copyVariant === "quoteScopeStage") {
+      return <LockedStageFallback value={value} reason="noWorkflowPinned" />;
+    }
     return (
       <FreeTextFallback
         value={value}
@@ -120,18 +146,32 @@ function WorkflowSnapshotNodeKeyPicker({
   }, [load, trimmed]);
 
   const snapshotLabel =
-    copyVariant === "catalogLibraryHint" ? "selected compose-hint workflow snapshot" : "current pinned workflow snapshot";
+    copyVariant === "catalogLibraryHint"
+      ? "selected compose-hint workflow snapshot"
+      : "current pinned workflow snapshot";
+
+  const isStage = copyVariant === "quoteScopeStage";
 
   if (load.kind === "loading" || load.kind === "idle") {
     return (
       <div className="space-y-1">
-        <p className="text-[10px] text-zinc-500">Loading workflow nodes…</p>
+        <p className="text-[10px] text-zinc-500">
+          {isStage ? "Loading workflow stages…" : "Loading workflow nodes…"}
+        </p>
         <ReadOnlyValue value={value} />
       </div>
     );
   }
 
   if (load.kind === "error") {
+    if (isStage) {
+      return (
+        <div className="space-y-1">
+          <p className="text-[10px] text-red-300">Failed to load workflow stages: {load.message}</p>
+          <LockedStageFallback value={value} reason="loadError" />
+        </div>
+      );
+    }
     return (
       <div className="space-y-1">
         <p className="text-[10px] text-red-300">Failed to load workflow nodes: {load.message}</p>
@@ -147,6 +187,16 @@ function WorkflowSnapshotNodeKeyPicker({
   }
 
   if (load.nodes.length === 0) {
+    if (isStage) {
+      return (
+        <div className="space-y-1">
+          <p className="text-[10px] text-amber-400">
+            The pinned workflow snapshot has no addressable stages.
+          </p>
+          <LockedStageFallback value={value} reason="emptySnapshot" />
+        </div>
+      );
+    }
     return (
       <div className="space-y-1">
         <p className="text-[10px] text-amber-400">The workflow snapshot has no addressable nodes.</p>
@@ -169,31 +219,64 @@ function WorkflowSnapshotNodeKeyPicker({
         disabled={disabled}
         className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-[11px] text-zinc-200 disabled:opacity-50"
       >
-        <option value="">— Choose a workflow node —</option>
+        <option value="">{isStage ? "— Choose a workflow stage —" : "— Choose a workflow node —"}</option>
         {valueIsKnown === false ? (
-          <option value={trimmed}>{trimmed} (not in current snapshot)</option>
+          <option value={trimmed}>
+            {isStage ? `${trimmed} (saved value, not on current workflow)` : `${trimmed} (not in current snapshot)`}
+          </option>
         ) : null}
         {load.nodes.map((n) => (
           <option key={n.nodeId} value={n.nodeId}>
-            {n.nodeId}
-            {n.taskCount > 0 ? `  ·  ${n.taskCount} skeleton task${n.taskCount === 1 ? "" : "s"}` : ""}
+            {formatNodeOptionLabel(n, copyVariant)}
           </option>
         ))}
       </select>
       {valueIsKnown === false ? (
         <p className="text-[10px] text-amber-400">
-          Saved <span className="font-mono">{trimmed}</span> is not present on the {snapshotLabel}. Compose will
-          reject it if the quote&apos;s pinned template does not include this id; pick a node from the list to fix.
+          {isStage ? (
+            <>
+              Saved <span className="font-mono">{trimmed}</span> is not a stage on the pinned workflow. Compose will
+              reject it; pick a stage from the list to fix.
+            </>
+          ) : (
+            <>
+              Saved <span className="font-mono">{trimmed}</span> is not present on the {snapshotLabel}. Compose will
+              reject it if the quote&apos;s pinned template does not include this id; pick a node from the list to fix.
+            </>
+          )}
         </p>
       ) : (
         <p className="text-[10px] text-zinc-500">
-          {copyVariant === "catalogLibraryHint"
-            ? "Choices come from the selected published workflow version (compose hint only — the packet row still stores a plain string)."
-            : "Choices come from the pinned workflow version's snapshot nodes."}
+          {isStage
+            ? "Stages come from the pinned workflow version. The raw node id is shown beside each label so technical operators can verify the binding."
+            : copyVariant === "catalogLibraryHint"
+              ? "Choices come from the selected published workflow version (compose hint only — the packet row still stores a plain string)."
+              : "Choices come from the pinned workflow version's snapshot nodes."}
         </p>
       )}
     </div>
   );
+}
+
+function formatNodeOptionLabel(
+  n: WorkflowNodeKeyProjection,
+  copyVariant: TargetNodePickerCopyVariant,
+): string {
+  const taskSuffix =
+    n.taskCount > 0
+      ? `  ·  ${n.taskCount} skeleton task${n.taskCount === 1 ? "" : "s"}`
+      : "";
+
+  if (copyVariant === "quoteScopeStage") {
+    const label = n.displayName ?? humanizeWorkflowNodeId(n.nodeId);
+    const head = label === n.nodeId ? n.nodeId : `${label}  ·  ${n.nodeId}`;
+    return `${head}${taskSuffix}`;
+  }
+
+  if (n.displayName != null && n.displayName !== n.nodeId) {
+    return `${n.displayName}  ·  ${n.nodeId}${taskSuffix}`;
+  }
+  return `${n.nodeId}${taskSuffix}`;
 }
 
 function FreeTextFallback({
@@ -230,6 +313,48 @@ function FreeTextFallback({
         className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-[11px] text-zinc-200 disabled:opacity-50"
       />
       <p className="text-[10px] text-zinc-500">{fallbackHint ?? defaultHint}</p>
+    </div>
+  );
+}
+
+/**
+ * Locked replacement for {@link FreeTextFallback} used by the
+ * `quoteScopeStage` variant. We never render an editable input here so an
+ * author cannot silently persist an unverified `targetNodeKey` while the
+ * quote has no pinned workflow (or the pinned workflow has no stages).
+ */
+function LockedStageFallback({
+  value,
+  reason,
+}: {
+  value: string;
+  reason: "noWorkflowPinned" | "loadError" | "emptySnapshot";
+}) {
+  const message =
+    reason === "noWorkflowPinned"
+      ? "Pin a workflow version on this quote to choose a stage."
+      : reason === "emptySnapshot"
+        ? "The pinned workflow has no stages — pin a different version to choose one."
+        : "Stages could not be loaded. Try again, or pin a different workflow version.";
+
+  return (
+    <div className="space-y-1">
+      <select
+        value=""
+        onChange={() => {
+          /* locked */
+        }}
+        disabled
+        className="w-full rounded border border-dashed border-zinc-700 bg-zinc-950/50 px-2 py-1 font-mono text-[11px] text-zinc-500 disabled:opacity-60"
+      >
+        <option value="">— Stage selection unavailable —</option>
+      </select>
+      <p className="text-[10px] text-zinc-500">{message}</p>
+      {value.trim() !== "" ? (
+        <p className="rounded border border-dashed border-zinc-800 bg-zinc-950/50 px-2 py-1 font-mono text-[11px] text-zinc-400">
+          saved value: {value}
+        </p>
+      ) : null}
     </div>
   );
 }

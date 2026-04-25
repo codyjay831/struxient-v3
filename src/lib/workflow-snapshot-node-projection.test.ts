@@ -12,9 +12,9 @@ describe("projectWorkflowNodeKeys", () => {
       ],
     };
     expect(projectWorkflowNodeKeys(snapshot)).toEqual([
-      { nodeId: "node-roof", taskCount: 2 },
-      { nodeId: "node-attic", taskCount: 1 },
-      { nodeId: "node-cleanup", taskCount: 0 },
+      { nodeId: "node-roof", taskCount: 2, displayName: null },
+      { nodeId: "node-attic", taskCount: 1, displayName: null },
+      { nodeId: "node-cleanup", taskCount: 0, displayName: null },
     ]);
   });
 
@@ -28,9 +28,9 @@ describe("projectWorkflowNodeKeys", () => {
         ],
       }),
     ).toEqual([
-      { nodeId: "n1", taskCount: 0 },
-      { nodeId: "n2", taskCount: 0 },
-      { nodeId: "n3", taskCount: 0 },
+      { nodeId: "n1", taskCount: 0, displayName: null },
+      { nodeId: "n2", taskCount: 0, displayName: null },
+      { nodeId: "n3", taskCount: 0, displayName: null },
     ]);
   });
 
@@ -45,7 +45,7 @@ describe("projectWorkflowNodeKeys", () => {
           { id: "ok" },
         ],
       }),
-    ).toEqual([{ nodeId: "ok", taskCount: 0 }]);
+    ).toEqual([{ nodeId: "ok", taskCount: 0, displayName: null }]);
   });
 
   it("ignores non-object nodes", () => {
@@ -53,7 +53,7 @@ describe("projectWorkflowNodeKeys", () => {
       projectWorkflowNodeKeys({
         nodes: ["string", 1, null, [], { id: "ok" }],
       }),
-    ).toEqual([{ nodeId: "ok", taskCount: 0 }]);
+    ).toEqual([{ nodeId: "ok", taskCount: 0, displayName: null }]);
   });
 
   it("returns [] for null / non-object / array snapshot", () => {
@@ -77,18 +77,51 @@ describe("projectWorkflowNodeKeys", () => {
         nodes: [{ id: "z" }, { id: "a" }, { id: "m" }],
       }),
     ).toEqual([
-      { nodeId: "z", taskCount: 0 },
-      { nodeId: "a", taskCount: 0 },
-      { nodeId: "m", taskCount: 0 },
+      { nodeId: "z", taskCount: 0, displayName: null },
+      { nodeId: "a", taskCount: 0, displayName: null },
+      { nodeId: "m", taskCount: 0, displayName: null },
     ]);
   });
 
-  it("does not include label / type / other unknown fields even when present", () => {
+  it("extracts displayName from displayName / label / name in priority order", () => {
+    expect(
+      projectWorkflowNodeKeys({
+        nodes: [
+          { id: "n1", displayName: "Tear-off", label: "ignored", name: "ignored" },
+          { id: "n2", label: "Inspect attic", name: "ignored" },
+          { id: "n3", name: "Cleanup site" },
+          { id: "n4" },
+        ],
+      }),
+    ).toEqual([
+      { nodeId: "n1", taskCount: 0, displayName: "Tear-off" },
+      { nodeId: "n2", taskCount: 0, displayName: "Inspect attic" },
+      { nodeId: "n3", taskCount: 0, displayName: "Cleanup site" },
+      { nodeId: "n4", taskCount: 0, displayName: null },
+    ]);
+  });
+
+  it("ignores non-string and empty/whitespace displayName candidates", () => {
+    expect(
+      projectWorkflowNodeKeys({
+        nodes: [
+          { id: "n1", displayName: 42, label: "Use this" },
+          { id: "n2", displayName: "", label: "   ", name: "Fallback" },
+          { id: "n3", displayName: "  Trimmed  " },
+        ],
+      }),
+    ).toEqual([
+      { nodeId: "n1", taskCount: 0, displayName: "Use this" },
+      { nodeId: "n2", taskCount: 0, displayName: "Fallback" },
+      { nodeId: "n3", taskCount: 0, displayName: "Trimmed" },
+    ]);
+  });
+
+  it("does not leak unknown snapshot fields beyond nodeId / taskCount / displayName", () => {
     const result = projectWorkflowNodeKeys({
-      nodes: [{ id: "n1", label: "Roof", type: "PHYSICAL", tasks: [] }],
+      nodes: [{ id: "n1", label: "Roof", type: "PHYSICAL", color: "red", tasks: [] }],
     });
-    expect(result).toEqual([{ nodeId: "n1", taskCount: 0 }]);
-    // and the keys are exactly nodeId+taskCount (no leak)
-    expect(Object.keys(result[0]).sort()).toEqual(["nodeId", "taskCount"]);
+    expect(result).toEqual([{ nodeId: "n1", taskCount: 0, displayName: "Roof" }]);
+    expect(Object.keys(result[0]).sort()).toEqual(["displayName", "nodeId", "taskCount"]);
   });
 });

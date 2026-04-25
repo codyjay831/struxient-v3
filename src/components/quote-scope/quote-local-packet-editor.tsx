@@ -16,8 +16,11 @@ type Props = {
   initialPackets: QuoteLocalPacketDto[];
   /**
    * Pinned workflow version id for the host quote version. When non-null, the
-   * targetNodeKey field renders as a snapshot-driven picker; when null, it
-   * falls back to free-text entry. See {@link TargetNodePicker}.
+   * Stage field renders as a snapshot-driven picker populated from that
+   * workflow's snapshot nodes. When null, the picker LOCKS in
+   * `quoteScopeStage` mode and the author must pin a workflow first — we no
+   * longer accept free-text node ids in normal quote authoring (Triangle
+   * Mode). See {@link TargetNodePicker}.
    */
   pinnedWorkflowVersionId: string | null;
 };
@@ -113,7 +116,7 @@ export function QuoteLocalPacketEditor({
 
   async function handleDeletePacket(packetId: string) {
     if (!editable) return;
-    if (!window.confirm("Delete this quote-local packet? Items will be removed too.")) return;
+    if (!window.confirm("Delete this custom packet? Items will be removed too.")) return;
     setBusy(true);
     setGlobalError(null);
     try {
@@ -263,7 +266,7 @@ export function QuoteLocalPacketEditor({
     <section className="space-y-6">
       <div className="flex items-baseline justify-between border-b border-zinc-800 pb-2">
         <h2 className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
-          Quote-local packets (this version)
+          Custom packets for this quote
         </h2>
         <span className="text-[10px] uppercase font-medium text-zinc-500">
           {packets.length} {packets.length === 1 ? "Packet" : "Packets"}
@@ -272,11 +275,11 @@ export function QuoteLocalPacketEditor({
 
       {!isDraft ? (
         <p className="rounded border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-300/90">
-          This quote version is not in DRAFT status. Quote-local packet authoring is locked.
+          This quote version is not in DRAFT status. Custom packet authoring is locked.
         </p>
       ) : !canOfficeMutate ? (
         <p className="rounded border border-zinc-800 bg-zinc-900/40 px-3 py-2 text-[11px] text-zinc-400">
-          Sign in as an office user with <code className="text-zinc-300">office_mutate</code> to add or edit quote-local packets.
+          Sign in as an office user with <code className="text-zinc-300">office_mutate</code> to add or edit custom packets.
         </p>
       ) : null}
 
@@ -288,7 +291,7 @@ export function QuoteLocalPacketEditor({
 
       {packets.length === 0 ? (
         <p className="rounded border border-dashed border-zinc-800 bg-zinc-950/30 px-3 py-3 text-[11px] text-zinc-500">
-          No quote-local packets on this version yet. Add one below to author task lines locally without forking the catalog.
+          No custom packets on this quote yet. Add one below to author task lines for this quote without forking the catalog.
         </p>
       ) : (
         <ul className="space-y-4">
@@ -313,7 +316,7 @@ export function QuoteLocalPacketEditor({
       {editable ? (
         <div className="rounded border border-zinc-800 bg-zinc-900/40 p-3 space-y-2">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-            New quote-local packet
+            New custom packet
           </p>
           <input
             type="text"
@@ -535,7 +538,7 @@ function PacketRow({
               type="button"
               onClick={() => setShowPromote(true)}
               className="rounded border border-violet-800/60 bg-violet-950/20 px-2 py-0.5 text-[11px] text-violet-300 hover:text-violet-200"
-              title="Promote this quote-local packet to a new catalog ScopePacket (DRAFT revision)."
+              title="Promote this custom packet to a new catalog library packet (DRAFT revision)."
             >
               ↑ Promote to catalog (DRAFT revision)
             </button>
@@ -614,7 +617,7 @@ function ItemsTable({
             <th className="px-2 py-1.5">Line key</th>
             <th className="px-2 py-1.5">Kind</th>
             <th className="px-2 py-1.5">Title / source</th>
-            <th className="px-2 py-1.5">Target node</th>
+            <th className="px-2 py-1.5">Stage</th>
             <th className="px-2 py-1.5">Tier</th>
             {editable ? <th className="px-2 py-1.5 text-right">Actions</th> : null}
           </tr>
@@ -928,12 +931,13 @@ function ItemForm({
         />
       </label>
       <div className="space-y-1">
-        <span className="block text-zinc-500">Target node key</span>
+        <span className="block text-zinc-500">Stage</span>
         <TargetNodePicker
           workflowVersionIdForNodeKeys={pinnedWorkflowVersionId}
           value={draft.targetNodeKey}
           disabled={busy}
           onChange={(next) => set("targetNodeKey", next)}
+          copyVariant="quoteScopeStage"
         />
       </div>
       <label className="space-y-1">
@@ -1028,7 +1032,7 @@ function ItemForm({
 /* ───────────────────────── Promote form ───────────────────────── */
 
 const PROMOTE_HELP_TEXT =
-  "This creates a NEW catalog ScopePacket on this tenant with a first DRAFT revision and copies every item as a packet task line. The action is irreversible — once promoted, the source packet is locked to COMPLETED and the new catalog packet exists permanently. Future picker visibility (PUBLISHED only) is handled by a later admin-review epic.";
+  "This creates a NEW catalog library packet on this tenant with a first DRAFT revision and copies every item as a packet task line. The action is irreversible — once promoted, the source custom packet is locked to COMPLETED and the new library packet exists permanently. Future picker visibility (PUBLISHED only) is handled by a later admin-review epic.";
 
 function PromoteForm({
   busy,
@@ -1103,7 +1107,7 @@ function PromoteForm({
           className="mt-0.5"
         />
         <span>
-          I understand this is irreversible: a new catalog ScopePacket will be created and the source quote-local packet will be locked to <code className="text-zinc-300">promotionStatus = COMPLETED</code>.
+          I understand this is irreversible: a new catalog library packet will be created and the source custom packet will be locked to <code className="text-zinc-300">promotionStatus = COMPLETED</code>.
         </span>
       </label>
       {localError ? (

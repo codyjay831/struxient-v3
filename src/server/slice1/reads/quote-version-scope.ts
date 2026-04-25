@@ -39,6 +39,7 @@ export const quoteVersionScopeQueryArgs = Prisma.validator<Prisma.QuoteVersionDe
         sortOrder: true,
         executionMode: true,
         title: true,
+        description: true,
         tierCode: true,
         quantity: true,
         paymentBeforeWork: true,

@@ -4,6 +4,13 @@ import { getPrisma } from "@/server/db/prisma";
 import { getQuoteWorkspaceForTenant } from "@/server/slice1/reads/quote-workspace-reads";
 import { getQuoteVersionScopeReadModel } from "@/server/slice1/reads/quote-version-scope";
 import { listQuoteLocalPacketsForVersion } from "@/server/slice1/reads/quote-local-packet-reads";
+import { listScopePacketsForTenant } from "@/server/slice1/reads/scope-packet-catalog-reads";
+import {
+  LINE_ITEM_PRESET_LIST_LIMIT_DEFAULTS,
+  listLineItemPresetsForTenant,
+} from "@/server/slice1/reads/line-item-preset-reads";
+import { loadLineItemExecutionPreviewsForTenant } from "@/server/slice1/reads/line-item-execution-preview-support";
+import { SCOPE_PACKET_LIST_LIMIT_DEFAULTS } from "@/lib/scope-packet-catalog-summary";
 import { toQuoteVersionScopeApiDto } from "@/lib/quote-version-scope-dto";
 import { principalHasCapability, tryGetApiPrincipal } from "@/lib/auth/api-principal";
 import {
@@ -102,17 +109,66 @@ export default async function OfficeQuoteScopePage({ params }: PageProps) {
 
   const grouping = groupQuoteScopeLineItemsByProposalGroup(dto.proposalGroups, dto.orderedLineItems);
 
-  // Quote-local packets are an authoring surface for the head DRAFT only.
-  // Fetch only when this page would actually render the editor — frozen and
-  // older drafts are inspected via `(office)/quotes/[id]/versions/[vId]/scope`,
-  // which deliberately mounts no mutation controls. Skipping the read on the
-  // non-editable branch avoids a tenant DB round-trip with no UI consumer.
+  // Quote-local packets and library packet summaries feed the line-item
+  // packet picker (Triangle Mode). Both are only relevant on the editable
+  // head DRAFT — frozen and older drafts are inspected via
+  // `(office)/quotes/[id]/versions/[vId]/scope`, which deliberately mounts no
+  // mutation controls. Skipping the reads on the non-editable branch avoids
+  // tenant DB round-trips with no UI consumer.
+  //
+  // Library packets are fetched at the catalog list maximum (200 per
+  // `SCOPE_PACKET_LIST_LIMIT_DEFAULTS.max`); the editor downstream filters
+  // them to those with a published revision (the only revisions that are
+  // pinnable from a quote line item).
   const localPackets = isEditableHead
     ? await listQuoteLocalPacketsForVersion(prisma, {
         tenantId: auth.principal.tenantId,
         quoteVersionId: head.id,
       })
     : [];
+  const libraryPackets = isEditableHead
+    ? await listScopePacketsForTenant(prisma, {
+        tenantId: auth.principal.tenantId,
+        limit: SCOPE_PACKET_LIST_LIMIT_DEFAULTS.max,
+      })
+    : [];
+  // Saved-line-item presets (Triangle Mode — Phase 2 / Slice 2). Loaded only
+  // on the editable head DRAFT branch, mirroring the localPackets/libraryPackets
+  // gate above. Frozen and older versions don't surface the Quick Add picker
+  // at all, so loading presets there would be wasted I/O. The list is
+  // tenant-scoped and capped at the read layer's MAX limit (200) — same
+  // ceiling as the catalog packet list.
+  const presets = isEditableHead
+    ? await listLineItemPresetsForTenant(prisma, {
+        tenantId: auth.principal.tenantId,
+        limit: LINE_ITEM_PRESET_LIST_LIMIT_DEFAULTS.max,
+      })
+    : [];
+
+  // Triangle Mode (Slice C): per-line execution preview support data.
+  // Builds a map keyed by `QuoteLineItem.id` whose values describe what
+  // runtime tasks each MANIFEST line will compose into. This is observation-
+  // only — no compose run, no schema change, no RuntimeTask touch.
+  // Skipped on the non-editable branch (matches the localPackets / libraryPackets
+  // gate); read-only inspection of older versions lives on the dedicated
+  // `(office)/quotes/[id]/versions/[vId]/scope` route.
+  const executionPreview = isEditableHead
+    ? await loadLineItemExecutionPreviewsForTenant(prisma, {
+        tenantId: auth.principal.tenantId,
+        pinnedWorkflowVersionId: dto.quoteVersion.pinnedWorkflowVersionId,
+        lineItems: dto.orderedLineItems.map((line) => ({
+          id: line.id,
+          executionMode: line.executionMode,
+          scopePacketRevisionId: line.scopePacketRevisionId,
+          quoteLocalPacketId: line.quoteLocalPacketId,
+          scopeRevision: line.scopeRevision
+            ? { id: line.scopeRevision.id, scopePacketId: line.scopeRevision.scopePacketId }
+            : null,
+        })),
+        libraryPackets,
+        localPackets,
+      })
+    : null;
 
   return (
     <main className="p-8 max-w-5xl mx-auto text-zinc-200">
@@ -148,6 +204,10 @@ export default async function OfficeQuoteScopePage({ params }: PageProps) {
         versionNumber={dto.quoteVersion.versionNumber}
         proposalGroups={dto.proposalGroups}
         groupedLineItems={grouping.groupsWithItems}
+        availableLibraryPackets={libraryPackets}
+        availableLocalPackets={localPackets}
+        availablePresets={presets}
+        executionPreviewByLineItemId={executionPreview?.previewsByLineItemId ?? null}
         canMutate={canOfficeMutate && isEditableHead}
         editableReason={
           !canOfficeMutate

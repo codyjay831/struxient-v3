@@ -160,6 +160,8 @@ function invariantToHttpStatus(code: Slice1InvariantCode): number {
     case "WORKFLOW_VERSION_PUBLISH_NOT_DRAFT":
     case "WORKFLOW_VERSION_SNAPSHOT_REPLACE_NOT_DRAFT":
     case "WORKFLOW_VERSION_FORK_SOURCE_INVALID":
+    // Phase 2 — duplicate `(tenantId, presetKey)` on LineItemPreset write.
+    case "LINE_ITEM_PRESET_KEY_TAKEN":
       return 409;
     case "TASK_DEFINITION_NOT_FOUND":
     case "QUOTE_LOCAL_PACKET_NOT_FOUND":
@@ -173,6 +175,11 @@ function invariantToHttpStatus(code: Slice1InvariantCode): number {
     case "CUSTOMER_NOTE_AUTHOR_NOT_FOUND":
     case "SCOPE_PACKET_TASK_LINE_NOT_FOUND":
     case "HOLD_NOT_FOUND":
+    // Phase 2 — LineItemPreset lookup miss (tenant-scoped) and packet-not-in-tenant.
+    // Cross-tenant probes are mapped to 404 (not 403) to avoid information leak,
+    // matching the rest of the slice1 read/write surface.
+    case "LINE_ITEM_PRESET_NOT_FOUND":
+    case "LINE_ITEM_PRESET_PACKET_TENANT_MISMATCH":
       return 404;
     case "INVALID_PROPOSAL_GROUP_NAME":
     case "INVALID_LINE_QUANTITY":
@@ -217,6 +224,16 @@ function invariantToHttpStatus(code: Slice1InvariantCode): number {
     case "SCOPE_PACKET_TASK_LINE_REORDER_AT_BOUNDARY":
     case "SCOPE_PACKET_TASK_LINE_EDIT_EMPTY_PATCH":
     case "SCOPE_PACKET_TASK_LINE_EDIT_EMBEDDED_FIELDS_ON_LIBRARY":
+    // Phase 2 — LineItemPreset write-side per-field validation failures.
+    case "LINE_ITEM_PRESET_DISPLAY_NAME_INVALID":
+    case "LINE_ITEM_PRESET_KEY_INVALID":
+    case "LINE_ITEM_PRESET_TITLE_INVALID":
+    case "LINE_ITEM_PRESET_DESCRIPTION_INVALID":
+    case "LINE_ITEM_PRESET_QUANTITY_INVALID":
+    case "LINE_ITEM_PRESET_PRICE_INVALID":
+    case "LINE_ITEM_PRESET_GATE_TITLE_TOO_LONG":
+    case "LINE_ITEM_PRESET_MANIFEST_REQUIRES_PACKET":
+    case "LINE_ITEM_PRESET_SOLD_SCOPE_FORBIDS_PACKET":
       return 400;
     case "CUSTOMER_NOTE_UPDATE_NOT_AUTHORIZED":
       return 403;

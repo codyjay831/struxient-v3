@@ -5,6 +5,19 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { QuoteVersionScopeApiDto } from "@/lib/quote-version-scope-dto";
 import type { ScopeProposalGroupWithItems } from "@/lib/quote-scope/quote-scope-grouping";
+import type { ScopePacketSummaryDto } from "@/server/slice1/reads/scope-packet-catalog-reads";
+import type { QuoteLocalPacketDto } from "@/server/slice1/reads/quote-local-packet-reads";
+import type { LineItemPresetSummaryDto } from "@/server/slice1/reads/line-item-preset-reads";
+import {
+  buildExecutionPreviewSummary,
+  type LineItemExecutionPreviewDto,
+} from "@/lib/quote-line-item-execution-preview";
+import { QuickAddLineItemPicker } from "@/components/quote-scope/quick-add-line-item-picker";
+import type { LineItemForRecent } from "@/lib/quick-add-line-item-picker-filter";
+import {
+  buildFieldsFromPacket,
+  buildFieldsFromPreset,
+} from "@/lib/quote-line-item-prefill";
 
 type ProposalGroup = QuoteVersionScopeApiDto["proposalGroups"][number];
 type LineItem = QuoteVersionScopeApiDto["orderedLineItems"][number];
@@ -12,12 +25,47 @@ type GroupWithItems = ScopeProposalGroupWithItems<ProposalGroup, LineItem>;
 
 type EditableReason = "ok" | "missing_capability" | "not_editable_head";
 
+/**
+ * Library packet summary as the form consumes it. We only show packets that
+ * have at least one PUBLISHED revision (the only revisions a quote line item
+ * can pin) — filtering happens client-side from the full summary list.
+ */
+type LibraryPacketOption = ScopePacketSummaryDto;
+/**
+ * Local packet summary as the form consumes it (subset of `QuoteLocalPacketDto`,
+ * but kept as the full DTO so future fields are available without a re-plumb).
+ */
+type LocalPacketOption = QuoteLocalPacketDto;
+
 type Props = {
   quoteId: string;
   quoteVersionId: string;
   versionNumber: number;
   proposalGroups: ProposalGroup[];
   groupedLineItems: GroupWithItems[];
+  /**
+   * All catalog packets visible to this tenant. The form filters internally
+   * to those with `latestPublishedRevisionId !== null` — DRAFT-only packets
+   * are not pinnable from a quote line item (Triangle Mode pin-XOR rule).
+   */
+  availableLibraryPackets: LibraryPacketOption[];
+  /** All quote-local packets attached to this quote version. */
+  availableLocalPackets: LocalPacketOption[];
+  /**
+   * Tenant-scoped saved-line-item presets (Triangle Mode — Phase 2 / Slice 2).
+   * Defaults to `[]` when omitted (the page only loads them on the editable
+   * head DRAFT branch). Threaded into `<QuickAddLineItemPicker/>` so the
+   * "Saved line items" section can render alongside library packets.
+   */
+  availablePresets?: LineItemPresetSummaryDto[];
+  /**
+   * Per-line execution preview keyed by `QuoteLineItem.id` (Triangle Mode,
+   * Phase 1, Slice C). When `null`, the preview is suppressed (e.g. on the
+   * non-editable branch where the loader was skipped). When present, every
+   * line in `groupedLineItems` should have a corresponding entry; missing
+   * entries collapse to no-preview rendering rather than throw.
+   */
+  executionPreviewByLineItemId: Record<string, LineItemExecutionPreviewDto> | null;
   canMutate: boolean;
   editableReason: EditableReason;
 };
@@ -25,14 +73,35 @@ type Props = {
 type ExecutionMode = "SOLD_SCOPE" | "MANIFEST";
 const EXECUTION_MODES: ExecutionMode[] = ["SOLD_SCOPE", "MANIFEST"];
 
+type PacketSource = "none" | "library" | "local";
+
 type FormFields = {
   title: string;
-  quantity: string; // raw input, validated on submit
+  /**
+   * Free-form commercial description (Phase 2, Slice 2). Surfaced on the
+   * proposal alongside `title`. Server caps at 4000 chars; the form caps at
+   * the same value to mirror server validation client-side.
+   */
+  description: string;
+  quantity: string;
   executionMode: ExecutionMode;
-  unitPriceCents: string; // empty string = unset (null on the wire)
+  unitPriceCents: string;
   proposalGroupId: string;
   paymentBeforeWork: boolean;
   paymentGateTitleOverride: string;
+  /**
+   * Tracks which packet pin the user has chosen for a MANIFEST line.
+   * - `"none"`: no pin selected (always the case for SOLD_SCOPE; transitional
+   *   state for MANIFEST until the user picks).
+   * - `"library"`: `scopePacketRevisionId` is the canonical pin.
+   * - `"local"`: `quoteLocalPacketId` is the canonical pin.
+   *
+   * The server enforces the `MANIFEST_SCOPE_PIN_XOR` invariant; this UI field
+   * only drives form rendering.
+   */
+  packetSource: PacketSource;
+  scopePacketRevisionId: string;
+  quoteLocalPacketId: string;
 };
 
 type Banner =
@@ -42,13 +111,39 @@ type Banner =
 
 const blankFields = (group: ProposalGroup | undefined): FormFields => ({
   title: "",
+  description: "",
   quantity: "1",
   executionMode: "SOLD_SCOPE",
   unitPriceCents: "",
   proposalGroupId: group?.id ?? "",
   paymentBeforeWork: false,
   paymentGateTitleOverride: "",
+  packetSource: "none",
+  scopePacketRevisionId: "",
+  quoteLocalPacketId: "",
 });
+
+function deriveInitialFromItem(item: LineItem): FormFields {
+  const executionMode: ExecutionMode = item.executionMode === "MANIFEST" ? "MANIFEST" : "SOLD_SCOPE";
+  let packetSource: PacketSource = "none";
+  if (executionMode === "MANIFEST") {
+    if (item.scopePacketRevisionId != null) packetSource = "library";
+    else if (item.quoteLocalPacketId != null) packetSource = "local";
+  }
+  return {
+    title: item.title,
+    description: item.description ?? "",
+    quantity: String(item.quantity),
+    executionMode,
+    unitPriceCents: "",
+    proposalGroupId: item.proposalGroupId,
+    paymentBeforeWork: item.paymentBeforeWork,
+    paymentGateTitleOverride: item.paymentGateTitleOverride ?? "",
+    packetSource,
+    scopePacketRevisionId: item.scopePacketRevisionId ?? "",
+    quoteLocalPacketId: item.quoteLocalPacketId ?? "",
+  };
+}
 
 /**
  * Office-side line-item authoring UI.
@@ -59,14 +154,16 @@ const blankFields = (group: ProposalGroup | undefined): FormFields => ({
  *   - Edit: inline form per row.
  *   - Delete: confirm + DELETE; row vanishes after `router.refresh()`.
  *
+ * MANIFEST line items must pin a packet (library revision XOR quote-local
+ * packet) — the picker enforces this client-side and the server re-asserts
+ * `MANIFEST_SCOPE_PIN_XOR`. SOLD_SCOPE lines are commercial-only and never
+ * carry a packet pin.
+ *
  * All mutations call the existing canonical line-item API routes
  * (`POST /api/quote-versions/:quoteVersionId/line-items` and
  * `PATCH/DELETE .../line-items/:lineItemId`). After a successful mutation,
- * the page is refreshed via `router.refresh()` so we re-read the canonical
+ * the page is refreshed via `router.refresh()` so we re-read canonical
  * server state instead of carrying a divergent local model.
- *
- * No packet attachment, no proposal-group management, no drag-and-drop sort
- * — Phase A scope.
  */
 export function ScopeEditor({
   quoteId,
@@ -74,6 +171,10 @@ export function ScopeEditor({
   versionNumber,
   proposalGroups,
   groupedLineItems,
+  availableLibraryPackets,
+  availableLocalPackets,
+  availablePresets = [],
+  executionPreviewByLineItemId,
   canMutate,
   editableReason,
 }: Props) {
@@ -82,8 +183,132 @@ export function ScopeEditor({
   const [banner, setBanner] = useState<Banner>(null);
   const [addingForGroupId, setAddingForGroupId] = useState<string | null>(null);
   const [editingLineItemId, setEditingLineItemId] = useState<string | null>(null);
+  // Triangle Mode Step 1 — quick-add library picker state.
+  // Mutually exclusive with `addingForGroupId` for the same group: opening the
+  // picker closes any open add form (and vice versa) so authoring stays
+  // unambiguous.
+  const [libraryPickerForGroupId, setLibraryPickerForGroupId] = useState<string | null>(null);
+  // Per-group "staged" prefill carried from the picker into the next render
+  // of `LineItemForm`. Cleared on cancel and on successful create — the
+  // existing handleCreate is the single submit path; the picker never
+  // bypasses it.
+  const [pendingPrefillByGroupId, setPendingPrefillByGroupId] = useState<
+    Record<string, FormFields>
+  >({});
 
   const noGroups = proposalGroups.length === 0;
+
+  const pinnableLibraryPackets = useMemo(
+    () => availableLibraryPackets.filter((p) => p.latestPublishedRevisionId != null),
+    [availableLibraryPackets],
+  );
+
+  // Flatten existing line items into a minimal shape the picker can use to
+  // surface "Recent in this quote". Iteration order matches the visible
+  // grouping (group order → sortOrder) so the strip is deterministic.
+  const recentLineItemsForPicker: LineItemForRecent[] = useMemo(() => {
+    const out: LineItemForRecent[] = [];
+    for (const g of groupedLineItems) {
+      for (const it of g.items) {
+        out.push({
+          scopePacketRevisionId: it.scopePacketRevisionId ?? null,
+          scopeRevision: it.scopeRevision
+            ? { scopePacketId: it.scopeRevision.scopePacketId }
+            : null,
+        });
+      }
+    }
+    return out;
+  }, [groupedLineItems]);
+
+  function clearPendingPrefill(groupId: string) {
+    setPendingPrefillByGroupId((prev) => {
+      if (!(groupId in prev)) return prev;
+      const next = { ...prev };
+      delete next[groupId];
+      return next;
+    });
+  }
+
+  /**
+   * Stage a prefill from a selected library packet, then open the existing
+   * line-item form for the target group.
+   *
+   * Field rules (Triangle Mode Step 1 — UX-only):
+   *   - `executionMode` always set to `"MANIFEST"` (library packets always
+   *     produce runtime tasks; SOLD_SCOPE is not in the picker).
+   *   - `packetSource` set to `"library"` and `scopePacketRevisionId` set to
+   *     the packet's `latestPublishedRevisionId` (server invariant requires
+   *     a PUBLISHED revision; the picker filters non-pinnable packets out
+   *     before we ever reach here).
+   *   - `quoteLocalPacketId` cleared (XOR rule, mirrored client-side).
+   *   - `quantity` defaults to "1" only if the previously-staged value is
+   *     blank (preserves any explicit value the user staged earlier).
+   *   - `title` set to the packet display name **only when the existing
+   *     staged title is empty** — never overwrites a user-entered title.
+   *   - `unitPriceCents` is intentionally never touched here. Estimators
+   *     still set price after adding (no schema-backed price recall yet).
+   *
+   * The submit path is unchanged: the existing form's "Create line item"
+   * button still calls `handleCreate`, which still runs validation, still
+   * issues the same POST, and still goes through every existing server
+   * mutation invariant (XOR, PUBLISHED-only, tenant alignment).
+   */
+  function prefillFromPacket(
+    packet: LibraryPacketOption,
+    group: ProposalGroup,
+  ) {
+    const base: FormFields = pendingPrefillByGroupId[group.id] ?? blankFields(group);
+    const result = buildFieldsFromPacket(packet, base);
+    if (!result.ok) return;
+    const next: FormFields = {
+      ...base,
+      ...result.fields,
+      proposalGroupId: group.id,
+    };
+    setPendingPrefillByGroupId((prev) => ({ ...prev, [group.id]: next }));
+    setLibraryPickerForGroupId(null);
+    setEditingLineItemId(null);
+    setAddingForGroupId(group.id);
+  }
+
+  /**
+   * Stage a prefill from a selected `LineItemPreset`, then open the existing
+   * line-item form for the target group (Triangle Mode — Phase 2 / Slice 2).
+   *
+   * Mirrors `prefillFromPacket` in submit-path discipline:
+   *   - Never bypasses the form. The user still clicks "Create line item".
+   *   - Never bypasses server validation. `MANIFEST_SCOPE_PIN_XOR` and
+   *     PUBLISHED-revision discipline are still authoritative.
+   *
+   * Differences from the packet path:
+   *   - **Commercial defaults are copied verbatim** (price, quantity,
+   *     description, payment flags) — the preset's whole job is to remember
+   *     these. The user can still edit before submit.
+   *   - `executionMode` may be SOLD_SCOPE (from a SOLD_SCOPE preset), in
+   *     which case both packet ids are cleared.
+   *   - For MANIFEST presets the picker has already gated on usability
+   *     (`buildFieldsFromPreset` returns `{ ok: false, … }` for missing
+   *     packet / no PUBLISHED revision); this handler short-circuits on
+   *     unusable presets defensively even though the picker disables them.
+   */
+  function prefillFromPreset(
+    preset: LineItemPresetSummaryDto,
+    group: ProposalGroup,
+  ) {
+    const base: FormFields = pendingPrefillByGroupId[group.id] ?? blankFields(group);
+    const result = buildFieldsFromPreset(preset, base);
+    if (!result.ok) return;
+    const next: FormFields = {
+      ...base,
+      ...result.fields,
+      proposalGroupId: group.id,
+    };
+    setPendingPrefillByGroupId((prev) => ({ ...prev, [group.id]: next }));
+    setLibraryPickerForGroupId(null);
+    setEditingLineItemId(null);
+    setAddingForGroupId(group.id);
+  }
 
   if (!canMutate) {
     return (
@@ -92,6 +317,8 @@ export function ScopeEditor({
         versionNumber={versionNumber}
         editableReason={editableReason}
         quoteId={quoteId}
+        availableLibraryPackets={availableLibraryPackets}
+        executionPreviewByLineItemId={executionPreviewByLineItemId}
       />
     );
   }
@@ -138,11 +365,14 @@ export function ScopeEditor({
         proposalGroupId: group.id,
         sortOrder: nextSort,
         title: validation.title,
+        description: validation.description,
         quantity: validation.quantity,
         executionMode: fields.executionMode,
         unitPriceCents: validation.unitPriceCents,
         paymentBeforeWork: validation.paymentBeforeWork,
         paymentGateTitleOverride: validation.paymentBeforeWork ? validation.paymentGateTitleOverride : null,
+        scopePacketRevisionId: validation.scopePacketRevisionId,
+        quoteLocalPacketId: validation.quoteLocalPacketId,
       };
 
       const res = await fetch(
@@ -166,6 +396,7 @@ export function ScopeEditor({
         return;
       }
       setAddingForGroupId(null);
+      clearPendingPrefill(group.id);
       setBanner({ kind: "success", title: "Line item added", message: validation.title });
       router.refresh();
     } finally {
@@ -182,14 +413,20 @@ export function ScopeEditor({
         setBanner({ kind: "error", title: "Cannot update line item", message: validation.message });
         return;
       }
-      // PATCH only fields the operator can edit in this slice.
+      // PATCH only fields the operator can edit in this slice. We always
+      // send both packet ids (or null) so the server can transition between
+      // SOLD_SCOPE / MANIFEST and library / local packet pins atomically
+      // under the MANIFEST_SCOPE_PIN_XOR invariant.
       const patch = {
         title: validation.title,
+        description: validation.description,
         quantity: validation.quantity,
         executionMode: fields.executionMode,
         unitPriceCents: validation.unitPriceCents,
         paymentBeforeWork: validation.paymentBeforeWork,
         paymentGateTitleOverride: validation.paymentBeforeWork ? validation.paymentGateTitleOverride : null,
+        scopePacketRevisionId: validation.scopePacketRevisionId,
+        quoteLocalPacketId: validation.quoteLocalPacketId,
       };
       const res = await fetch(
         `/api/quote-versions/${encodeURIComponent(quoteVersionId)}/line-items/${encodeURIComponent(item.id)}`,
@@ -258,6 +495,7 @@ export function ScopeEditor({
 
       {groupedLineItems.map((group) => {
         const isAddingHere = addingForGroupId === group.id;
+        const isLibraryPickerHere = libraryPickerForGroupId === group.id;
         return (
           <section
             key={group.id}
@@ -272,19 +510,45 @@ export function ScopeEditor({
                   {group.items.length} {group.items.length === 1 ? "item" : "items"} · v{versionNumber} draft
                 </p>
               </div>
-              {!isAddingHere ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAddingForGroupId(group.id);
-                    setEditingLineItemId(null);
-                  }}
-                  className="rounded bg-sky-700 px-3 py-1 text-[11px] font-medium text-white hover:bg-sky-600 transition-colors"
-                >
-                  + Add line item
-                </button>
+              {!isAddingHere && !isLibraryPickerHere ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLibraryPickerForGroupId(group.id);
+                      setEditingLineItemId(null);
+                    }}
+                    className="rounded border border-sky-800/60 bg-sky-950/30 px-2.5 py-1 text-[11px] font-medium text-sky-200 hover:text-sky-100 hover:border-sky-700 transition-colors"
+                    title="Pick a published library packet to prefill a new line item"
+                  >
+                    Insert from library
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAddingForGroupId(group.id);
+                      setEditingLineItemId(null);
+                    }}
+                    className="rounded bg-sky-700 px-3 py-1 text-[11px] font-medium text-white hover:bg-sky-600 transition-colors"
+                  >
+                    + Add line item
+                  </button>
+                </div>
               ) : null}
             </header>
+
+            {isLibraryPickerHere ? (
+              <div className="border-b border-zinc-800 bg-zinc-950/40 p-4">
+                <QuickAddLineItemPicker
+                  availableLibraryPackets={availableLibraryPackets}
+                  availablePresets={availablePresets}
+                  recentLineItems={recentLineItemsForPicker}
+                  onSelect={(packet) => prefillFromPacket(packet, group)}
+                  onSelectPreset={(preset) => prefillFromPreset(preset, group)}
+                  onClose={() => setLibraryPickerForGroupId(null)}
+                />
+              </div>
+            ) : null}
 
             {isAddingHere ? (
               <div className="border-b border-zinc-800 bg-zinc-950/40 p-4">
@@ -293,11 +557,16 @@ export function ScopeEditor({
                 </h3>
                 <LineItemForm
                   key={`create-${group.id}`}
-                  initial={blankFields(group)}
+                  initial={pendingPrefillByGroupId[group.id] ?? blankFields(group)}
                   proposalGroupOptions={[group]}
+                  pinnableLibraryPackets={pinnableLibraryPackets}
+                  availableLocalPackets={availableLocalPackets}
                   busy={busyKey === `create:${group.id}`}
                   submitLabel="Create line item"
-                  onCancel={() => setAddingForGroupId(null)}
+                  onCancel={() => {
+                    setAddingForGroupId(null);
+                    clearPendingPrefill(group.id);
+                  }}
                   onSubmit={(fields) => void handleCreate(fields, group)}
                 />
               </div>
@@ -316,17 +585,11 @@ export function ScopeEditor({
                       {isEditing ? (
                         <LineItemForm
                           key={item.id}
-                          initial={{
-                            title: item.title,
-                            quantity: String(item.quantity),
-                            executionMode:
-                              item.executionMode === "MANIFEST" ? "MANIFEST" : "SOLD_SCOPE",
-                            unitPriceCents: "",
-                            proposalGroupId: item.proposalGroupId,
-                            paymentBeforeWork: item.paymentBeforeWork,
-                            paymentGateTitleOverride: item.paymentGateTitleOverride ?? "",
-                          }}
+                          initial={deriveInitialFromItem(item)}
                           proposalGroupOptions={[group]}
+                          pinnableLibraryPackets={pinnableLibraryPackets}
+                          availableLocalPackets={availableLocalPackets}
+                          existingItem={item}
                           busy={busyKey === `update:${item.id}`}
                           submitLabel="Save changes"
                           onCancel={() => setEditingLineItemId(null)}
@@ -335,6 +598,10 @@ export function ScopeEditor({
                       ) : (
                         <LineItemRow
                           item={item}
+                          availableLibraryPackets={availableLibraryPackets}
+                          executionPreview={
+                            executionPreviewByLineItemId?.[item.id] ?? null
+                          }
                           busy={busyKey === `delete:${item.id}`}
                           onEdit={() => {
                             setEditingLineItemId(item.id);
@@ -359,48 +626,54 @@ export function ScopeEditor({
 
 function LineItemRow({
   item,
+  availableLibraryPackets,
+  executionPreview,
   busy,
   onEdit,
   onDelete,
 }: {
   item: LineItem;
+  availableLibraryPackets: LibraryPacketOption[];
+  executionPreview: LineItemExecutionPreviewDto | null;
   busy: boolean;
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const packetSummary = describeAttachedPacket(item, availableLibraryPackets);
   return (
-    <div className="flex items-start justify-between gap-4">
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-zinc-100 truncate">{item.title}</p>
-        <p className="mt-1 text-[11px] text-zinc-500 font-mono">
-          qty {item.quantity} · {item.executionMode}
-          {item.tierCode ? ` · tier ${item.tierCode}` : ""}
-          {item.paymentBeforeWork ? " · payment before work" : ""}
-          {item.scopePacketRevisionId
-            ? " · library packet"
-            : item.quoteLocalPacketId
-              ? " · local packet"
-              : ""}
-        </p>
+    <div className="space-y-2">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-zinc-100 truncate">{item.title}</p>
+          <p className="mt-1 text-[11px] text-zinc-500 font-mono">
+            qty {item.quantity} · {item.executionMode}
+            {item.tierCode ? ` · tier ${item.tierCode}` : ""}
+            {item.paymentBeforeWork ? " · payment before work" : ""}
+          </p>
+          {packetSummary ? (
+            <p className={`mt-1 text-[11px] ${packetSummary.tone}`}>{packetSummary.label}</p>
+          ) : null}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={onEdit}
+            disabled={busy}
+            className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] font-medium text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 disabled:opacity-50 transition-colors"
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={busy}
+            className="rounded border border-red-900/60 bg-red-950/30 px-2 py-1 text-[11px] font-medium text-red-300 hover:bg-red-900/40 hover:text-red-200 disabled:opacity-50 transition-colors"
+          >
+            {busy ? "Deleting…" : "Delete"}
+          </button>
+        </div>
       </div>
-      <div className="flex items-center gap-2 shrink-0">
-        <button
-          type="button"
-          onClick={onEdit}
-          disabled={busy}
-          className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] font-medium text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 disabled:opacity-50 transition-colors"
-        >
-          Edit
-        </button>
-        <button
-          type="button"
-          onClick={onDelete}
-          disabled={busy}
-          className="rounded border border-red-900/60 bg-red-950/30 px-2 py-1 text-[11px] font-medium text-red-300 hover:bg-red-900/40 hover:text-red-200 disabled:opacity-50 transition-colors"
-        >
-          {busy ? "Deleting…" : "Delete"}
-        </button>
-      </div>
+      {executionPreview ? <LineItemExecutionPreviewBlock preview={executionPreview} /> : null}
     </div>
   );
 }
@@ -408,6 +681,9 @@ function LineItemRow({
 function LineItemForm({
   initial,
   proposalGroupOptions,
+  pinnableLibraryPackets,
+  availableLocalPackets,
+  existingItem,
   busy,
   submitLabel,
   onSubmit,
@@ -415,6 +691,10 @@ function LineItemForm({
 }: {
   initial: FormFields;
   proposalGroupOptions: ProposalGroup[];
+  pinnableLibraryPackets: LibraryPacketOption[];
+  availableLocalPackets: LocalPacketOption[];
+  /** Provided in edit mode so the picker can surface a saved-but-not-latest revision. */
+  existingItem?: LineItem;
   busy: boolean;
   submitLabel: string;
   onSubmit: (fields: FormFields) => void;
@@ -425,6 +705,32 @@ function LineItemForm({
     () => proposalGroupOptions.find((g) => g.id === fields.proposalGroupId)?.name ?? "(none)",
     [fields.proposalGroupId, proposalGroupOptions],
   );
+
+  // Resetting packet state on executionMode toggle keeps the form aligned
+  // with the server-side MANIFEST_SCOPE_PIN_XOR invariant. SOLD_SCOPE always
+  // pins nothing; flipping back to MANIFEST forces the user to re-pick.
+  function setExecutionMode(next: ExecutionMode) {
+    if (next === "SOLD_SCOPE") {
+      setFields({
+        ...fields,
+        executionMode: next,
+        packetSource: "none",
+        scopePacketRevisionId: "",
+        quoteLocalPacketId: "",
+      });
+      return;
+    }
+    setFields({ ...fields, executionMode: next });
+  }
+
+  function setPacketSource(next: PacketSource) {
+    setFields({
+      ...fields,
+      packetSource: next,
+      scopePacketRevisionId: next === "library" ? fields.scopePacketRevisionId : "",
+      quoteLocalPacketId: next === "local" ? fields.quoteLocalPacketId : "",
+    });
+  }
 
   return (
     <form
@@ -447,6 +753,20 @@ function LineItemForm({
             placeholder="e.g. Install rooftop unit"
           />
         </label>
+        <label className="block text-xs sm:col-span-2">
+          <span className="text-zinc-400">
+            Description (optional, max {MAX_DESCRIPTION.toLocaleString()})
+          </span>
+          <textarea
+            value={fields.description}
+            onChange={(e) => setFields({ ...fields, description: e.target.value })}
+            disabled={busy}
+            maxLength={MAX_DESCRIPTION}
+            rows={3}
+            placeholder="Detail to surface on the proposal alongside the title."
+            className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100 focus:border-sky-600 focus:outline-none disabled:opacity-60"
+          />
+        </label>
         <label className="block text-xs">
           <span className="text-zinc-400">Quantity (integer)</span>
           <input
@@ -465,9 +785,7 @@ function LineItemForm({
           <span className="text-zinc-400">Execution mode</span>
           <select
             value={fields.executionMode}
-            onChange={(e) =>
-              setFields({ ...fields, executionMode: e.target.value as ExecutionMode })
-            }
+            onChange={(e) => setExecutionMode(e.target.value as ExecutionMode)}
             disabled={busy}
             className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100 focus:border-sky-600 focus:outline-none disabled:opacity-60"
           >
@@ -492,6 +810,21 @@ function LineItemForm({
           />
         </label>
       </div>
+
+      <PacketPicker
+        executionMode={fields.executionMode}
+        packetSource={fields.packetSource}
+        scopePacketRevisionId={fields.scopePacketRevisionId}
+        quoteLocalPacketId={fields.quoteLocalPacketId}
+        pinnableLibraryPackets={pinnableLibraryPackets}
+        availableLocalPackets={availableLocalPackets}
+        existingItem={existingItem}
+        busy={busy}
+        onSourceChange={setPacketSource}
+        onLibraryChange={(id) => setFields({ ...fields, scopePacketRevisionId: id })}
+        onLocalChange={(id) => setFields({ ...fields, quoteLocalPacketId: id })}
+      />
+
       <label className="flex items-start gap-2 text-xs text-zinc-300">
         <input
           type="checkbox"
@@ -526,8 +859,7 @@ function LineItemForm({
         </label>
       ) : null}
       <p className="text-[10px] text-zinc-500">
-        Proposal group: <span className="text-zinc-400">{groupName}</span> · packet attachment is
-        not part of this slice — line items are created without a packet and can be linked later.
+        Proposal group: <span className="text-zinc-400">{groupName}</span>
       </p>
       <div className="flex items-center gap-2">
         <button
@@ -547,6 +879,196 @@ function LineItemForm({
         </button>
       </div>
     </form>
+  );
+}
+
+/**
+ * MANIFEST-only packet picker. Hidden for SOLD_SCOPE (replaced by an
+ * informational note). For MANIFEST, the user must pick exactly one source
+ * (library revision XOR quote-local packet); the server re-asserts this
+ * via `assertManifestScopePinXor`.
+ *
+ * When editing an existing line whose pinned library revision is no longer
+ * the latest published revision (e.g. a newer revision has since been
+ * published), we surface a stable "saved revision" option so the user can
+ * either keep it or roll forward by selecting the latest.
+ */
+function PacketPicker({
+  executionMode,
+  packetSource,
+  scopePacketRevisionId,
+  quoteLocalPacketId,
+  pinnableLibraryPackets,
+  availableLocalPackets,
+  existingItem,
+  busy,
+  onSourceChange,
+  onLibraryChange,
+  onLocalChange,
+}: {
+  executionMode: ExecutionMode;
+  packetSource: PacketSource;
+  scopePacketRevisionId: string;
+  quoteLocalPacketId: string;
+  pinnableLibraryPackets: LibraryPacketOption[];
+  availableLocalPackets: LocalPacketOption[];
+  existingItem?: LineItem;
+  busy: boolean;
+  onSourceChange: (next: PacketSource) => void;
+  onLibraryChange: (next: string) => void;
+  onLocalChange: (next: string) => void;
+}) {
+  // Synthetic option: when editing a line whose saved library revision is
+  // not the latest published revision of its parent packet, render an extra
+  // option so the value remains visible/selectable instead of silently
+  // disappearing. Resolves the parent packet by `scopePacketId` (carried in
+  // the read DTO) so we can show its display name even when the revision
+  // itself is not in the available list.
+  //
+  // Computed unconditionally before any early return so hook ordering stays
+  // stable across executionMode toggles.
+  const savedNonLatestLibrary = useMemo(() => {
+    if (!existingItem) return null;
+    if (!existingItem.scopePacketRevisionId) return null;
+    if (!existingItem.scopeRevision) return null;
+    const parent = pinnableLibraryPackets.find(
+      (p) => p.id === existingItem.scopeRevision!.scopePacketId,
+    );
+    if (parent && parent.latestPublishedRevisionId === existingItem.scopePacketRevisionId) {
+      return null;
+    }
+    return {
+      id: existingItem.scopePacketRevisionId,
+      parentDisplayName: parent?.displayName ?? "(unknown packet)",
+      parentPacketKey: parent?.packetKey ?? null,
+    };
+  }, [existingItem, pinnableLibraryPackets]);
+
+  if (executionMode === "SOLD_SCOPE") {
+    return (
+      <p className="rounded border border-dashed border-zinc-800 bg-zinc-950/40 px-3 py-2 text-[11px] text-zinc-500">
+        Sold-scope is commercial-only. It does not pin a packet and does not create runtime tasks.
+      </p>
+    );
+  }
+
+  const hasLibrary = pinnableLibraryPackets.length > 0;
+  const hasLocal = availableLocalPackets.length > 0;
+
+  return (
+    <fieldset className="rounded border border-zinc-800 bg-zinc-950/30 p-3 space-y-2">
+      <legend className="px-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+        Packet (required for MANIFEST)
+      </legend>
+
+      <div className="flex flex-wrap gap-3 text-xs text-zinc-300">
+        <label className="inline-flex items-center gap-1.5">
+          <input
+            type="radio"
+            name="packetSource"
+            value="library"
+            checked={packetSource === "library"}
+            onChange={() => onSourceChange("library")}
+            disabled={busy || (!hasLibrary && !savedNonLatestLibrary)}
+          />
+          <span className={!hasLibrary && !savedNonLatestLibrary ? "text-zinc-600" : ""}>
+            Library packet
+          </span>
+        </label>
+        <label className="inline-flex items-center gap-1.5">
+          <input
+            type="radio"
+            name="packetSource"
+            value="local"
+            checked={packetSource === "local"}
+            onChange={() => onSourceChange("local")}
+            disabled={busy || !hasLocal}
+          />
+          <span className={!hasLocal ? "text-zinc-600" : ""}>Custom packet for this quote</span>
+        </label>
+      </div>
+
+      {packetSource === "library" ? (
+        <div className="space-y-1">
+          <select
+            value={scopePacketRevisionId}
+            onChange={(e) => onLibraryChange(e.target.value)}
+            disabled={busy}
+            className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-100 focus:border-sky-600 focus:outline-none disabled:opacity-60"
+          >
+            <option value="">— Choose a library packet —</option>
+            {savedNonLatestLibrary ? (
+              <option value={savedNonLatestLibrary.id}>
+                {savedNonLatestLibrary.parentDisplayName}
+                {savedNonLatestLibrary.parentPacketKey
+                  ? ` (${savedNonLatestLibrary.parentPacketKey})`
+                  : ""}{" "}
+                · saved revision (not latest)
+              </option>
+            ) : null}
+            {pinnableLibraryPackets.map((p) => (
+              <option key={p.id} value={p.latestPublishedRevisionId ?? ""}>
+                {p.displayName} ({p.packetKey}) · v{p.latestPublishedRevisionNumber ?? "?"}
+              </option>
+            ))}
+          </select>
+          {!hasLibrary ? (
+            <p className="text-[10px] text-amber-400">
+              No published library packets are visible to this tenant. Create one in{" "}
+              <Link
+                href="/library/packets"
+                className="underline underline-offset-2 hover:text-amber-300"
+              >
+                Library → Packets
+              </Link>
+              .
+            </p>
+          ) : (
+            <p className="text-[10px] text-zinc-500">
+              Pins the latest PUBLISHED revision of the chosen catalog packet. The line item
+              persists the revision id, not the packet id, so future republishes do not
+              retroactively change pinned scope.
+            </p>
+          )}
+        </div>
+      ) : null}
+
+      {packetSource === "local" ? (
+        <div className="space-y-1">
+          <select
+            value={quoteLocalPacketId}
+            onChange={(e) => onLocalChange(e.target.value)}
+            disabled={busy}
+            className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-100 focus:border-sky-600 focus:outline-none disabled:opacity-60"
+          >
+            <option value="">— Choose a custom packet —</option>
+            {availableLocalPackets.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.displayName} · {p.itemCount} item{p.itemCount === 1 ? "" : "s"}
+              </option>
+            ))}
+          </select>
+          {!hasLocal ? (
+            <p className="text-[10px] text-amber-400">
+              No custom packets exist on this quote yet. Create one in the &ldquo;Custom packets for
+              this quote&rdquo; section below.
+            </p>
+          ) : (
+            <p className="text-[10px] text-zinc-500">
+              Custom packets are authored on this quote and travel with it through freeze/send.
+            </p>
+          )}
+        </div>
+      ) : null}
+
+      {packetSource === "none" ? (
+        <p className="text-[10px] text-amber-400">
+          Pick a packet source above. MANIFEST line items must pin exactly one packet — either a
+          library packet or a custom packet for this quote. The server will reject saves that pin
+          neither.
+        </p>
+      ) : null}
+    </fieldset>
   );
 }
 
@@ -582,11 +1104,15 @@ function ReadOnlyView({
   versionNumber,
   editableReason,
   quoteId,
+  availableLibraryPackets,
+  executionPreviewByLineItemId,
 }: {
   groupedLineItems: GroupWithItems[];
   versionNumber: number;
   editableReason: EditableReason;
   quoteId: string;
+  availableLibraryPackets: LibraryPacketOption[];
+  executionPreviewByLineItemId: Record<string, LineItemExecutionPreviewDto> | null;
 }) {
   const reasonMessage =
     editableReason === "missing_capability"
@@ -626,16 +1152,26 @@ function ReadOnlyView({
             </p>
           ) : (
             <ul className="divide-y divide-zinc-800">
-              {group.items.map((item) => (
-                <li key={item.id} className="px-4 py-3">
-                  <p className="text-sm text-zinc-100">{item.title}</p>
-                  <p className="mt-1 text-[11px] text-zinc-500 font-mono">
-                    qty {item.quantity} · {item.executionMode}
-                    {item.tierCode ? ` · tier ${item.tierCode}` : ""}
-                    {item.paymentBeforeWork ? " · payment before work" : ""}
-                  </p>
-                </li>
-              ))}
+              {group.items.map((item) => {
+                const packetSummary = describeAttachedPacket(item, availableLibraryPackets);
+                const preview = executionPreviewByLineItemId?.[item.id] ?? null;
+                return (
+                  <li key={item.id} className="px-4 py-3 space-y-2">
+                    <div>
+                      <p className="text-sm text-zinc-100">{item.title}</p>
+                      <p className="mt-1 text-[11px] text-zinc-500 font-mono">
+                        qty {item.quantity} · {item.executionMode}
+                        {item.tierCode ? ` · tier ${item.tierCode}` : ""}
+                        {item.paymentBeforeWork ? " · payment before work" : ""}
+                      </p>
+                      {packetSummary ? (
+                        <p className={`mt-1 text-[11px] ${packetSummary.tone}`}>{packetSummary.label}</p>
+                      ) : null}
+                    </div>
+                    {preview ? <LineItemExecutionPreviewBlock preview={preview} /> : null}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>
@@ -644,26 +1180,264 @@ function ReadOnlyView({
   );
 }
 
+/**
+ * Read-only execution preview rendered under each line item. Triangle Mode
+ * surfaces what runtime tasks each MANIFEST line will compose into so the
+ * operator can verify the packet → stage binding before send. This is a
+ * direct projection of the pinned packet contents — it is not the compose
+ * engine. The same data is what `runComposeFromReadModel` would later
+ * iterate over (compose remains the source of truth at send/freeze).
+ *
+ * Five rendered shapes (one per `LineItemExecutionPreviewDto.kind`):
+ *  - `soldScopeCommercial`: zinc note, commercial-only.
+ *  - `manifestNoPacket`: amber warning matching the picker validator.
+ *  - `manifestLibraryMissing` / `manifestLocalMissing`: red diagnostic.
+ *  - `manifestLibrary` / `manifestLocal`: header (packet name + revision badge
+ *    when library) + a compact list of tasks with stage label and
+ *    requirement-kind tags. Empty packets render the header with a "0 tasks"
+ *    note so the empty state is explicit, not silent.
+ */
+function LineItemExecutionPreviewBlock({ preview }: { preview: LineItemExecutionPreviewDto }) {
+  if (preview.kind === "soldScopeCommercial") {
+    return (
+      <div className="rounded border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-[11px] text-zinc-400">
+        Commercial-only line. Does not create runtime tasks unless attached to a packet.
+      </div>
+    );
+  }
+  if (preview.kind === "manifestNoPacket") {
+    return (
+      <div className="rounded border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-300">
+        No packet pinned · execution preview unavailable. MANIFEST lines compose runtime tasks
+        only when a library packet or a custom packet for this quote is attached.
+      </div>
+    );
+  }
+  if (preview.kind === "manifestLibraryMissing") {
+    return (
+      <div className="rounded border border-red-900/50 bg-red-950/20 px-3 py-2 text-[11px] text-red-300 space-y-1">
+        <p className="font-medium">Pinned library revision not loaded</p>
+        <p className="font-mono opacity-90">revisionId: {preview.scopePacketRevisionId}</p>
+        <p className="opacity-80">
+          The packet may have been archived or moved out of this tenant. Re-pin the line to a
+          visible packet to clear this state.
+        </p>
+      </div>
+    );
+  }
+  if (preview.kind === "manifestLocalMissing") {
+    return (
+      <div className="rounded border border-red-900/50 bg-red-950/20 px-3 py-2 text-[11px] text-red-300 space-y-1">
+        <p className="font-medium">Pinned custom packet not loaded</p>
+        <p className="font-mono opacity-90">quoteLocalPacketId: {preview.quoteLocalPacketId}</p>
+        <p className="opacity-80">
+          The packet may have been deleted from this quote. Re-pin the line to a visible packet to
+          clear this state.
+        </p>
+      </div>
+    );
+  }
+  // manifestLibrary | manifestLocal
+  const headerTitle = preview.packetName;
+  const taskCount = preview.tasks.length;
+  // Subtitle uses display-only labels; the technical packetKey / revision id
+  // remain on the library shape so reviewers can still cross-reference the
+  // catalog row if needed.
+  const headerSubtitle =
+    preview.kind === "manifestLibrary"
+      ? `library packet · ${preview.packetKey} · v${preview.revisionNumber} ${preview.revisionStatus}${preview.revisionIsLatest ? "" : " · not latest"}`
+      : "custom packet for this quote";
+  const headerTone =
+    preview.kind === "manifestLibrary"
+      ? preview.revisionIsLatest
+        ? "border-sky-900/50 bg-sky-950/20"
+        : "border-amber-900/50 bg-amber-950/20"
+      : "border-emerald-900/50 bg-emerald-950/20";
+  return (
+    <div className={`rounded border ${headerTone} px-3 py-2 space-y-2`}>
+      <div className="flex items-baseline justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold text-zinc-100 truncate">{headerTitle}</p>
+          <p className="mt-0.5 text-[10px] text-zinc-400 font-mono truncate">{headerSubtitle}</p>
+        </div>
+        <p className="text-[10px] uppercase tracking-wider text-zinc-400 shrink-0">
+          {taskCount} {taskCount === 1 ? "task" : "tasks"}
+        </p>
+      </div>
+      {taskCount === 0 ? (
+        <p className="text-[10px] text-zinc-500 italic">
+          Packet has no task lines yet — compose will produce zero runtime tasks for this line.
+        </p>
+      ) : (
+        <>
+          <p className="text-[11px] text-zinc-300">
+            {buildExecutionPreviewSummary(preview.tasks)}
+          </p>
+          <ul className="space-y-1.5">
+            {preview.tasks.map((t) => (
+              <ExecutionPreviewTaskItem key={t.lineKey} task={t} />
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ExecutionPreviewTaskItem({
+  task,
+}: {
+  // We intentionally accept the array element type structurally so the
+  // helper module's union doesn't have to expose the per-task shape twice.
+  task: Extract<
+    LineItemExecutionPreviewDto,
+    { kind: "manifestLibrary" | "manifestLocal" }
+  >["tasks"][number];
+}) {
+  const sourceBadgeTone =
+    task.sourceKind === "taskDefinition"
+      ? "border-sky-800/60 bg-sky-950/40 text-sky-300"
+      : "border-zinc-700 bg-zinc-900 text-zinc-300";
+  const sourceBadgeLabel =
+    task.sourceKind === "taskDefinition"
+      ? `TaskDef${task.taskDefinitionRef ? ` · ${task.taskDefinitionRef.taskKey}` : ""}`
+      : "Embedded";
+  return (
+    <li className="rounded bg-zinc-950/60 border border-zinc-800/80 px-2 py-1.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-[11px] font-medium text-zinc-100 truncate min-w-0">{task.title}</p>
+        <span
+          className={`text-[9px] uppercase tracking-wider rounded border px-1 py-0.5 shrink-0 ${sourceBadgeTone}`}
+        >
+          {sourceBadgeLabel}
+        </span>
+      </div>
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-zinc-400">
+        <span className="inline-flex items-baseline gap-1">
+          <span className="opacity-70">Stage:</span>
+          <span className={task.stage.isOnSnapshot ? "text-zinc-200" : "text-amber-300"}>
+            {task.stage.displayLabel}
+          </span>
+          <span className="font-mono opacity-60">({task.stage.nodeId})</span>
+          {!task.stage.isOnSnapshot ? (
+            <span className="text-amber-300 opacity-90">· not on snapshot</span>
+          ) : null}
+        </span>
+        {task.tierCode ? (
+          <span className="inline-flex items-baseline gap-1">
+            <span className="opacity-70">Tier:</span>
+            <span className="font-mono">{task.tierCode}</span>
+          </span>
+        ) : null}
+      </div>
+      {task.requirementKinds.length > 0 ? (
+        <div className="mt-1 flex flex-wrap items-center gap-1">
+          <span className="text-[9px] uppercase tracking-wider text-zinc-500">requires:</span>
+          {task.requirementKinds.map((k) => (
+            <span
+              key={k}
+              className="rounded border border-zinc-700 bg-zinc-900/80 px-1 py-px text-[9px] text-zinc-300"
+            >
+              {k}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-1 text-[9px] text-zinc-600 italic">no authored completion requirements</p>
+      )}
+    </li>
+  );
+}
+
+/* ---------------- Pure helpers ---------------- */
+
+/**
+ * Resolves a one-line packet attachment summary for a line item, suitable for
+ * inline display on `LineItemRow` / `ReadOnlyView`. Returns null when there is
+ * nothing meaningful to display (SOLD_SCOPE with no pin — the expected state).
+ *
+ * For MANIFEST lines that have no pin (an invariant violation that
+ * pre-Triangle-Mode data may carry), we return an amber-toned warning so the
+ * inconsistency is visible until the operator re-saves the row.
+ */
+function describeAttachedPacket(
+  item: LineItem,
+  availableLibraryPackets: LibraryPacketOption[],
+): { label: string; tone: string } | null {
+  if (item.scopePacketRevisionId && item.scopeRevision) {
+    const parent = availableLibraryPackets.find(
+      (p) => p.id === item.scopeRevision!.scopePacketId,
+    );
+    const isLatest =
+      parent != null && parent.latestPublishedRevisionId === item.scopePacketRevisionId;
+    const namePart = parent ? `${parent.displayName} (${parent.packetKey})` : "Library packet";
+    return {
+      label: isLatest
+        ? `Library packet: ${namePart}`
+        : `Library packet: ${namePart} · saved revision (not latest)`,
+      tone: isLatest ? "text-sky-300" : "text-amber-400",
+    };
+  }
+  if (item.quoteLocalPacketId && item.quoteLocalPacket) {
+    return {
+      label: `Custom packet for this quote: ${item.quoteLocalPacket.displayName}`,
+      tone: "text-emerald-300",
+    };
+  }
+  if (item.executionMode === "MANIFEST") {
+    return {
+      label:
+        "No packet attached — MANIFEST lines require one packet pin: choose a library packet or a custom packet for this quote (saving will be rejected).",
+      tone: "text-amber-400",
+    };
+  }
+  return null;
+}
+
 /* ---------------- Validation ---------------- */
 
 type ValidatedFields =
   | {
       ok: true;
       title: string;
+      /**
+       * Trimmed description, or `null` when the user left it blank. The
+       * server stores the column as nullable; mirroring that here means we
+       * never emit empty strings the server would just round-trip back as
+       * `null` on the next read.
+       */
+      description: string | null;
       quantity: number;
       unitPriceCents: number | null;
       paymentBeforeWork: boolean;
       paymentGateTitleOverride: string | null;
+      scopePacketRevisionId: string | null;
+      quoteLocalPacketId: string | null;
     }
   | { ok: false; message: string };
 
 const MAX_GATE_TITLE_OVERRIDE = 120;
+/**
+ * Mirror of `MAX_DESCRIPTION` in
+ * `src/server/slice1/mutations/quote-line-item-mutations.ts`. Kept in sync
+ * by hand — an explicit re-export from the server module would drag a
+ * server-only file into the client bundle.
+ */
+const MAX_DESCRIPTION = 4000;
 
 function validateFields(fields: FormFields): ValidatedFields {
   const title = fields.title.trim();
   if (!title) {
     return { ok: false, message: "Title is required." };
   }
+  const descTrimmed = fields.description.trim();
+  if (descTrimmed.length > MAX_DESCRIPTION) {
+    return {
+      ok: false,
+      message: `Description must be at most ${MAX_DESCRIPTION} characters.`,
+    };
+  }
+  const description: string | null = descTrimmed.length > 0 ? descTrimmed : null;
   const quantity = Number.parseInt(fields.quantity, 10);
   if (!Number.isFinite(quantity) || !Number.isInteger(quantity) || quantity < 0) {
     return { ok: false, message: "Quantity must be a non-negative integer." };
@@ -685,12 +1459,44 @@ function validateFields(fields: FormFields): ValidatedFields {
   }
   const paymentGateTitleOverride = paymentBeforeWork ? (ov.length > 0 ? ov : null) : null;
 
+  // Packet-pin validation mirrors `assertManifestScopePinXor` so we surface
+  // the same rule client-side and avoid a server round-trip on obvious
+  // misconfigurations. The server is still authoritative.
+  let scopePacketRevisionId: string | null = null;
+  let quoteLocalPacketId: string | null = null;
+  if (fields.executionMode === "MANIFEST") {
+    if (fields.packetSource === "none") {
+      return {
+        ok: false,
+        message:
+          "MANIFEST line items must pin exactly one packet — either a library packet or a custom packet for this quote. Pick a packet source above.",
+      };
+    }
+    if (fields.packetSource === "library") {
+      const id = fields.scopePacketRevisionId.trim();
+      if (!id) {
+        return { ok: false, message: "Choose a library packet to pin." };
+      }
+      scopePacketRevisionId = id;
+    } else {
+      const id = fields.quoteLocalPacketId.trim();
+      if (!id) {
+        return { ok: false, message: "Choose a custom packet to pin." };
+      }
+      quoteLocalPacketId = id;
+    }
+  }
+  // SOLD_SCOPE: both stay null; the server invariant requires neither.
+
   return {
     ok: true,
     title,
+    description,
     quantity,
     unitPriceCents,
     paymentBeforeWork,
     paymentGateTitleOverride,
+    scopePacketRevisionId,
+    quoteLocalPacketId,
   };
 }

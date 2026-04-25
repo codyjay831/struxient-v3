@@ -136,7 +136,24 @@ export type Slice1InvariantCode =
   | "HOLD_NOT_FOUND"
   | "HOLD_RELEASE_NOT_ACTIVE"
   | "HOLD_INVALID_REASON"
-  | "HOLD_RUNTIME_TASK_NOT_ON_JOB";
+  | "HOLD_RUNTIME_TASK_NOT_ON_JOB"
+  // Triangle Mode — Phase 2 (LineItemPreset / Saved Line Items, Slice 3 write API).
+  // Preset is a tenant-scoped commercial-defaults catalog; it never participates in
+  // execution. The MANIFEST/SOLD_SCOPE invariant ("MANIFEST requires packet,
+  // SOLD_SCOPE forbids packet") is the canonical rule for this entity.
+  // Canon refs: docs/triangle-mode/phase-2-saved-line-items.md (planning doc).
+  | "LINE_ITEM_PRESET_NOT_FOUND"
+  | "LINE_ITEM_PRESET_DISPLAY_NAME_INVALID"
+  | "LINE_ITEM_PRESET_KEY_INVALID"
+  | "LINE_ITEM_PRESET_KEY_TAKEN"
+  | "LINE_ITEM_PRESET_TITLE_INVALID"
+  | "LINE_ITEM_PRESET_DESCRIPTION_INVALID"
+  | "LINE_ITEM_PRESET_QUANTITY_INVALID"
+  | "LINE_ITEM_PRESET_PRICE_INVALID"
+  | "LINE_ITEM_PRESET_GATE_TITLE_TOO_LONG"
+  | "LINE_ITEM_PRESET_PACKET_TENANT_MISMATCH"
+  | "LINE_ITEM_PRESET_MANIFEST_REQUIRES_PACKET"
+  | "LINE_ITEM_PRESET_SOLD_SCOPE_FORBIDS_PACKET";
 
 export class InvariantViolationError extends Error {
   readonly code: Slice1InvariantCode;

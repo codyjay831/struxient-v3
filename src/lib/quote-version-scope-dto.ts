@@ -22,6 +22,13 @@ export type QuoteVersionScopeApiDto = {
   orderedLineItems: Array<{
     id: string;
     title: string;
+    /**
+     * Free-form commercial description shown on the proposal. May be null
+     * (column is nullable on `QuoteLineItem`). Surfaced here so the scope
+     * editor can hydrate the existing-row form (Triangle Mode — Phase 2,
+     * Slice 2) without a second round-trip. NOT an execution signal.
+     */
+    description: string | null;
     proposalGroupId: string;
     sortOrder: number;
     executionMode: string;
@@ -69,6 +76,7 @@ export function toQuoteVersionScopeApiDto(model: QuoteVersionScopeReadModel): Qu
     orderedLineItems: model.orderedLineItems.map((line) => ({
       id: line.id,
       title: line.title,
+      description: line.description ?? null,
       proposalGroupId: line.proposalGroupId,
       sortOrder: line.sortOrder,
       executionMode: line.executionMode,

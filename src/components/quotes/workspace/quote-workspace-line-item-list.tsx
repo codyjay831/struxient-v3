@@ -70,7 +70,7 @@ export function QuoteWorkspaceLineItemList({ versionNumber, items }: Props) {
                         : "border border-zinc-700/60 bg-zinc-800/30 text-zinc-400"
                     }`}
                   >
-                    {item.isLibraryBacked ? "Library" : "Local"}
+                    {item.isLibraryBacked ? "Library packet" : "Custom packet"}
                   </span>
                 </td>
               </tr>

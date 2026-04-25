@@ -271,6 +271,7 @@ model Tenant {
   jobHandoffs                JobHandoff[]
   holds                      Hold[]
   leads                      Lead[]
+  lineItemPresets            LineItemPreset[]
 }
 
 model User {
@@ -635,8 +636,9 @@ model ScopePacket {
   packetKey   String
   displayName String
 
-  tenant    Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  revisions ScopePacketRevision[]
+  tenant                Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  revisions             ScopePacketRevision[]
+  linkedLineItemPresets LineItemPreset[]
 
   @@unique([tenantId, packetKey])
   @@index([tenantId])
@@ -683,6 +685,63 @@ model PacketTaskLine {
 
   @@unique([scopePacketRevisionId, lineKey])
   @@index([scopePacketRevisionId])
+}
+
+/// Tenant-scoped commercial preset for a `QuoteLineItem` (Phase 2 — Saved
+/// Line Items). Holds **commercial defaults only** (title, quantity, price,
+/// payment flags, optional packet pointer); never participates in compose,
+/// activation, RuntimeTask, or any execution path.
+///
+/// A preset MAY reference a `ScopePacket` (parent — never a revision). The
+/// current `latestPublishedRevisionId` is resolved at selection time by the
+/// scope editor (future slice), not stored on the preset, so an evolving
+/// catalog never strands a preset on an old revision. Canon: docs/canon/05-packet-canon.md
+/// ("PUBLISHED revision discipline for pickers").
+///
+/// Mode/packet correlation (server-enforced in a future write slice; the
+/// schema permits both shapes so reads remain trivially safe):
+///   - `defaultExecutionMode = MANIFEST`  ⇒ `defaultScopePacketId` MUST be set.
+///   - `defaultExecutionMode = SOLD_SCOPE` ⇒ `defaultScopePacketId` MUST be null.
+///   - `defaultScopePacketId` set        ⇒ `defaultExecutionMode` MUST be MANIFEST.
+/// There is **no** scenario where a preset is `SOLD_SCOPE` *and* references a
+/// packet. `defaultExecutionMode` intentionally has no `@default` — the author
+/// (or admin form) must always pick one explicitly.
+///
+/// `onDelete: SetNull` on the packet pointer keeps presets surviving a catalog
+/// cleanup; the future picker hydrates the row, sees `defaultScopePacket = null`,
+/// and surfaces a "packet missing — re-link" affordance instead of crashing.
+model LineItemPreset {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// Optional tenant-unique slug for stable cross-system reference (e.g.
+  /// "ev-charger-l2-install"). Postgres UNIQUE allows multiple NULLs, which
+  /// is the desired behaviour: most presets are operator-curated UX sugar
+  /// with no integration story and skip the key entirely.
+  presetKey String?
+
+  /// Operator-facing label shown in the picker. Always required.
+  displayName String
+
+  defaultTitle                    String?
+  defaultDescription              String?                    @db.Text
+  defaultQuantity                 Int?
+  defaultUnitPriceCents           Int?
+  defaultExecutionMode            QuoteLineItemExecutionMode
+  defaultPaymentBeforeWork        Boolean?
+  defaultPaymentGateTitleOverride String?
+
+  defaultScopePacketId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant             Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  defaultScopePacket ScopePacket? @relation(fields: [defaultScopePacketId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, presetKey])
+  @@index([tenantId])
+  @@index([defaultScopePacketId])
 }
 
 model WorkflowTemplate {
@@ -932,30 +991,30 @@ model QuoteVersion {
   signedAt                     DateTime?
   signedById                   String?
 
-  quote                 Quote            @relation(fields: [quoteId], references: [id], onDelete: Restrict)
-  pinnedWorkflowVersion WorkflowVersion? @relation(fields: [pinnedWorkflowVersionId], references: [id], onDelete: Restrict)
-  createdBy             User             @relation("QuoteVersionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  sentBy                User?            @relation("QuoteVersionSentBy", fields: [sentById], references: [id], onDelete: Restrict)
-  signedBy              User?            @relation("QuoteVersionSignedBy", fields: [signedById], references: [id], onDelete: SetNull)
-  voidedAt              DateTime?
-  voidedById            String?
-  voidReason            String?
-  voidedBy              User?            @relation("QuoteVersionVoidedBy", fields: [voidedById], references: [id], onDelete: SetNull)
+  quote                      Quote            @relation(fields: [quoteId], references: [id], onDelete: Restrict)
+  pinnedWorkflowVersion      WorkflowVersion? @relation(fields: [pinnedWorkflowVersionId], references: [id], onDelete: Restrict)
+  createdBy                  User             @relation("QuoteVersionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  sentBy                     User?            @relation("QuoteVersionSentBy", fields: [sentById], references: [id], onDelete: Restrict)
+  signedBy                   User?            @relation("QuoteVersionSignedBy", fields: [signedById], references: [id], onDelete: SetNull)
+  voidedAt                   DateTime?
+  voidedById                 String?
+  voidReason                 String?
+  voidedBy                   User?            @relation("QuoteVersionVoidedBy", fields: [voidedById], references: [id], onDelete: SetNull)
   /// Set when status becomes DECLINED via customer portal (Epic 13 + 54).
-  portalDeclinedAt      DateTime?
-  portalDeclineReason   String?          @db.Text
+  portalDeclinedAt           DateTime?
+  portalDeclineReason        String?          @db.Text
   /// Customer portal: non-terminal change request while version remains SENT (Epic 13 + 54).
-  portalChangeRequestedAt   DateTime?
-  portalChangeRequestMessage  String?          @db.Text
-  proposalGroups        ProposalGroup[]
-  quoteLineItems        QuoteLineItem[]
-  auditEvents           AuditEvent[]
-  quoteSignature        QuoteSignature?
-  flow                  Flow?
-  activation            Activation?
-  runtimeTasks          RuntimeTask[]
-  paymentGates          PaymentGate[]
-  changeOrderDrafts     ChangeOrder[]    @relation("ChangeOrderDraftQuoteVersion")
+  portalChangeRequestedAt    DateTime?
+  portalChangeRequestMessage String?          @db.Text
+  proposalGroups             ProposalGroup[]
+  quoteLineItems             QuoteLineItem[]
+  auditEvents                AuditEvent[]
+  quoteSignature             QuoteSignature?
+  flow                       Flow?
+  activation                 Activation?
+  runtimeTasks               RuntimeTask[]
+  paymentGates               PaymentGate[]
+  changeOrderDrafts          ChangeOrder[]    @relation("ChangeOrderDraftQuoteVersion")
 
   preJobTasks           PreJobTask[]
   quoteLocalPackets     QuoteLocalPacket[]

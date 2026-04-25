@@ -53,11 +53,11 @@ export function QuoteWorkspaceLineItemSummary({ versionNumber, summary }: Props)
           <p className="mt-1 text-xl font-semibold text-emerald-500/90">{formatCurrency(totalLineItemCents)}</p>
         </div>
         <div>
-          <p className="text-[10px] font-medium text-zinc-500 uppercase tracking-tight">Library scope</p>
+          <p className="text-[10px] font-medium text-zinc-500 uppercase tracking-tight">Library packets</p>
           <p className="mt-1 text-sm font-medium text-zinc-300">{libraryLineItemCount} items</p>
         </div>
         <div>
-          <p className="text-[10px] font-medium text-zinc-500 uppercase tracking-tight">Local scope</p>
+          <p className="text-[10px] font-medium text-zinc-500 uppercase tracking-tight">Custom packets</p>
           <p className="mt-1 text-sm font-medium text-zinc-300">{localLineItemCount} items</p>
         </div>
       </div>
@@ -67,7 +67,7 @@ export function QuoteWorkspaceLineItemSummary({ versionNumber, summary }: Props)
         {libraryLineItemCount > 0 ? (
           <p>Standardized library packets provide {((libraryLineItemCount / lineItemCount) * 100).toFixed(0)}% of current scope.</p>
         ) : (
-          <p>This version uses 100% quote-local scope.</p>
+          <p>This version uses 100% custom packets authored on this quote.</p>
         )}
       </div>
     </section>

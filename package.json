@@ -13,6 +13,7 @@
     "prisma:generate": "prisma generate",
     "db:seed": "prisma db seed",
     "db:seed:activated": "tsx prisma/seed-activated-path.ts",
+    "db:seed:demo": "tsx prisma/seed-demo-scenarios.ts",
     "typecheck": "tsc --noEmit",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "ci:wait-for-app": "node scripts/ci/wait-for-http.mjs",

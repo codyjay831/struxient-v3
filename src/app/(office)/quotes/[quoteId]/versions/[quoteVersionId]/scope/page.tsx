@@ -186,9 +186,9 @@ export default async function OfficeFrozenVersionScopePage({ params }: PageProps
                             kind={item.scopePacketRevisionId ? "library" : "local"}
                             label={
                               item.scopePacketRevisionId
-                                ? "Library"
+                                ? "Library packet"
                                 : item.quoteLocalPacket
-                                  ? "Local"
+                                  ? "Custom packet"
                                   : "—"
                             }
                           />
