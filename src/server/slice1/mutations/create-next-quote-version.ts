@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
+import { ensureCanonicalWorkflowVersionInTransaction } from "./ensure-canonical-workflow-version";
 
 /**
  * Creates the next `QuoteVersion` (always `DRAFT`) for a tenant-owned quote by cloning **draft-authoring**
@@ -116,13 +117,26 @@ export async function createNextQuoteVersionForTenant(
 
       const nextVersionNumber = maxNum + 1;
 
+      // Path B / Triangle Mode: prefer to inherit the source version's pin
+      // (so a re-quote keeps the same proposed flow as the parent), but if
+      // the source has none — legacy data created before auto-pinning — fall
+      // back to the tenant's canonical workflow rather than minting an
+      // unpinned draft. We never silently use a non-canonical workflow.
+      const inheritedPinId =
+        source.pinnedWorkflowVersionId ??
+        (
+          await ensureCanonicalWorkflowVersionInTransaction(tx, {
+            tenantId: params.tenantId,
+          })
+        ).workflowVersionId;
+
       const newVersion = await tx.quoteVersion.create({
         data: {
           quoteId: quote.id,
           versionNumber: nextVersionNumber,
           status: "DRAFT",
           title: source.title,
-          pinnedWorkflowVersionId: source.pinnedWorkflowVersionId,
+          pinnedWorkflowVersionId: inheritedPinId,
           createdById: actor.id,
         },
         select: { id: true, versionNumber: true },

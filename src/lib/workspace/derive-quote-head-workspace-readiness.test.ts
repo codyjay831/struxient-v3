@@ -33,7 +33,7 @@ describe("deriveQuoteHeadWorkspaceReadiness", () => {
     ).toBe(true);
   });
 
-  it("draft with scope but no pin recommends pinning the process template (step 2)", () => {
+  it("draft with scope but unbound execution flow surfaces a system condition at step 2", () => {
     const r = deriveQuoteHeadWorkspaceReadiness(
       base({ status: "DRAFT", lineItemCount: 2, hasPinnedWorkflow: false }),
     );
@@ -43,12 +43,18 @@ describe("deriveQuoteHeadWorkspaceReadiness", () => {
     expect(r.checklist.find((c) => c.id === "scope")?.state).toBe("yes");
     const pin = r.checklist.find((c) => c.id === "pin");
     expect(pin?.state).toBe("no");
-    expect(pin?.label.toLowerCase()).toContain("process template");
-    expect(r.likelyNextSteps.some((s) => s.includes("PATCH"))).toBe(true);
+    // Path B: the row is an "execution flow bound" system signal, not a
+    // user-facing "pin a process template" instruction.
+    expect(pin?.label.toLowerCase()).toContain("execution flow");
+    expect(pin?.label.toLowerCase()).not.toContain("process template");
+    // Guidance must NOT mention manual PATCH or template authoring under
+    // normal user-facing copy. It points at internal/admin remediation.
+    expect(r.likelyNextSteps.some((s) => s.toLowerCase().includes("internal"))).toBe(true);
+    expect(r.likelyNextSteps.every((s) => !s.includes("PATCH"))).toBe(true);
     expect(r.honestyNotes.some((s) => s.includes("compose-preview"))).toBe(true);
   });
 
-  it("draft with scope and pin points at compose then send (step 3)", () => {
+  it("draft with scope and bound flow points at send (step 3) and offers a review prompt", () => {
     const r = deriveQuoteHeadWorkspaceReadiness(
       base({ status: "DRAFT", lineItemCount: 2, hasPinnedWorkflow: true }),
     );
@@ -57,6 +63,32 @@ describe("deriveQuoteHeadWorkspaceReadiness", () => {
     expect(r.recommendedStepIndex).toBe(3);
     expect(r.checklist.find((c) => c.id === "pin")?.state).toBe("yes");
     expect(r.likelyNextSteps.some((s) => s.toLowerCase().includes("compose preview"))).toBe(true);
+    // Path B: the recommended next step set should cue the operator to
+    // optionally review the proposed execution flow before sending.
+    expect(
+      r.likelyNextSteps.some((s) => s.toLowerCase().includes("proposed execution flow")),
+    ).toBe(true);
+  });
+
+  it("draft with scope, bound flow, and packet-stage warnings recommends reviewing the flow (step 2)", () => {
+    const r = deriveQuoteHeadWorkspaceReadiness(
+      base({
+        status: "DRAFT",
+        lineItemCount: 2,
+        hasPinnedWorkflow: true,
+        packetStageReadiness: {
+          state: "no",
+          note: "1 of 2 field-work line(s) need attention.",
+        },
+      }),
+    );
+    expect(r.kind).toBe("head");
+    if (r.kind !== "head") return;
+    expect(r.recommendedStepIndex).toBe(2);
+    expect(
+      r.likelyNextSteps.some((s) => s.toLowerCase().includes("proposed execution flow")),
+    ).toBe(true);
+    expect(r.likelyNextSteps.some((s) => s.toLowerCase().includes("line-item"))).toBe(true);
   });
 
   it("sent suggests sign and reads", () => {
@@ -103,18 +135,23 @@ describe("deriveQuoteHeadWorkspaceReadiness", () => {
     expect(r.likelyNextSteps.some((s) => s.toLowerCase().includes("runtime"))).toBe(true);
   });
 
-  it("honesty notes teach scope-first canon", () => {
+  it("honesty notes teach scope-first canon under Path B (no skeleton/pin language)", () => {
     const r = deriveQuoteHeadWorkspaceReadiness(base({ status: "DRAFT", lineItemCount: 2, hasPinnedWorkflow: true }));
     expect(r.kind).toBe("head");
     if (r.kind !== "head") return;
+    // The new canon copy emphasizes that line items + task packets define
+    // the sold work and that stages organize it. Skeleton/process-template
+    // language is gone from user-facing surfaces under Path B.
     expect(
       r.honestyNotes.some(
         (s) =>
           s.toLowerCase().includes("line items") &&
-          s.toLowerCase().includes("process template") &&
-          s.toLowerCase().includes("skeleton"),
+          s.toLowerCase().includes("task packets") &&
+          s.toLowerCase().includes("stages"),
       ),
     ).toBe(true);
+    expect(r.honestyNotes.every((s) => !s.toLowerCase().includes("skeleton"))).toBe(true);
+    expect(r.honestyNotes.every((s) => !s.toLowerCase().includes("process template"))).toBe(true);
   });
 
   it("void head: no recommended step and void honesty note", () => {

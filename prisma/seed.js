@@ -131,6 +131,53 @@ async function main() {
     },
   });
 
+  // Path B / Triangle Mode: also seed the tenant's canonical workflow
+  // (templateKey: "canonical-stages") whose nodes are the six canonical
+  // execution stages. New quote versions auto-pin this workflow so the
+  // user never has to pick a "process template" themselves. The runtime
+  // ensure-helper builds the same shape; seeding it here means a fresh
+  // dev DB never has to lazy-create it on the first quote.
+  const CANONICAL_NODES = [
+    { id: "pre-work", displayName: "Pre-work", tasks: [] },
+    { id: "design", displayName: "Design", tasks: [] },
+    { id: "permitting", displayName: "Permitting", tasks: [] },
+    { id: "install", displayName: "Install", tasks: [] },
+    { id: "final-inspection", displayName: "Final Inspection", tasks: [] },
+    { id: "closeout", displayName: "Closeout", tasks: [] },
+  ];
+  const canonicalTemplateA = await prisma.workflowTemplate.create({
+    data: {
+      tenantId: tenant.id,
+      templateKey: "canonical-stages",
+      displayName: "Standard Execution",
+    },
+  });
+  await prisma.workflowVersion.create({
+    data: {
+      workflowTemplateId: canonicalTemplateA.id,
+      versionNumber: 1,
+      status: "PUBLISHED",
+      publishedAt: new Date(),
+      snapshotJson: { nodes: CANONICAL_NODES },
+    },
+  });
+  const canonicalTemplateB = await prisma.workflowTemplate.create({
+    data: {
+      tenantId: tenantOther.id,
+      templateKey: "canonical-stages",
+      displayName: "Standard Execution",
+    },
+  });
+  await prisma.workflowVersion.create({
+    data: {
+      workflowTemplateId: canonicalTemplateB.id,
+      versionNumber: 1,
+      status: "PUBLISHED",
+      publishedAt: new Date(),
+      snapshotJson: { nodes: CANONICAL_NODES },
+    },
+  });
+
   const quote = await prisma.quote.create({
     data: {
       tenantId: tenant.id,

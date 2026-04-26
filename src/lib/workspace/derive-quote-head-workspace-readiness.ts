@@ -2,13 +2,22 @@
  * Head-version workspace readiness: pure derivation from workspace/history fields only.
  * Does not call scope/lifecycle/freeze APIs — avoids duplicate truth and hidden drift.
  *
- * Step model (canon-aligned, see `docs/canon/03-quote-to-execution-canon.md` and
- * `docs/canon/06-node-and-flowspec-canon.md`):
- *   1. Review scope & line items   — line items + packets define the sold work
- *   2. Pin process template        — node/stage skeleton the work runs through
- *   3. Prepare & send proposal     — compose + freeze
- *   4. Record signature            — customer acceptance
- *   5. Activate execution          — instantiate runtime tasks on pinned template
+ * Step model (Path B / Triangle Mode — see `docs/canon/03-quote-to-execution-canon.md`):
+ *   1. Build the quote              — author line items (line items + packets define the sold work)
+ *   2. Review proposed execution flow — verify stages and tasks before send
+ *   3. Send proposal                — compose + freeze
+ *   4. Record signature             — customer acceptance
+ *   5. Activate execution           — instantiate runtime tasks from frozen package
+ *
+ * Implementation notes:
+ *   - The canonical execution-stages workflow is auto-pinned at quote-version
+ *     creation (`ensureCanonicalWorkflowVersionInTransaction`). The
+ *     "execution flow bound" check below should pass for any quote created
+ *     after the Path B rollout; an unbound head signals legacy data or an
+ *     internal failure rather than user authoring work.
+ *   - User-facing copy here MUST NOT mention "pin a process template",
+ *     "node skeleton", "workflow skeleton", or `targetNodeKey`. Those are
+ *     internal implementation details under Path B.
  */
 
 /** Subset of `QuoteVersionHistoryItemDto` (+ derived line item count) — keep in sync manually. */
@@ -73,10 +82,15 @@ function checklistItem(
 /**
  * Derives a compact readiness view for the **head** (newest) version only.
  *
- * Recommendation order is canon-faithful: scope authoring is the primary authoring step,
- * the process-template pin is a structural prerequisite for compose, and send/sign/activate
- * follow. Send "readiness" for drafts is intentionally partial — compose errors / empty plan
- * are only knowable via compose-preview + send-time compose.
+ * Recommendation order under Path B: scope authoring is the primary user
+ * step, then the operator reviews the proposed execution flow generated
+ * from line items + task packets, then send/sign/activate. The execution-
+ * stages workflow is auto-pinned at creation, so the "execution flow
+ * bound" check below is normally a system-level signal rather than user
+ * authoring guidance.
+ *
+ * Send "readiness" for drafts is intentionally partial — compose errors /
+ * empty plan are only knowable via compose-preview + send-time compose.
  */
 export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput | null): QuoteHeadWorkspaceReadiness {
   if (!head) {
@@ -93,23 +107,23 @@ export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput 
       hasScope ? "yes" : "no",
       status === "DRAFT"
         ? hasScope
-          ? `${String(head.lineItemCount)} line item(s) on this draft. Line items + packets define the sold work.`
-          : "No line items yet — author scope before pinning a process template or sending."
+          ? `${String(head.lineItemCount)} line item(s) on this draft. Line items and their task packets define the sold work.`
+          : "No line items yet — add line items in step 1 before reviewing the execution flow or sending."
         : hasScope
           ? "Frozen scope from this version is what activation will instantiate."
           : "Unusual for sent/signed — no line items recorded on this version.",
     ),
     checklistItem(
       "pin",
-      "Process template pinned",
+      "Execution flow bound",
       head.hasPinnedWorkflow ? "yes" : "no",
       status === "DRAFT"
         ? head.hasPinnedWorkflow
-          ? "Required before send; the template provides the node/stage skeleton compose places line items onto."
-          : "Missing — pin a published process template so packets can be composed onto its nodes."
+          ? "The proposed execution flow is bound to this draft. Review it in step 2 before sending."
+          : "Internal: execution flow not bound. New quotes auto-bind on creation; an unbound head signals legacy data — contact support or use the admin override."
         : status === "SENT" || status === "SIGNED" || status === "DECLINED"
           ? head.hasPinnedWorkflow
-            ? "Expected after a normal send (snapshots are tied to a process template version)."
+            ? "Expected after a normal send — the frozen snapshot is bound to the execution flow version."
             : "Unusual for sent/signed — verify data or history."
           : undefined,
     ),
@@ -162,7 +176,7 @@ export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput 
   let recommendedStepIndex: number | null = null;
   const honestyNotes: string[] = [
     "This summary uses workspace/history fields only. It does not embed scope, lifecycle, or freeze JSON.",
-    "Line items + packets define the sold work. The process template only defines the node/stage skeleton.",
+    "Line items and their task packets define the sold work. Stages organize the work; task packets define the actual tasks, order, blockers, and proof requirements.",
   ];
 
   if (status === "DRAFT") {
@@ -171,26 +185,41 @@ export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput 
     );
 
     if (!hasScope) {
-      recommendedStepIndex = 1; // Review scope & line items
+      recommendedStepIndex = 1; // Build the quote
       likelyNextSteps.push(
-        "Add line items / scope packets to this draft — line items are the primary scope authoring object.",
+        "Add line items to this draft — line items are the primary scope authoring object. Field-work lines also need a task packet attached.",
       );
       likelyNextSteps.push(
-        "Then pin a published process template (the node/stage skeleton compose places work onto).",
+        "Then review the proposed execution flow (step 2) before sending.",
       );
     } else if (!head.hasPinnedWorkflow) {
-      recommendedStepIndex = 2; // Pin process template
+      recommendedStepIndex = 2; // Review proposed execution flow (system-bind issue surfaces here)
       likelyNextSteps.push(
-        "Pin a published process template: PATCH /api/quote-versions/{id} with pinnedWorkflowVersionId (office_mutate). The template defines the node/stage skeleton — your line items / packets supply the work.",
+        "Internal: this draft is not bound to an execution flow version. New quotes auto-bind on creation, so this row indicates legacy data or an internal failure. Contact support or use the admin override in technical details.",
+      );
+    } else if (head.packetStageReadiness != null && head.packetStageReadiness.state === "no") {
+      // Scope authored and flow bound, but the per-line execution preview
+      // surfaced field-work lines that need attention (missing packet,
+      // off-stage assignment, etc). The operator needs to revisit step 2 /
+      // the line-item editor before sending — sending now would freeze a
+      // plan with known stage placement issues.
+      recommendedStepIndex = 2;
+      likelyNextSteps.push(
+        "Review the proposed execution flow (step 2) — one or more field-work lines need attention before sending.",
       );
       likelyNextSteps.push(
-        "Then run compose preview and send — packets are composed onto the pinned template's nodes.",
+        "Open the line-item editor to attach a task packet or move tasks back to a canonical stage.",
       );
     } else {
-      recommendedStepIndex = 3; // Prepare & send proposal
-      likelyNextSteps.push("Validate scope: open scope dev page or GET …/scope.");
+      // Happy path under Path B: scope is authored, the canonical execution
+      // flow is auto-pinned, and there are no per-line warnings. The
+      // operator can review step 2 if they want and then send (step 3).
+      recommendedStepIndex = 3;
       likelyNextSteps.push(
-        "When ready: run compose preview, then send (freeze) using the compose staleness token — see panel below.",
+        "Review the proposed execution flow (step 2) if you want to verify stages and tasks before sending.",
+      );
+      likelyNextSteps.push(
+        "When ready: run compose preview, then send (freeze) using the compose staleness token — see step 3.",
       );
     }
   } else if (status === "SENT") {

@@ -85,8 +85,9 @@ export function ProcessTemplatesCreateForm({ canOfficeMutate }: Props) {
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-6">
       <h2 className="text-sm font-semibold text-zinc-200 uppercase tracking-wide">New process template</h2>
       <p className="text-xs text-zinc-500 mt-1 mb-4">
-        Defines the node skeleton quotes pin for compose. This is catalog-style authoring — not a graph
-        designer yet. Use a stable <span className="font-mono text-zinc-400">templateKey</span> (unique per tenant).
+        Admin-only authoring. New quotes auto-bind to the canonical execution-stages workflow; this
+        form is for migrations and admin overrides. Use a stable{" "}
+        <span className="font-mono text-zinc-400">templateKey</span> (unique per tenant).
       </p>
       <form onSubmit={onSubmit} className="space-y-4 max-w-md">
         <div>

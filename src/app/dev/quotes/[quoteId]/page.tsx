@@ -2,6 +2,15 @@ import Link from "next/link";
 import { PrismaClientInitializationError } from "@prisma/client/runtime/library";
 import { getPrisma } from "@/server/db/prisma";
 import { getQuoteWorkspaceForTenant } from "@/server/slice1/reads/quote-workspace-reads";
+import { getQuoteVersionScopeReadModel } from "@/server/slice1/reads/quote-version-scope";
+import { listQuoteLocalPacketsForVersion } from "@/server/slice1/reads/quote-local-packet-reads";
+import { listScopePacketsForTenant } from "@/server/slice1/reads/scope-packet-catalog-reads";
+import { loadLineItemExecutionPreviewsForTenant } from "@/server/slice1/reads/line-item-execution-preview-support";
+import { SCOPE_PACKET_LIST_LIMIT_DEFAULTS } from "@/lib/scope-packet-catalog-summary";
+import {
+  buildProposedExecutionFlow,
+  type ProposedExecutionFlow,
+} from "@/lib/quote-proposed-execution-flow";
 import {
   principalHasCapability,
   tryGetApiPrincipal,
@@ -24,6 +33,7 @@ import { QuoteWorkspaceLineItemSummary } from "@/components/quotes/workspace/quo
 import { QuoteWorkspaceLineItemList } from "@/components/quotes/workspace/quote-workspace-line-item-list";
 import { QuoteWorkspaceHeadReadiness } from "@/components/quotes/workspace/quote-workspace-head-readiness";
 import { QuoteWorkspacePinWorkflow } from "@/components/quotes/workspace/quote-workspace-pin-workflow";
+import { QuoteWorkspaceProposedExecutionFlow } from "@/components/quotes/workspace/quote-workspace-proposed-execution-flow";
 import { QuoteWorkspaceComposeSendPanel } from "@/components/quotes/workspace/quote-workspace-compose-send-panel";
 import { QuoteWorkspaceSignSent } from "@/components/quotes/workspace/quote-workspace-sign-sent";
 import { QuoteWorkspaceActivateSigned } from "@/components/quotes/workspace/quote-workspace-activate-signed";
@@ -102,6 +112,55 @@ export default async function DevQuoteWorkspacePage({ params }: PageProps) {
 
   const head = ws.versions[0] ?? null;
   const headLineItemCount = head?.lineItemCount ?? ws.headLineItemSummary?.lineItemCount ?? 0;
+  const headIsEditableDraft = head?.status === "DRAFT";
+
+  // Mirror the office page: load the proposed execution flow when the head
+  // is an editable DRAFT with line items. Pure aggregation on top of the
+  // existing per-line preview support — same loader the scope editor uses.
+  let proposedExecutionFlow: ProposedExecutionFlow | null = null;
+  if (headIsEditableDraft && head != null && headLineItemCount > 0) {
+    const prisma = getPrisma();
+    const scopeModel = await getQuoteVersionScopeReadModel(prisma, {
+      tenantId: auth.principal.tenantId,
+      quoteVersionId: head.id,
+    });
+    if (scopeModel) {
+      const localPackets = await listQuoteLocalPacketsForVersion(prisma, {
+        tenantId: auth.principal.tenantId,
+        quoteVersionId: head.id,
+      });
+      const libraryPackets = await listScopePacketsForTenant(prisma, {
+        tenantId: auth.principal.tenantId,
+        limit: SCOPE_PACKET_LIST_LIMIT_DEFAULTS.max,
+      });
+      const support = await loadLineItemExecutionPreviewsForTenant(prisma, {
+        tenantId: auth.principal.tenantId,
+        pinnedWorkflowVersionId: scopeModel.pinnedWorkflowVersionId,
+        lineItems: scopeModel.orderedLineItems.map((line) => ({
+          id: line.id,
+          executionMode: line.executionMode,
+          scopePacketRevisionId: line.scopePacketRevisionId,
+          quoteLocalPacketId: line.quoteLocalPacketId,
+          scopeRevision: line.scopePacketRevision
+            ? {
+                id: line.scopePacketRevision.id,
+                scopePacketId: line.scopePacketRevision.scopePacket.id,
+              }
+            : null,
+        })),
+        libraryPackets,
+        localPackets,
+      });
+      proposedExecutionFlow = buildProposedExecutionFlow(
+        scopeModel.orderedLineItems.map((line) => ({
+          lineItemId: line.id,
+          lineTitle: line.title ?? null,
+          preview: support.previewsByLineItemId[line.id]!,
+        })),
+      );
+    }
+  }
+
   const readiness = deriveQuoteHeadWorkspaceReadiness(
     head ? toQuoteHeadReadinessInput(head, headLineItemCount) : null,
   );
@@ -169,8 +228,8 @@ export default async function DevQuoteWorkspacePage({ params }: PageProps) {
             Lifecycle stages
           </h2>
           <p className="mt-1 max-w-2xl text-xs leading-relaxed text-zinc-500">
-            Line items / packets define the work; the process template defines the node/stage skeleton it runs through.
-            Author scope first, then pin a template, then send. Some actions require an office session with{" "}
+            Line items and their task packets define the work. Author scope, review the proposed
+            execution flow, then send. Some actions require an office session with{" "}
             <span className="font-mono text-zinc-400">office_mutate</span> capability.
           </p>
         </div>
@@ -185,6 +244,7 @@ export default async function DevQuoteWorkspacePage({ params }: PageProps) {
             >
               <div id="line-items" className="space-y-6">
                 <QuoteWorkspaceLineItemSummary
+                  quoteId={quoteId}
                   versionNumber={head?.versionNumber ?? null}
                   summary={ws.headLineItemSummary}
                 />
@@ -202,19 +262,22 @@ export default async function DevQuoteWorkspacePage({ params }: PageProps) {
           <div id="step-2">
             <QuoteWorkspacePipelineStep
               step={2}
-              title="Pin process template"
-              hint="Pick the published process template (node/stage skeleton) the work will run through. The template does not define the work — your line items do."
+              title="Review proposed execution flow"
+              hint="This plan is generated from the quoted line items and their task packets. Stages organize the work; task packets define the actual tasks, order, blockers, and proof requirements."
               isRecommended={recommendedStep === 2}
             >
-              <QuoteWorkspacePinWorkflow pinTarget={headDraftPinTarget} canOfficeMutate={canOfficeMutate} />
+              <QuoteWorkspaceProposedExecutionFlow
+                flow={proposedExecutionFlow}
+                isEditableDraft={headIsEditableDraft}
+              />
             </QuoteWorkspacePipelineStep>
           </div>
 
           <div id="step-3">
             <QuoteWorkspacePipelineStep
               step={3}
-              title="Prepare & send proposal"
-              hint="Compose line items / packets onto the pinned template's nodes, freeze the snapshot, and send."
+              title="Send proposal"
+              hint="Freeze the proposed execution snapshot and send it to the customer."
               isRecommended={recommendedStep === 3}
             >
               <QuoteWorkspaceComposeSendPanel latestDraft={latestDraftWorkspaceTarget} canOfficeMutate={canOfficeMutate} />
@@ -243,7 +306,7 @@ export default async function DevQuoteWorkspacePage({ params }: PageProps) {
             <QuoteWorkspacePipelineStep
               step={5}
               title="Activate execution"
-              hint="Instantiate runtime tasks from the frozen execution package onto the pinned template's nodes."
+              hint="Instantiate runtime tasks from the frozen execution package."
               isRecommended={recommendedStep === 5}
             >
               <QuoteWorkspaceActivateSigned
@@ -269,6 +332,26 @@ export default async function DevQuoteWorkspacePage({ params }: PageProps) {
           Raw JSON and route inspection for integrations. Prefer the structured sections above for day-to-day office
           work.
         </p>
+        {/*
+          Admin/technical escape hatch for the legacy "pin a process template"
+          workflow. Office UX no longer surfaces this — the canonical workflow
+          is auto-pinned at quote-version creation. This control is kept here
+          for emergency overrides (e.g. internal migration to a different
+          published workflow). The backend mutation still enforces tenant
+          ownership, DRAFT status, and PUBLISHED workflow.
+        */}
+        <div className="mt-4 rounded border border-zinc-800/80 bg-zinc-950/40 p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+            Manual workflow pin (admin override)
+          </p>
+          <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+            New quotes auto-pin the canonical execution-stages workflow. Use this only when an
+            internal migration requires pointing the head DRAFT at a different published workflow.
+          </p>
+          <div className="mt-3">
+            <QuoteWorkspacePinWorkflow pinTarget={headDraftPinTarget} canOfficeMutate={canOfficeMutate} />
+          </div>
+        </div>
         <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs">
           <li>
             <Link href={`/api/quotes/${quoteId}/workspace`} className="text-sky-500/90 hover:text-sky-400">

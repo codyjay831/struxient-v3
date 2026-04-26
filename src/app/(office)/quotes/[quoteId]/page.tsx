@@ -7,6 +7,10 @@ import { listScopePacketsForTenant } from "@/server/slice1/reads/scope-packet-ca
 import { loadLineItemExecutionPreviewsForTenant } from "@/server/slice1/reads/line-item-execution-preview-support";
 import { SCOPE_PACKET_LIST_LIMIT_DEFAULTS } from "@/lib/scope-packet-catalog-summary";
 import { derivePacketStageReadiness } from "@/lib/workspace/derive-packet-stage-readiness";
+import {
+  buildProposedExecutionFlow,
+  type ProposedExecutionFlow,
+} from "@/lib/quote-proposed-execution-flow";
 import { principalHasCapability, tryGetApiPrincipal } from "@/lib/auth/api-principal";
 import { deriveNewestActivatedExecutionEntryTarget } from "@/lib/workspace/derive-workspace-execution-entry-target";
 import { deriveNewestSignedWithoutActivationTarget } from "@/lib/workspace/derive-workspace-signed-activate-target";
@@ -28,7 +32,7 @@ import { QuoteWorkspaceShellSummary } from "@/components/quotes/workspace/quote-
 import { QuoteWorkspaceLineItemSummary } from "@/components/quotes/workspace/quote-workspace-line-item-summary";
 import { QuoteWorkspaceLineItemList } from "@/components/quotes/workspace/quote-workspace-line-item-list";
 import { QuoteWorkspaceHeadReadiness } from "@/components/quotes/workspace/quote-workspace-head-readiness";
-import { QuoteWorkspacePinWorkflow } from "@/components/quotes/workspace/quote-workspace-pin-workflow";
+import { QuoteWorkspaceProposedExecutionFlow } from "@/components/quotes/workspace/quote-workspace-proposed-execution-flow";
 import { QuoteWorkspaceComposeSendPanel } from "@/components/quotes/workspace/quote-workspace-compose-send-panel";
 import { QuoteWorkspaceSignSent } from "@/components/quotes/workspace/quote-workspace-sign-sent";
 import { QuoteWorkspaceActivateSigned } from "@/components/quotes/workspace/quote-workspace-activate-signed";
@@ -102,6 +106,7 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
   const shouldLoadPacketReadiness =
     headIsEditableDraft && head != null && headLineItemCount > 0;
   let packetStageReadiness: QuoteHeadReadinessInput["packetStageReadiness"] = null;
+  let proposedExecutionFlow: ProposedExecutionFlow | null = null;
   if (shouldLoadPacketReadiness) {
     const prisma = getPrisma();
     const scopeModel = await getQuoteVersionScopeReadModel(prisma, {
@@ -135,13 +140,16 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
         libraryPackets,
         localPackets,
       });
+      const lineInputs = scopeModel.orderedLineItems.map((line) => ({
+        lineItemId: line.id,
+        lineTitle: line.title ?? null,
+        preview: support.previewsByLineItemId[line.id]!,
+      }));
       const signal = derivePacketStageReadiness(
-        scopeModel.orderedLineItems.map((line) => ({
-          lineItemId: line.id,
-          preview: support.previewsByLineItemId[line.id]!,
-        })),
+        lineInputs.map((l) => ({ lineItemId: l.lineItemId, preview: l.preview })),
       );
       packetStageReadiness = { state: signal.state, note: signal.note };
+      proposedExecutionFlow = buildProposedExecutionFlow(lineInputs);
     }
   }
 
@@ -150,15 +158,7 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
   );
   const recommendedStep = readiness.kind === "head" ? readiness.recommendedStepIndex : null;
 
-  const latestDraft = ws.versions.find((v) => v.status === "DRAFT") ?? null;
   const canOfficeMutate = principalHasCapability(auth.principal, "office_mutate");
-
-  // Targets for pipeline steps
-  const headDraftPinTarget = head?.status === "DRAFT" ? {
-    quoteVersionId: head.id,
-    versionNumber: head.versionNumber,
-    pinnedWorkflowVersionId: head.pinnedWorkflowVersionId,
-  } : null;
 
   const latestDraftWorkspaceTarget = head?.status === "DRAFT" ? {
     quoteVersionId: head.id,
@@ -221,8 +221,8 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
                 Commercial Pipeline
               </h2>
               <p className="mt-1 text-sm text-zinc-500">
-                Line items / packets define the work. The process template defines the node/stage skeleton it runs through.
-                Author scope first, then pin a template, then send.
+                Line items and their task packets define the work. Author the scope, review the
+                proposed execution flow, then send.
               </p>
             </div>
 
@@ -270,19 +270,22 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
               <div id="step-2">
                 <QuoteWorkspacePipelineStep
                   step={2}
-                  title="Pin Process Template"
-                  hint="Pick the published process template (node/stage skeleton) the work will run through. The template does not define the work — your line items do."
+                  title="Review Proposed Execution Flow"
+                  hint="This plan is generated from the quoted line items and their task packets. Stages organize the work; task packets define the actual tasks, order, blockers, and proof requirements."
                   isRecommended={recommendedStep === 2}
                 >
-                  <QuoteWorkspacePinWorkflow pinTarget={headDraftPinTarget} canOfficeMutate={canOfficeMutate} />
+                  <QuoteWorkspaceProposedExecutionFlow
+                    flow={proposedExecutionFlow}
+                    isEditableDraft={headIsEditableDraft}
+                  />
                 </QuoteWorkspacePipelineStep>
               </div>
 
               <div id="step-3">
                 <QuoteWorkspacePipelineStep
                   step={3}
-                  title="Prepare & Send Proposal"
-                  hint="Compose line items / packets onto the pinned template's nodes, freeze the snapshot, and send."
+                  title="Send Proposal"
+                  hint="Freeze the proposed execution snapshot and send it to the customer."
                   isRecommended={recommendedStep === 3}
                 >
                   <QuoteWorkspaceComposeSendPanel latestDraft={latestDraftWorkspaceTarget} canOfficeMutate={canOfficeMutate} />
@@ -311,7 +314,7 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
                 <QuoteWorkspacePipelineStep
                   step={5}
                   title="Activate Execution"
-                  hint="Instantiate runtime tasks from the frozen execution package onto the pinned template's nodes."
+                  hint="Instantiate runtime tasks from the frozen execution package."
                   isRecommended={recommendedStep === 5}
                 >
                   <QuoteWorkspaceActivateSigned

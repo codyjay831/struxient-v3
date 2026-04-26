@@ -26,11 +26,12 @@ export default async function OfficeLibraryProcessTemplatesPage() {
     <div className="p-8">
       <div className="flex flex-col gap-8 lg:flex-row lg:items-start lg:justify-between mb-8">
         <div className="max-w-2xl">
-          <h1 className="text-2xl font-semibold text-zinc-50">Process templates</h1>
+          <h1 className="text-2xl font-semibold text-zinc-50">Process templates (admin)</h1>
           <p className="text-sm text-zinc-500 mt-1">
-            Published workflow versions define the node skeleton estimators pin on quotes. Authoring here is{" "}
+            Internal admin authoring surface. New quotes auto-bind to the canonical execution-stages
+            workflow; this page is for migrating existing data, defining alternate published flows
+            for admin overrides, and inspecting raw JSON. Authoring is{" "}
             <strong className="text-zinc-400">minimal</strong>: create a template, add a draft, edit JSON, publish.
-            This is <strong className="text-zinc-400">not</strong> a graph canvas or full Epic 23 design tooling.
           </p>
         </div>
         <div className="w-full max-w-md shrink-0">
@@ -60,7 +61,7 @@ export default async function OfficeLibraryProcessTemplatesPage() {
           <h2 className="text-zinc-200 font-medium">No process templates yet</h2>
           <p className="text-zinc-500 text-sm mt-1 max-w-sm mx-auto">
             {canOfficeMutate
-              ? "Create one using the form above. After publish, versions appear in the quote workflow pin list."
+              ? "Create one using the form above. Published versions are available for admin overrides via the technical-details panel on a quote workspace."
               : "Office admins can create templates. Your account is read-only for mutations."}
           </p>
         </div>

@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient, QuoteVersionStatus } from "@prisma/client";
+import { ensureCanonicalWorkflowVersionInTransaction } from "./ensure-canonical-workflow-version";
 
 const MAX_CUSTOMER_NAME = 500;
 const MAX_FLOW_GROUP_NAME = 200;
@@ -331,6 +332,15 @@ export async function createCommercialQuoteShellInTransaction(
     select: { id: true, quoteNumber: true, customerId: true, flowGroupId: true },
   });
 
+  // Path B / Triangle Mode: every QuoteVersion gets the canonical workflow
+  // pinned at creation time so users never have to pick a "process template".
+  // The canonical workflow defines the six canonical execution stages as
+  // its `nodes[]`, which is exactly what compose validates against. The
+  // pin is still recorded the same way it was before — only who fills it
+  // in changed.
+  const { workflowVersionId: canonicalWorkflowVersionId } =
+    await ensureCanonicalWorkflowVersionInTransaction(tx, { tenantId: params.tenantId });
+
   const quoteVersion = await tx.quoteVersion.create({
     data: {
       quoteId: quote.id,
@@ -338,7 +348,7 @@ export async function createCommercialQuoteShellInTransaction(
       status: "DRAFT",
       createdById: actor.id,
       title: null,
-      pinnedWorkflowVersionId: null,
+      pinnedWorkflowVersionId: canonicalWorkflowVersionId,
     },
     select: { id: true, quoteId: true, versionNumber: true, status: true },
   });

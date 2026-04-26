@@ -223,11 +223,18 @@ export function QuoteWorkspaceComposeSendPanel({ latestDraft, canOfficeMutate }:
       ) : (
         <>
           {!latestDraft.hasPinnedWorkflow ? (
+            // Operator-facing copy: never mention "pin a workflow" — Path B
+            // auto-pins the canonical workflow at quote-version creation, so
+            // an unpinned head means an internal invariant is broken (legacy
+            // data, or the ensure-helper failed silently). Surface the
+            // problem as a system condition; Technical details below shows
+            // the version id for support.
             <p className="mt-2 text-xs text-amber-700/90">
               <span className="font-medium text-amber-600/90">
-                A workflow must be selected before sending.
+                Execution flow not ready.
               </span>{" "}
-              You can still run a preview to check line items, but send will remain disabled.
+              The proposed execution snapshot isn&apos;t bound yet. You can still run a preview to
+              check line items, but send will remain disabled until the system rebinds the flow.
             </p>
           ) : null}
 
@@ -246,7 +253,7 @@ export function QuoteWorkspaceComposeSendPanel({ latestDraft, canOfficeMutate }:
               title={
                 !sendReady ?
                   !latestDraft.hasPinnedWorkflow ?
-                    "Select a workflow first."
+                    "Execution flow not ready — system will rebind it shortly."
                   : !lastCompose ?
                     "Run preview to verify content."
                   : composeBlocking ?
