@@ -8,6 +8,7 @@ import {
   type SelectedTaskDefinitionSummary,
 } from "@/components/quote-scope/task-definition-picker";
 import { TargetNodePicker } from "@/components/quote-scope/target-node-picker";
+import { humanizeCanonicalExecutionStageKey } from "@/lib/canonical-execution-stages";
 import { formatQuoteLocalPacketPromotionStatusLabel } from "@/lib/quote-local-packet-promotion-status-label";
 
 /**
@@ -865,7 +866,9 @@ function ItemRow({
           </p>
         ) : null}
       </td>
-      <td className="px-2 py-1.5 font-mono text-zinc-400">{item.targetNodeKey}</td>
+      <td className="px-2 py-1.5 font-mono text-zinc-400">
+        {humanizeCanonicalExecutionStageKey(item.targetNodeKey)}
+      </td>
       <td className="px-2 py-1.5 font-mono text-zinc-400">{item.tierCode ?? "—"}</td>
       {editable ? (
         <td className="px-2 py-1.5 text-right">

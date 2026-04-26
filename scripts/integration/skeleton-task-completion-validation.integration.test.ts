@@ -27,7 +27,7 @@ describe("skeleton task completion validation parity (Epic 27 / 26)", () => {
     const snapshotJson = {
       nodes: [
         {
-          id: "N1",
+          id: "install",
           tasks: [
             {
               id: "SK-R1",
@@ -132,7 +132,7 @@ describe("skeleton task completion validation parity (Epic 27 / 26)", () => {
     const snapshotJson = {
       nodes: [
         {
-          id: "N1",
+          id: "install",
           tasks: [
             {
               id: "SK-C1",
@@ -243,7 +243,7 @@ describe("skeleton task completion validation parity (Epic 27 / 26)", () => {
     const snapshotJson = {
       nodes: [
         {
-          id: "N1",
+          id: "install",
           tasks: [
             {
               id: "SK-OK",
@@ -344,7 +344,7 @@ describe("skeleton task completion validation parity (Epic 27 / 26)", () => {
     const snapshotJson = {
       nodes: [
         {
-          id: "N1",
+          id: "install",
           tasks: [
             {
               id: "SK-COK",
@@ -450,7 +450,7 @@ describe("skeleton task completion validation parity (Epic 27 / 26)", () => {
       data: { tenantId, templateKey: `tkp-${suffix}`, displayName: "T" },
     });
     const snapshotJson = {
-      nodes: [{ id: "N1", tasks: [{ id: "SK-PLAIN", title: "Plain skeleton" }] }],
+      nodes: [{ id: "install", tasks: [{ id: "SK-PLAIN", title: "Plain skeleton" }] }],
     };
     const wv = await prisma.workflowVersion.create({
       data: {

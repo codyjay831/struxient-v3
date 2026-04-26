@@ -194,7 +194,7 @@ describe("QuoteLineItem PUBLISHED-only scope-revision pin enforcement (HTTP API)
     await addEmbeddedItem(baseUrl, cookieOffice, packet.id, {
       lineKey: "x",
       sortOrder: 0,
-      targetNodeKey: "node-x",
+      targetNodeKey: "install",
     });
 
     const packetKey = `pin-pub-draft-${suffix}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");

@@ -53,7 +53,7 @@ describe("Epic 13 + 54 portal quote request changes (non-terminal)", () => {
       await replaceWorkflowVersionDraftSnapshotForTenant(prisma, {
         tenantId,
         workflowVersionId: draft.id,
-        snapshotJson: { nodes: [{ id: "n1", type: "TASK" }] },
+        snapshotJson: { nodes: [{ id: "install", type: "TASK" }] },
       });
       const pub = await publishWorkflowVersionForTenant(prisma, {
         tenantId,
@@ -83,7 +83,7 @@ describe("Epic 13 + 54 portal quote request changes (non-terminal)", () => {
           lineKey: "lk1",
           sortOrder: 0,
           lineKind: "EMBEDDED",
-          targetNodeKey: "n1",
+          targetNodeKey: "install",
           embeddedPayloadJson: { title: "RC-visible task", taskKind: "LABOR" },
         },
       });

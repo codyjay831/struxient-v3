@@ -35,7 +35,7 @@ describe("change order customer acceptance (send / portal / sign)", () => {
         versionNumber: 1,
         status: "PUBLISHED",
         publishedAt: new Date(),
-        snapshotJson: { nodes: [{ id: "N1", type: "TASK" }, { id: "N2", type: "TASK" }] },
+        snapshotJson: { nodes: [{ id: "install", type: "TASK" }, { id: "final-inspection", type: "TASK" }] },
       },
     });
 
@@ -46,7 +46,7 @@ describe("change order customer acceptance (send / portal / sign)", () => {
       slots: [
         {
           packageTaskId: "PT-A",
-          nodeId: "N1",
+          nodeId: "install",
           source: "SOLD_SCOPE",
           planTaskIds: ["PL-A"],
           displayTitle: "Task A",
@@ -90,7 +90,7 @@ describe("change order customer acceptance (send / portal / sign)", () => {
         lineKey: "lk1",
         sortOrder: 0,
         lineKind: "EMBEDDED",
-        targetNodeKey: "N1",
+        targetNodeKey: "install",
         embeddedPayloadJson: { title: "CO37 line", taskKind: "LABOR" },
       },
     });
@@ -136,7 +136,7 @@ describe("change order customer acceptance (send / portal / sign)", () => {
         tenantId,
         flowId: flow1.id,
         packageTaskId: "PT-A",
-        nodeId: "N1",
+        nodeId: "install",
         quoteVersionId: qv1.id,
         lineItemId: "L1",
         planTaskIds: ["PL-A"],
@@ -167,7 +167,7 @@ describe("change order customer acceptance (send / portal / sign)", () => {
       slots: [
         {
           packageTaskId: "PT-A",
-          nodeId: "N1",
+          nodeId: "install",
           source: "SOLD_SCOPE",
           planTaskIds: ["PL-A"],
           displayTitle: "Task A",
@@ -175,7 +175,7 @@ describe("change order customer acceptance (send / portal / sign)", () => {
         },
         {
           packageTaskId: "PT-B",
-          nodeId: "N2",
+          nodeId: "final-inspection",
           source: "SOLD_SCOPE",
           planTaskIds: ["PL-B"],
           displayTitle: "Task B",
@@ -301,7 +301,7 @@ describe("change order customer acceptance (send / portal / sign)", () => {
         versionNumber: 1,
         status: "PUBLISHED",
         publishedAt: new Date(),
-        snapshotJson: { nodes: [{ id: "N1", type: "TASK" }, { id: "N2", type: "TASK" }] },
+        snapshotJson: { nodes: [{ id: "install", type: "TASK" }, { id: "final-inspection", type: "TASK" }] },
       },
     });
     const qv1Id = `qv1r-${suffix}`;
@@ -311,7 +311,7 @@ describe("change order customer acceptance (send / portal / sign)", () => {
       slots: [
         {
           packageTaskId: "PT-A",
-          nodeId: "N1",
+          nodeId: "install",
           source: "SOLD_SCOPE",
           planTaskIds: ["PL-A"],
           displayTitle: "Task A",
@@ -358,7 +358,7 @@ describe("change order customer acceptance (send / portal / sign)", () => {
         tenantId,
         flowId: flow1.id,
         packageTaskId: "PT-A",
-        nodeId: "N1",
+        nodeId: "install",
         quoteVersionId: qv1.id,
         lineItemId: "L1",
         planTaskIds: ["PL-A"],
@@ -389,7 +389,7 @@ describe("change order customer acceptance (send / portal / sign)", () => {
       slots: [
         {
           packageTaskId: "PT-A",
-          nodeId: "N1",
+          nodeId: "install",
           source: "SOLD_SCOPE",
           planTaskIds: ["PL-A"],
           displayTitle: "Task A",
@@ -397,7 +397,7 @@ describe("change order customer acceptance (send / portal / sign)", () => {
         },
         {
           packageTaskId: "PT-B",
-          nodeId: "N2",
+          nodeId: "final-inspection",
           source: "SOLD_SCOPE",
           planTaskIds: ["PL-B"],
           displayTitle: "Task B",

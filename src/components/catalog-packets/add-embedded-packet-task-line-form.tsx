@@ -71,19 +71,19 @@ export function AddEmbeddedPacketTaskLineForm({ scopePacketId, scopePacketRevisi
             value={lineKey}
             onChange={(e) => setLineKey(e.target.value)}
             disabled={busy}
-            placeholder="rough-in"
+            placeholder="install"
             className="mt-0.5 w-full rounded border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100"
           />
         </div>
         <div>
-          <span className="block text-[11px] font-medium text-zinc-500">targetNodeKey</span>
+          <span className="block text-[11px] font-medium text-zinc-500">Execution stage</span>
           <div className="mt-0.5">
             <TargetNodePicker
               workflowVersionIdForNodeKeys={hintWorkflowVersionId}
               value={targetNodeKey}
               disabled={busy}
               onChange={setTargetNodeKey}
-              copyVariant="catalogLibraryHint"
+              copyVariant="catalogLibrary"
             />
           </div>
         </div>

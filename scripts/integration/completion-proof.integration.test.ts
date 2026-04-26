@@ -32,7 +32,7 @@ async function testCompletionProof() {
       versionNumber: 1, 
       status: "PUBLISHED", 
       publishedAt: new Date(),
-      snapshotJson: { nodes: [{ id: "N1", type: "TASK" }] }
+      snapshotJson: { nodes: [{ id: "install", type: "TASK" }] }
     } 
   });
 
@@ -59,7 +59,7 @@ async function testCompletionProof() {
       tenantId, 
       flowId: flow.id, 
       packageTaskId: "PT-A", 
-      nodeId: "N1", 
+      nodeId: "install",
       quoteVersionId: qvId, 
       lineItemId: "L1", 
       planTaskIds: ["PL-A"], 

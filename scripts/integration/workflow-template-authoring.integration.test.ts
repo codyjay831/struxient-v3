@@ -86,10 +86,10 @@ describe("workflow template authoring (mutations)", () => {
     const replaced = await replaceWorkflowVersionDraftSnapshotForTenant(prisma, {
       tenantId,
       workflowVersionId: draft1.id,
-      snapshotJson: { nodes: [{ id: "node-a" }, { id: "node-b" }] },
+      snapshotJson: { nodes: [{ id: "install" }, { id: "final-inspection" }] },
     });
     if (replaced === "not_found") throw new Error("unexpected not_found");
-    expect(replaced.snapshotJson).toEqual({ nodes: [{ id: "node-a" }, { id: "node-b" }] });
+    expect(replaced.snapshotJson).toEqual({ nodes: [{ id: "install" }, { id: "final-inspection" }] });
 
     const pub1 = await publishWorkflowVersionForTenant(prisma, {
       tenantId,

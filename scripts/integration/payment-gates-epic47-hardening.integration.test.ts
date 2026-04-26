@@ -31,7 +31,7 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
         versionNumber: 1,
         status: "PUBLISHED",
         publishedAt: new Date(),
-        snapshotJson: { nodes: [{ id: "N1", type: "TASK" }] },
+        snapshotJson: { nodes: [{ id: "install", type: "TASK" }] },
       },
     });
     const qvId = `qv-pg47-${suffix}`;
@@ -43,7 +43,7 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
       slots: [
         {
           packageTaskId: "PT-G1",
-          nodeId: "N1",
+          nodeId: "install",
           source: "SOLD_SCOPE",
           planTaskIds: ["PL-G1"],
           displayTitle: "Gated work",
@@ -62,7 +62,7 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
       quoteVersionId: qvId,
       pinnedWorkflowVersionId: wv.id,
       generatedAt: new Date().toISOString(),
-      rows: [{ planTaskId: "PL-G1", lineItemId: "L1", scopeSource: "SOLD_SCOPE", quantityIndex: 0, targetNodeKey: "N1", title: "t", taskKind: "INSTALL", sortKey: "a" }],
+      rows: [{ planTaskId: "PL-G1", lineItemId: "L1", scopeSource: "SOLD_SCOPE", quantityIndex: 0, targetNodeKey: "install", title: "t", taskKind: "INSTALL", sortKey: "a" }],
     };
     await prisma.job.create({ data: { tenantId, flowGroupId: fg.id } });
     await prisma.quoteVersion.create({
@@ -155,7 +155,7 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
         versionNumber: 1,
         status: "PUBLISHED",
         publishedAt: new Date(),
-        snapshotJson: { nodes: [{ id: "N1", type: "TASK" }, { id: "N2", type: "TASK" }] },
+        snapshotJson: { nodes: [{ id: "install", type: "TASK" }, { id: "final-inspection", type: "TASK" }] },
       },
     });
 
@@ -168,7 +168,7 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
       slots: [
         {
           packageTaskId: "PT-A",
-          nodeId: "N1",
+          nodeId: "install",
           source: "SOLD_SCOPE",
           planTaskIds: ["PL-A"],
           displayTitle: "Task A",
@@ -182,7 +182,7 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
       quoteVersionId: qv1Id,
       pinnedWorkflowVersionId: wv.id,
       generatedAt: new Date().toISOString(),
-      rows: [{ planTaskId: "PL-A", lineItemId: "L1", scopeSource: "SOLD_SCOPE", quantityIndex: 0, targetNodeKey: "N1", title: "A", taskKind: "INSTALL", sortKey: "a" }],
+      rows: [{ planTaskId: "PL-A", lineItemId: "L1", scopeSource: "SOLD_SCOPE", quantityIndex: 0, targetNodeKey: "install", title: "A", taskKind: "INSTALL", sortKey: "a" }],
     };
 
     await prisma.job.create({ data: { tenantId, flowGroupId: fg.id } });
@@ -255,7 +255,7 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
       slots: [
         {
           packageTaskId: "PT-A",
-          nodeId: "N1",
+          nodeId: "install",
           source: "SOLD_SCOPE",
           planTaskIds: ["PL-A"],
           displayTitle: "Task A",
@@ -263,7 +263,7 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
         },
         {
           packageTaskId: "PT-B",
-          nodeId: "N2",
+          nodeId: "final-inspection",
           source: "SOLD_SCOPE",
           planTaskIds: ["PL-B"],
           displayTitle: "Task B",
@@ -278,8 +278,8 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
       pinnedWorkflowVersionId: wv.id,
       generatedAt: new Date().toISOString(),
       rows: [
-        { planTaskId: "PL-A", lineItemId: "L1", scopeSource: "SOLD_SCOPE", quantityIndex: 0, targetNodeKey: "N1", title: "A", taskKind: "INSTALL", sortKey: "a" },
-        { planTaskId: "PL-B", lineItemId: "L2", scopeSource: "SOLD_SCOPE", quantityIndex: 0, targetNodeKey: "N2", title: "B", taskKind: "INSTALL", sortKey: "b" },
+        { planTaskId: "PL-A", lineItemId: "L1", scopeSource: "SOLD_SCOPE", quantityIndex: 0, targetNodeKey: "install", title: "A", taskKind: "INSTALL", sortKey: "a" },
+        { planTaskId: "PL-B", lineItemId: "L2", scopeSource: "SOLD_SCOPE", quantityIndex: 0, targetNodeKey: "final-inspection", title: "B", taskKind: "INSTALL", sortKey: "b" },
       ],
     };
 
@@ -335,7 +335,7 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
       slots: [
         {
           packageTaskId: "PT-B",
-          nodeId: "N2",
+          nodeId: "final-inspection",
           source: "SOLD_SCOPE",
           planTaskIds: ["PL-B"],
           displayTitle: "Task B only",
@@ -349,7 +349,7 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
       quoteVersionId: qv3Id,
       pinnedWorkflowVersionId: wv.id,
       generatedAt: new Date().toISOString(),
-      rows: [{ planTaskId: "PL-B", lineItemId: "L2", scopeSource: "SOLD_SCOPE", quantityIndex: 0, targetNodeKey: "N2", title: "B", taskKind: "INSTALL", sortKey: "b" }],
+      rows: [{ planTaskId: "PL-B", lineItemId: "L2", scopeSource: "SOLD_SCOPE", quantityIndex: 0, targetNodeKey: "final-inspection", title: "B", taskKind: "INSTALL", sortKey: "b" }],
     };
     await prisma.quoteVersion.update({
       where: { id: qv3Id },
@@ -421,7 +421,7 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
         versionNumber: 1,
         status: "PUBLISHED",
         publishedAt: new Date(),
-        snapshotJson: { nodes: [{ id: "N1", type: "TASK" }] },
+        snapshotJson: { nodes: [{ id: "install", type: "TASK" }] },
       },
     });
     const qv1Id = `qv1b-${suffix}`;
@@ -433,7 +433,7 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
       slots: [
         {
           packageTaskId: "PT-X",
-          nodeId: "N1",
+          nodeId: "install",
           source: "SOLD_SCOPE",
           planTaskIds: ["PL-X"],
           displayTitle: "X",
@@ -447,7 +447,7 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
       quoteVersionId: qv1Id,
       pinnedWorkflowVersionId: wv.id,
       generatedAt: new Date().toISOString(),
-      rows: [{ planTaskId: "PL-X", lineItemId: "L1", scopeSource: "SOLD_SCOPE", quantityIndex: 0, targetNodeKey: "N1", title: "X", taskKind: "INSTALL", sortKey: "a" }],
+      rows: [{ planTaskId: "PL-X", lineItemId: "L1", scopeSource: "SOLD_SCOPE", quantityIndex: 0, targetNodeKey: "install", title: "X", taskKind: "INSTALL", sortKey: "a" }],
     };
     await prisma.job.create({ data: { tenantId, flowGroupId: fg.id } });
     await prisma.quoteVersion.create({
@@ -502,7 +502,7 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
         { ...pkg.slots[0], displayTitle: "X2" },
         {
           packageTaskId: "PT-Y",
-          nodeId: "N1",
+          nodeId: "install",
           source: "SOLD_SCOPE",
           planTaskIds: ["PL-Y"],
           displayTitle: "Y",
@@ -515,7 +515,7 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
       quoteVersionId: qv2Id,
       rows: [
         ...plan.rows,
-        { planTaskId: "PL-Y", lineItemId: "L2", scopeSource: "SOLD_SCOPE", quantityIndex: 0, targetNodeKey: "N1", title: "Y", taskKind: "INSTALL", sortKey: "b" },
+        { planTaskId: "PL-Y", lineItemId: "L2", scopeSource: "SOLD_SCOPE", quantityIndex: 0, targetNodeKey: "install", title: "Y", taskKind: "INSTALL", sortKey: "b" },
       ],
     };
     await prisma.quoteVersion.update({
@@ -580,7 +580,7 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
         versionNumber: 1,
         status: "PUBLISHED",
         publishedAt: new Date(),
-        snapshotJson: { nodes: [{ id: "N1", type: "TASK" }] },
+        snapshotJson: { nodes: [{ id: "install", type: "TASK" }] },
       },
     });
     const qvId = `qv-st-${suffix}`;
@@ -592,7 +592,7 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
       slots: [
         {
           packageTaskId: "PT-S",
-          nodeId: "N1",
+          nodeId: "install",
           source: "SOLD_SCOPE",
           planTaskIds: ["PL-S"],
           displayTitle: "S",
@@ -611,7 +611,7 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
       quoteVersionId: qvId,
       pinnedWorkflowVersionId: wv.id,
       generatedAt: new Date().toISOString(),
-      rows: [{ planTaskId: "PL-S", lineItemId: "L1", scopeSource: "SOLD_SCOPE", quantityIndex: 0, targetNodeKey: "N1", title: "S", taskKind: "INSTALL", sortKey: "a" }],
+      rows: [{ planTaskId: "PL-S", lineItemId: "L1", scopeSource: "SOLD_SCOPE", quantityIndex: 0, targetNodeKey: "install", title: "S", taskKind: "INSTALL", sortKey: "a" }],
     };
     await prisma.job.create({ data: { tenantId, flowGroupId: fg.id } });
     await prisma.quoteVersion.create({
@@ -708,7 +708,7 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
         versionNumber: 1,
         status: "PUBLISHED",
         publishedAt: new Date(),
-        snapshotJson: { nodes: [{ id: "N1", type: "TASK" }] },
+        snapshotJson: { nodes: [{ id: "install", type: "TASK" }] },
       },
     });
     const qvId = `qv-rp-${suffix}`;
@@ -720,7 +720,7 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
       slots: [
         {
           packageTaskId: "PT-RP",
-          nodeId: "N1",
+          nodeId: "install",
           source: "SOLD_SCOPE",
           planTaskIds: ["PL-RP"],
           displayTitle: "R",
@@ -739,7 +739,7 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
       quoteVersionId: qvId,
       pinnedWorkflowVersionId: wv.id,
       generatedAt: new Date().toISOString(),
-      rows: [{ planTaskId: "PL-RP", lineItemId: "L1", scopeSource: "SOLD_SCOPE", quantityIndex: 0, targetNodeKey: "N1", title: "R", taskKind: "INSTALL", sortKey: "a" }],
+      rows: [{ planTaskId: "PL-RP", lineItemId: "L1", scopeSource: "SOLD_SCOPE", quantityIndex: 0, targetNodeKey: "install", title: "R", taskKind: "INSTALL", sortKey: "a" }],
     };
     await prisma.job.create({ data: { tenantId, flowGroupId: fg.id } });
     await prisma.quoteVersion.create({
@@ -833,7 +833,7 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
         versionNumber: 1,
         status: "PUBLISHED",
         publishedAt: new Date(),
-        snapshotJson: { nodes: [{ id: "N1", type: "TASK" }, { id: "N2", type: "TASK" }] },
+        snapshotJson: { nodes: [{ id: "install", type: "TASK" }, { id: "final-inspection", type: "TASK" }] },
       },
     });
     const qv1Id = `qv1fz-${suffix}`;
@@ -845,7 +845,7 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
       slots: [
         {
           packageTaskId: "PT-A",
-          nodeId: "N1",
+          nodeId: "install",
           source: "SOLD_SCOPE",
           planTaskIds: ["PL-A"],
           displayTitle: "Task A",
@@ -864,7 +864,7 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
       quoteVersionId: qv1Id,
       pinnedWorkflowVersionId: wv.id,
       generatedAt: new Date().toISOString(),
-      rows: [{ planTaskId: "PL-A", lineItemId: "L1", scopeSource: "SOLD_SCOPE", quantityIndex: 0, targetNodeKey: "N1", title: "A", taskKind: "INSTALL", sortKey: "a" }],
+      rows: [{ planTaskId: "PL-A", lineItemId: "L1", scopeSource: "SOLD_SCOPE", quantityIndex: 0, targetNodeKey: "install", title: "A", taskKind: "INSTALL", sortKey: "a" }],
     };
     await prisma.job.create({ data: { tenantId, flowGroupId: fg.id } });
     await prisma.quoteVersion.create({
@@ -930,7 +930,7 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
         slots: [
           {
             packageTaskId: "PT-A",
-            nodeId: "N1",
+            nodeId: "install",
             source: "SOLD_SCOPE",
             planTaskIds: ["PL-A"],
             displayTitle: "Task A",
@@ -938,7 +938,7 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
           },
           {
             packageTaskId: "PT-B",
-            nodeId: "N2",
+            nodeId: "final-inspection",
             source: "SOLD_SCOPE",
             planTaskIds: ["PL-B"],
             displayTitle: "Task B",
@@ -953,8 +953,8 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
         pinnedWorkflowVersionId: wv.id,
         generatedAt: new Date().toISOString(),
         rows: [
-          { planTaskId: "PL-A", lineItemId: "L1", scopeSource: "SOLD_SCOPE", quantityIndex: 0, targetNodeKey: "N1", title: "A", taskKind: "INSTALL", sortKey: "a" },
-          { planTaskId: "PL-B", lineItemId: "L2", scopeSource: "SOLD_SCOPE", quantityIndex: 0, targetNodeKey: "N2", title: "B", taskKind: "INSTALL", sortKey: "b" },
+          { planTaskId: "PL-A", lineItemId: "L1", scopeSource: "SOLD_SCOPE", quantityIndex: 0, targetNodeKey: "install", title: "A", taskKind: "INSTALL", sortKey: "a" },
+          { planTaskId: "PL-B", lineItemId: "L2", scopeSource: "SOLD_SCOPE", quantityIndex: 0, targetNodeKey: "final-inspection", title: "B", taskKind: "INSTALL", sortKey: "b" },
         ],
       };
       await prisma.quoteVersion.update({

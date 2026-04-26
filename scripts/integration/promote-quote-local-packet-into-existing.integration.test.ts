@@ -74,7 +74,7 @@ describe("promoteQuoteLocalPacketIntoExistingScopePacketForTenant — canon inva
           tierCode: "GOOD",
           lineKind: "EMBEDDED",
           embeddedPayloadJson: { title: "Already published", taskKind: "LABOR" },
-          targetNodeKey: "node-existing",
+          targetNodeKey: "pre-work",
         },
       });
 
@@ -104,7 +104,7 @@ describe("promoteQuoteLocalPacketIntoExistingScopePacketForTenant — canon inva
           tierCode: "BETTER",
           lineKind: "EMBEDDED",
           embeddedPayloadJson: { title: "Embedded task", taskKind: "LABOR" },
-          targetNodeKey: "node-a",
+          targetNodeKey: "install",
         },
       });
       await prisma.quoteLocalPacketItem.create({
@@ -116,7 +116,7 @@ describe("promoteQuoteLocalPacketIntoExistingScopePacketForTenant — canon inva
           lineKind: "LIBRARY",
           embeddedPayloadJson: undefined,
           taskDefinitionId: taskDef.id,
-          targetNodeKey: "node-b",
+          targetNodeKey: "final-inspection",
         },
       });
 
@@ -170,7 +170,7 @@ describe("promoteQuoteLocalPacketIntoExistingScopePacketForTenant — canon inva
         sortOrder: 0,
         tierCode: "BETTER",
         lineKind: "EMBEDDED",
-        targetNodeKey: "node-a",
+        targetNodeKey: "install",
         taskDefinitionId: null,
       });
       expect(newDraftLines[0]?.embeddedPayloadJson).toMatchObject({
@@ -182,7 +182,7 @@ describe("promoteQuoteLocalPacketIntoExistingScopePacketForTenant — canon inva
         sortOrder: 1,
         tierCode: null,
         lineKind: "LIBRARY",
-        targetNodeKey: "node-b",
+        targetNodeKey: "final-inspection",
         taskDefinitionId: taskDef.id,
       });
       // LIBRARY rows with null source payload normalize to `{}` per the
@@ -414,7 +414,7 @@ async function seedQuoteLocalPacket(
         sortOrder: 0,
         lineKind: "EMBEDDED",
         embeddedPayloadJson: { title: "T", taskKind: "LABOR" },
-        targetNodeKey: "node-x",
+        targetNodeKey: "install",
       },
     });
   }

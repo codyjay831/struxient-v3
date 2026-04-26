@@ -30,7 +30,7 @@ async function testShareWorkflow() {
       versionNumber: 1, 
       status: "PUBLISHED", 
       publishedAt: new Date(),
-      snapshotJson: { nodes: [{ id: "N1", type: "TASK", tasks: [] }] }
+      snapshotJson: { nodes: [{ id: "install", type: "TASK", tasks: [] }] }
     } 
   });
   const qvId = `qv-sh-${suffix}`;

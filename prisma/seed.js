@@ -107,9 +107,9 @@ async function main() {
       lineKey: "t1",
       sortOrder: 0,
       lineKind: "EMBEDDED",
-      targetNodeKey: "node-roof",
+      targetNodeKey: "install",
       embeddedPayloadJson: {
-        targetNodeKey: "node-roof",
+        targetNodeKey: "install",
         title: "Catalog task",
         taskKind: "LABOR",
       },
@@ -126,7 +126,7 @@ async function main() {
       status: "PUBLISHED",
       publishedAt: new Date(),
       snapshotJson: {
-        nodes: [{ id: "node-roof", tasks: [{ id: "sk-site-prep", title: "Site prep (skeleton)" }] }],
+        nodes: [{ id: "install", tasks: [{ id: "sk-site-prep", title: "Site prep (skeleton)" }] }],
       },
     },
   });
@@ -179,7 +179,7 @@ async function main() {
       lineKey: "x1",
       sortOrder: 0,
       lineKind: "EMBEDDED",
-      targetNodeKey: "node-roof",
+      targetNodeKey: "install",
     },
   });
   await prisma.quoteLineItem.create({

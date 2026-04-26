@@ -13,7 +13,7 @@ describe("mapPacketTaskLineToCloneCreate (revision-2 deep-clone mapper)", () => 
       lineKind: "EMBEDDED",
       embeddedPayloadJson: { title: "A", taskKind: "LABOR" },
       taskDefinitionId: null,
-      targetNodeKey: "node-a",
+      targetNodeKey: "pre-work",
     });
     expect(out).toEqual({
       lineKey: "line-a",
@@ -22,7 +22,7 @@ describe("mapPacketTaskLineToCloneCreate (revision-2 deep-clone mapper)", () => 
       lineKind: "EMBEDDED",
       embeddedPayloadJson: { title: "A", taskKind: "LABOR" },
       taskDefinitionId: null,
-      targetNodeKey: "node-a",
+      targetNodeKey: "pre-work",
     });
   });
 
@@ -34,7 +34,7 @@ describe("mapPacketTaskLineToCloneCreate (revision-2 deep-clone mapper)", () => 
       lineKind: "LIBRARY",
       embeddedPayloadJson: {},
       taskDefinitionId: "td_1",
-      targetNodeKey: "node-lib",
+      targetNodeKey: "install",
     });
     expect(out.taskDefinitionId).toBe("td_1");
     expect(out.lineKind).toBe("LIBRARY");

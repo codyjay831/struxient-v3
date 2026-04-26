@@ -56,7 +56,7 @@ describe("Epic 13 + 54 portal quote decline", () => {
       await replaceWorkflowVersionDraftSnapshotForTenant(prisma, {
         tenantId,
         workflowVersionId: draft.id,
-        snapshotJson: { nodes: [{ id: "n1", type: "TASK" }] },
+        snapshotJson: { nodes: [{ id: "install", type: "TASK" }] },
       });
       const pub = await publishWorkflowVersionForTenant(prisma, {
         tenantId,
@@ -86,7 +86,7 @@ describe("Epic 13 + 54 portal quote decline", () => {
           lineKey: "lk1",
           sortOrder: 0,
           lineKind: "EMBEDDED",
-          targetNodeKey: "n1",
+          targetNodeKey: "install",
           embeddedPayloadJson: { title: "Decline-visible task", taskKind: "LABOR" },
         },
       });
@@ -196,7 +196,7 @@ describe("Epic 13 + 54 portal quote decline", () => {
         versionNumber: 1,
         status: "PUBLISHED",
         publishedAt: new Date(),
-        snapshotJson: { nodes: [{ id: "N1", type: "TASK" }, { id: "N2", type: "TASK" }] },
+        snapshotJson: { nodes: [{ id: "install", type: "TASK" }, { id: "final-inspection", type: "TASK" }] },
       },
     });
 
@@ -207,7 +207,7 @@ describe("Epic 13 + 54 portal quote decline", () => {
       slots: [
         {
           packageTaskId: "PT-A",
-          nodeId: "N1",
+          nodeId: "install",
           source: "SOLD_SCOPE",
           planTaskIds: ["PL-A"],
           displayTitle: "Task A",
@@ -251,7 +251,7 @@ describe("Epic 13 + 54 portal quote decline", () => {
         lineKey: "lk1",
         sortOrder: 0,
         lineKind: "EMBEDDED",
-        targetNodeKey: "N1",
+        targetNodeKey: "install",
         embeddedPayloadJson: { title: "PDCO line", taskKind: "LABOR" },
       },
     });
@@ -298,7 +298,7 @@ describe("Epic 13 + 54 portal quote decline", () => {
         tenantId,
         flowId: flow1.id,
         packageTaskId: "PT-A",
-        nodeId: "N1",
+        nodeId: "install",
         quoteVersionId: qv1.id,
         lineItemId: "L1",
         planTaskIds: ["PL-A"],
@@ -329,7 +329,7 @@ describe("Epic 13 + 54 portal quote decline", () => {
       slots: [
         {
           packageTaskId: "PT-A",
-          nodeId: "N1",
+          nodeId: "install",
           source: "SOLD_SCOPE",
           planTaskIds: ["PL-A"],
           displayTitle: "Task A",
@@ -337,7 +337,7 @@ describe("Epic 13 + 54 portal quote decline", () => {
         },
         {
           packageTaskId: "PT-B",
-          nodeId: "N2",
+          nodeId: "final-inspection",
           source: "SOLD_SCOPE",
           planTaskIds: ["PL-B"],
           displayTitle: "Task B",

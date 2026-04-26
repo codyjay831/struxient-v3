@@ -23,7 +23,7 @@ function embeddedItem(overrides?: Partial<PromotionSourceItem>): PromotionSource
     lineKind: "EMBEDDED",
     embeddedPayloadJson: { title: "Tear off", taskKind: "LABOR" },
     taskDefinitionId: null,
-    targetNodeKey: "node-roof",
+    targetNodeKey: "install",
     ...overrides,
   };
 }
@@ -36,7 +36,7 @@ function libraryItem(overrides?: Partial<PromotionSourceItem>): PromotionSourceI
     lineKind: "LIBRARY",
     embeddedPayloadJson: null,
     taskDefinitionId: "td_abc",
-    targetNodeKey: "node-inspect",
+    targetNodeKey: "final-inspection",
     ...overrides,
   };
 }
@@ -62,7 +62,7 @@ describe("mapQuoteLocalPacketItemToPacketTaskLineCreate (interim promotion)", ()
     const out = mapQuoteLocalPacketItemToPacketTaskLineCreate(src);
     expect(out.lineKind).toBe("LIBRARY");
     expect(out.taskDefinitionId).toBe("td_abc");
-    expect(out.targetNodeKey).toBe("node-inspect");
+    expect(out.targetNodeKey).toBe("final-inspection");
     expect(out.embeddedPayloadJson).toEqual({});
   });
 

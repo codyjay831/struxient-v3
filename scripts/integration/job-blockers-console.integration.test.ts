@@ -34,7 +34,7 @@ describe("job blockers console — job shell DTO + gate/hold mutations", () => {
         versionNumber: 1,
         status: "PUBLISHED",
         publishedAt: new Date(),
-        snapshotJson: { nodes: [{ id: "N1", type: "TASK" }] },
+        snapshotJson: { nodes: [{ id: "install", type: "TASK" }] },
       },
     });
     const qv1Id = `qv-jbc-g-${suffix}`;
@@ -44,7 +44,7 @@ describe("job blockers console — job shell DTO + gate/hold mutations", () => {
       slots: [
         {
           packageTaskId: "PT-G",
-          nodeId: "N1",
+          nodeId: "install",
           source: "SOLD_SCOPE",
           planTaskIds: ["PL-G"],
           displayTitle: "Gated",
@@ -91,7 +91,7 @@ describe("job blockers console — job shell DTO + gate/hold mutations", () => {
         tenantId,
         flowId: flow1.id,
         packageTaskId: "PT-G",
-        nodeId: "N1",
+        nodeId: "install",
         quoteVersionId: qv1.id,
         lineItemId: "L1",
         planTaskIds: ["PL-G"],
@@ -177,7 +177,7 @@ describe("job blockers console — job shell DTO + gate/hold mutations", () => {
         versionNumber: 1,
         status: "PUBLISHED",
         publishedAt: new Date(),
-        snapshotJson: { nodes: [{ id: "N1", type: "TASK" }] },
+        snapshotJson: { nodes: [{ id: "install", type: "TASK" }] },
       },
     });
     const qv1Id = `qv-jbc-h-${suffix}`;
@@ -187,7 +187,7 @@ describe("job blockers console — job shell DTO + gate/hold mutations", () => {
       slots: [
         {
           packageTaskId: "PT-H",
-          nodeId: "N1",
+          nodeId: "install",
           source: "SOLD_SCOPE",
           planTaskIds: ["PL-H"],
           displayTitle: "H task",
@@ -234,7 +234,7 @@ describe("job blockers console — job shell DTO + gate/hold mutations", () => {
         tenantId,
         flowId: flow1.id,
         packageTaskId: "PT-H",
-        nodeId: "N1",
+        nodeId: "install",
         quoteVersionId: qv1.id,
         lineItemId: "L1",
         planTaskIds: ["PL-H"],

@@ -50,7 +50,7 @@ async function testMediaInfrastructure() {
       versionNumber: 1, 
       status: "PUBLISHED", 
       publishedAt: new Date(),
-      snapshotJson: { nodes: [{ id: "N1", type: "TASK" }] }
+      snapshotJson: { nodes: [{ id: "install", type: "TASK" }] }
     } 
   });
 
@@ -66,7 +66,7 @@ async function testMediaInfrastructure() {
   });
 
   const rt = await prisma.runtimeTask.create({
-    data: { tenantId, flowId: flow.id, packageTaskId: "PT-A", nodeId: "N1", quoteVersionId: qvId, lineItemId: "L1", planTaskIds: ["PL-A"], displayTitle: "Task with Media" }
+    data: { tenantId, flowId: flow.id, packageTaskId: "PT-A", nodeId: "install", quoteVersionId: qvId, lineItemId: "L1", planTaskIds: ["PL-A"], displayTitle: "Task with Media" }
   });
 
   // 1. Test Storage Provider

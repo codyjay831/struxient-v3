@@ -124,7 +124,7 @@ describe("greenfield ScopePacket create", () => {
         lineKey: "a",
         sortOrder: 0,
         lineKind: "EMBEDDED",
-        targetNodeKey: "n1",
+        targetNodeKey: "install",
         embeddedPayloadJson: { title: "T", taskKind: "LABOR" },
       },
     });

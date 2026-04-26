@@ -198,7 +198,7 @@ describe("library packet task-line authoring (HTTP API)", () => {
 
     const again = await postEmbeddedTaskLine(baseUrl, cookieOffice, scopePacketId, scopePacketRevisionId, {
       lineKey: "second",
-      targetNodeKey: "n2",
+      targetNodeKey: "final-inspection",
       title: "T2",
     });
     expect(again.status).toBe(409);
@@ -223,7 +223,7 @@ describe("library packet task-line authoring (HTTP API)", () => {
     expect(first.status).toBe(201);
     const second = await postEmbeddedTaskLine(baseUrl, cookieOffice, scopePacketId, scopePacketRevisionId, {
       lineKey: "same-key",
-      targetNodeKey: "n2",
+      targetNodeKey: "final-inspection",
       title: "Two",
     });
     expect(second.status).toBe(409);

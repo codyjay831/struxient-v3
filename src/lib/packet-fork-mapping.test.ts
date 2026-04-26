@@ -25,7 +25,7 @@ function embeddedSource(
     lineKind: "EMBEDDED",
     embeddedPayloadJson: { title: "Tear off", taskKind: "LABOR" },
     taskDefinitionId: null,
-    targetNodeKey: "node-roof",
+    targetNodeKey: "install",
     ...overrides,
   };
 }
@@ -40,7 +40,7 @@ function librarySource(
     lineKind: "LIBRARY",
     embeddedPayloadJson: {},
     taskDefinitionId: "td_abc",
-    targetNodeKey: "node-inspect",
+    targetNodeKey: "final-inspection",
     ...overrides,
   };
 }
@@ -66,7 +66,7 @@ describe("mapPacketTaskLineToQuoteLocalPacketItemCreate (interim fork)", () => {
     const out = mapPacketTaskLineToQuoteLocalPacketItemCreate(src);
     expect(out.lineKind).toBe("LIBRARY");
     expect(out.taskDefinitionId).toBe("td_abc");
-    expect(out.targetNodeKey).toBe("node-inspect");
+    expect(out.targetNodeKey).toBe("final-inspection");
     expect(out.embeddedPayloadJson).toEqual({});
   });
 
@@ -96,7 +96,7 @@ describe("mapPacketTaskLineToQuoteLocalPacketItemCreate (interim fork)", () => {
       lineKind: "EMBEDDED" as const,
       embeddedPayloadJson: { title: "RT", deep: { nested: [1, 2, 3] } },
       taskDefinitionId: null,
-      targetNodeKey: "node-rt",
+      targetNodeKey: "pre-work",
     };
     const promoted = mapQuoteLocalPacketItemToPacketTaskLineCreate(original);
     const forked = mapPacketTaskLineToQuoteLocalPacketItemCreate({

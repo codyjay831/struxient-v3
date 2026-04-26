@@ -3,6 +3,7 @@ import { ForkRevisionForm } from "@/components/catalog-packets/fork-revision-for
 import { PublishRevisionForm } from "@/components/catalog-packets/publish-revision-form";
 import { InternalBreadcrumb } from "@/components/internal/internal-breadcrumb";
 import { InternalNotFoundState } from "@/components/internal/internal-state-feedback";
+import { humanizeCanonicalExecutionStageKey } from "@/lib/canonical-execution-stages";
 import { tryGetApiPrincipal } from "@/lib/auth/api-principal";
 import { getPrisma } from "@/server/db/prisma";
 import { getScopePacketRevisionDetailForTenant } from "@/server/slice1/reads/scope-packet-catalog-reads";
@@ -278,7 +279,11 @@ export default async function DevCatalogPacketRevisionPage({ params }: PageProps
                 )}
 
                 <div className="mt-2 text-[11px] text-zinc-500">
-                  targetNodeKey: <code className="text-zinc-300">{line.targetNodeKey}</code>
+                  Execution stage:{" "}
+                  <span className="text-zinc-300">
+                    {humanizeCanonicalExecutionStageKey(line.targetNodeKey)}
+                  </span>
+                  <code className="ml-2 text-[9px] text-zinc-600">{line.targetNodeKey}</code>
                 </div>
 
                 <div className="mt-2 text-[11px] text-zinc-500">

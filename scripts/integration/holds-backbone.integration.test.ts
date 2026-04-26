@@ -28,7 +28,7 @@ describe("operational holds backbone (Epic 29 / 48)", () => {
         versionNumber: 1,
         status: "PUBLISHED",
         publishedAt: new Date(),
-        snapshotJson: { nodes: [{ id: "N1", type: "TASK" }] },
+        snapshotJson: { nodes: [{ id: "install", type: "TASK" }] },
       },
     });
     const qv1Id = `qv-h-${suffix}`;
@@ -38,7 +38,7 @@ describe("operational holds backbone (Epic 29 / 48)", () => {
       slots: [
         {
           packageTaskId: "PT-A",
-          nodeId: "N1",
+          nodeId: "install",
           source: "SOLD_SCOPE",
           planTaskIds: ["PL-A"],
           displayTitle: "Task A",
@@ -85,7 +85,7 @@ describe("operational holds backbone (Epic 29 / 48)", () => {
         tenantId,
         flowId: flow1.id,
         packageTaskId: "PT-A",
-        nodeId: "N1",
+        nodeId: "install",
         quoteVersionId: qv1.id,
         lineItemId: "L1",
         planTaskIds: ["PL-A"],
@@ -182,7 +182,7 @@ describe("operational holds backbone (Epic 29 / 48)", () => {
         versionNumber: 1,
         status: "PUBLISHED",
         publishedAt: new Date(),
-        snapshotJson: { nodes: [{ id: "N1", type: "TASK" }, { id: "N2", type: "TASK" }] },
+        snapshotJson: { nodes: [{ id: "install", type: "TASK" }, { id: "final-inspection", type: "TASK" }] },
       },
     });
     const qv1Id = `qv2-${suffix}`;
@@ -192,7 +192,7 @@ describe("operational holds backbone (Epic 29 / 48)", () => {
       slots: [
         {
           packageTaskId: "PT-A",
-          nodeId: "N1",
+          nodeId: "install",
           source: "SOLD_SCOPE",
           planTaskIds: ["PL-A"],
           displayTitle: "A",
@@ -200,7 +200,7 @@ describe("operational holds backbone (Epic 29 / 48)", () => {
         },
         {
           packageTaskId: "PT-B",
-          nodeId: "N2",
+          nodeId: "final-inspection",
           source: "SOLD_SCOPE",
           planTaskIds: ["PL-B"],
           displayTitle: "B",
@@ -247,7 +247,7 @@ describe("operational holds backbone (Epic 29 / 48)", () => {
         tenantId,
         flowId: flow1.id,
         packageTaskId: "PT-A",
-        nodeId: "N1",
+        nodeId: "install",
         quoteVersionId: qv1.id,
         lineItemId: "L1",
         planTaskIds: ["PL-A"],
@@ -259,7 +259,7 @@ describe("operational holds backbone (Epic 29 / 48)", () => {
         tenantId,
         flowId: flow1.id,
         packageTaskId: "PT-B",
-        nodeId: "N2",
+        nodeId: "final-inspection",
         quoteVersionId: qv1.id,
         lineItemId: "L2",
         planTaskIds: ["PL-B"],

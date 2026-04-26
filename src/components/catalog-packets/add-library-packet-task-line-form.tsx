@@ -90,8 +90,7 @@ export function AddLibraryPacketTaskLineForm({
       <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Add library line</h3>
       <p className="text-[11px] leading-relaxed text-zinc-500">
         Picks a <span className="text-zinc-400">PUBLISHED</span> catalog task definition. Requires{" "}
-        <code className="text-zinc-400">lineKey</code> and <code className="text-zinc-400">targetNodeKey</code> for
-        compose compatibility (same as embedded lines).
+        <code className="text-zinc-400">lineKey</code> and an execution stage for execution routing.
       </p>
       <div>
         <label className="block text-[11px] font-medium text-zinc-500">Task definition</label>
@@ -118,19 +117,19 @@ export function AddLibraryPacketTaskLineForm({
             value={lineKey}
             onChange={(e) => setLineKey(e.target.value)}
             disabled={busy}
-            placeholder="rough-in-lib"
+            placeholder="install"
             className="mt-0.5 w-full rounded border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100"
           />
         </div>
         <div>
-          <span className="block text-[11px] font-medium text-zinc-500">targetNodeKey</span>
+          <span className="block text-[11px] font-medium text-zinc-500">Execution stage</span>
           <div className="mt-0.5">
             <TargetNodePicker
               workflowVersionIdForNodeKeys={hintWorkflowVersionId}
               value={targetNodeKey}
               disabled={busy}
               onChange={setTargetNodeKey}
-              copyVariant="catalogLibraryHint"
+              copyVariant="catalogLibrary"
             />
           </div>
         </div>

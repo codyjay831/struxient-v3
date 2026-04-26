@@ -35,7 +35,7 @@ describe("global work feed — Execution Canon (Schema v5)", () => {
         versionNumber: 1,
         status: "PUBLISHED",
         publishedAt: new Date(),
-        snapshotJson: { nodes: [{ id: "N1", type: "TASK" }] },
+        snapshotJson: { nodes: [{ id: "install", type: "TASK" }] },
       },
     });
 
@@ -45,7 +45,7 @@ describe("global work feed — Execution Canon (Schema v5)", () => {
       slots: [
         {
           packageTaskId: "PT-OLD",
-          nodeId: "N1",
+          nodeId: "install",
           source: "SOLD_SCOPE",
           planTaskIds: ["PL-OLD"],
           displayTitle: "Old slot",
@@ -81,7 +81,7 @@ describe("global work feed — Execution Canon (Schema v5)", () => {
       slots: [
         {
           packageTaskId: "PT-NEW",
-          nodeId: "N1",
+          nodeId: "install",
           source: "SOLD_SCOPE",
           planTaskIds: ["PL-NEW"],
           displayTitle: "New slot",
@@ -148,7 +148,7 @@ describe("global work feed — Execution Canon (Schema v5)", () => {
         tenantId,
         flowId: flowAaa.id,
         packageTaskId: "PT-OLD",
-        nodeId: "N1",
+        nodeId: "install",
         quoteVersionId: qvOld.id,
         lineItemId: "L1",
         planTaskIds: ["PL-OLD"],
@@ -160,7 +160,7 @@ describe("global work feed — Execution Canon (Schema v5)", () => {
         tenantId,
         flowId: flowZzz.id,
         packageTaskId: "PT-NEW",
-        nodeId: "N1",
+        nodeId: "install",
         quoteVersionId: qvNew.id,
         lineItemId: "L1",
         planTaskIds: ["PL-NEW"],
@@ -215,7 +215,7 @@ describe("global work feed — Execution Canon (Schema v5)", () => {
         versionNumber: 1,
         status: "PUBLISHED",
         publishedAt: new Date(),
-        snapshotJson: { nodes: [{ id: "N1", type: "TASK" }, { id: "N2", type: "TASK" }, { id: "N3", type: "TASK" }] },
+        snapshotJson: { nodes: [{ id: "install", type: "TASK" }, { id: "final-inspection", type: "TASK" }, { id: "closeout", type: "TASK" }] },
       },
     });
 
@@ -224,11 +224,11 @@ describe("global work feed — Execution Canon (Schema v5)", () => {
       schemaVersion: "executionPackageSnapshot.v0",
       pinnedWorkflowVersionId: wv.id,
       slots: [
-        { packageTaskId: "PT-A", nodeId: "N1", source: "SOLD_SCOPE", planTaskIds: ["PL-A"], displayTitle: "A", lineItemId: "L1" },
-        { packageTaskId: "PT-B", nodeId: "N2", source: "SOLD_SCOPE", planTaskIds: ["PL-B"], displayTitle: "B", lineItemId: "L2" },
+        { packageTaskId: "PT-A", nodeId: "install", source: "SOLD_SCOPE", planTaskIds: ["PL-A"], displayTitle: "A", lineItemId: "L1" },
+        { packageTaskId: "PT-B", nodeId: "final-inspection", source: "SOLD_SCOPE", planTaskIds: ["PL-B"], displayTitle: "B", lineItemId: "L2" },
         { packageTaskId: "PT-C", nodeId: "N3", source: "SOLD_SCOPE", planTaskIds: ["PL-C"], displayTitle: "C", lineItemId: "L3" },
-        { packageTaskId: "PT-ACCEPTED", nodeId: "N1", source: "SOLD_SCOPE", planTaskIds: ["PL-X"], displayTitle: "Accepted", lineItemId: "L1" },
-        { packageTaskId: "PT-SUPERSEDED", nodeId: "N1", source: "SOLD_SCOPE", planTaskIds: ["PL-Y"], displayTitle: "Superseded", lineItemId: "L1" },
+        { packageTaskId: "PT-ACCEPTED", nodeId: "install", source: "SOLD_SCOPE", planTaskIds: ["PL-X"], displayTitle: "Accepted", lineItemId: "L1" },
+        { packageTaskId: "PT-SUPERSEDED", nodeId: "install", source: "SOLD_SCOPE", planTaskIds: ["PL-Y"], displayTitle: "Superseded", lineItemId: "L1" },
       ],
       skippedSkeletonSlotCount: 0,
     };
@@ -269,13 +269,13 @@ describe("global work feed — Execution Canon (Schema v5)", () => {
 
     const rtA = await prisma.runtimeTask.create({
       data: {
-        tenantId, flowId: flow.id, packageTaskId: "PT-A", nodeId: "N1",
+        tenantId, flowId: flow.id, packageTaskId: "PT-A", nodeId: "install",
         quoteVersionId: qv.id, lineItemId: "L1", planTaskIds: ["PL-A"], displayTitle: "A",
       },
     });
     const rtB = await prisma.runtimeTask.create({
       data: {
-        tenantId, flowId: flow.id, packageTaskId: "PT-B", nodeId: "N2",
+        tenantId, flowId: flow.id, packageTaskId: "PT-B", nodeId: "final-inspection",
         quoteVersionId: qv.id, lineItemId: "L2", planTaskIds: ["PL-B"], displayTitle: "B",
       },
     });
@@ -287,7 +287,7 @@ describe("global work feed — Execution Canon (Schema v5)", () => {
     });
     const rtAccepted = await prisma.runtimeTask.create({
       data: {
-        tenantId, flowId: flow.id, packageTaskId: "PT-ACCEPTED", nodeId: "N1",
+        tenantId, flowId: flow.id, packageTaskId: "PT-ACCEPTED", nodeId: "install",
         quoteVersionId: qv.id, lineItemId: "L1", planTaskIds: ["PL-X"], displayTitle: "Accepted",
       },
     });
@@ -321,7 +321,7 @@ describe("global work feed — Execution Canon (Schema v5)", () => {
     });
     const rtSuperseded = await prisma.runtimeTask.create({
       data: {
-        tenantId, flowId: flow.id, packageTaskId: "PT-SUPERSEDED", nodeId: "N1",
+        tenantId, flowId: flow.id, packageTaskId: "PT-SUPERSEDED", nodeId: "install",
         quoteVersionId: qv.id, lineItemId: "L1", planTaskIds: ["PL-Y"], displayTitle: "Superseded",
         changeOrderIdSuperseded: co.id,
       },

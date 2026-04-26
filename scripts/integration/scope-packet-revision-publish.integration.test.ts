@@ -221,7 +221,7 @@ describe("interim publish action for ScopePacketRevision (HTTP API)", () => {
     await addEmbeddedItem(baseUrl, cookieOffice, packet.id, {
       lineKey: "task-1",
       sortOrder: 0,
-      targetNodeKey: "node-x",
+      targetNodeKey: "install",
     });
 
     const packetKey = `pub-happy-${suffix}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
@@ -297,7 +297,7 @@ describe("interim publish action for ScopePacketRevision (HTTP API)", () => {
     await addEmbeddedItem(baseUrl, cookieOffice, packet.id, {
       lineKey: "x",
       sortOrder: 0,
-      targetNodeKey: "node-x",
+      targetNodeKey: "install",
     });
     const packetKey = `pub-rep-${suffix}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
     const { scopePacketId, scopePacketRevisionId } = await promote(
@@ -329,7 +329,7 @@ describe("interim publish action for ScopePacketRevision (HTTP API)", () => {
     await addEmbeddedItem(baseUrl, cookieOffice, packet.id, {
       lineKey: "empty-payload",
       sortOrder: 0,
-      targetNodeKey: "node-x",
+      targetNodeKey: "install",
       embeddedPayloadJson: {},
     });
 
@@ -358,7 +358,7 @@ describe("interim publish action for ScopePacketRevision (HTTP API)", () => {
     await addEmbeddedItem(baseUrl, cookieOffice, packet.id, {
       lineKey: "x",
       sortOrder: 0,
-      targetNodeKey: "node-x",
+      targetNodeKey: "install",
     });
     const packetKey = `pub-iso-${suffix}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
     const { scopePacketId, scopePacketRevisionId } = await promote(

@@ -1,4 +1,5 @@
 import { summarizeTierPartialExclusion } from "@/lib/compose-tier-filter-diagnostics";
+import { isCanonicalExecutionStageKey } from "@/lib/canonical-execution-stages";
 import type { QuoteVersionScopeDb, QuoteVersionScopeReadModel } from "../reads/quote-version-scope";
 import {
   computePackageTaskId,
@@ -280,6 +281,16 @@ export async function runComposeFromReadModel(
             });
             continue;
           }
+
+          if (!isCanonicalExecutionStageKey(targetNodeKey)) {
+            warnings.push({
+              code: "NON_CANONICAL_STAGE_ID",
+              message: `targetNodeKey "${targetNodeKey}" is not a canonical execution stage key.`,
+              lineItemId: line.id,
+              details: { packetLineKey: pl.lineKey, targetNodeKey },
+            });
+          }
+
           if (!nodeIds.has(targetNodeKey)) {
             errors.push({
               code: "PACKAGE_BIND_FAILED",
@@ -369,6 +380,16 @@ export async function runComposeFromReadModel(
         for (const li of filtered) {
           const targetNodeKey = li.targetNodeKey;
           const embedded = readEmbeddedScopeFields(li.embeddedPayloadJson);
+
+          if (!isCanonicalExecutionStageKey(targetNodeKey)) {
+            warnings.push({
+              code: "NON_CANONICAL_STAGE_ID",
+              message: `targetNodeKey "${targetNodeKey}" is not a canonical execution stage key.`,
+              lineItemId: line.id,
+              details: { localLineKey: li.lineKey, targetNodeKey },
+            });
+          }
+
           if (!nodeIds.has(targetNodeKey)) {
             errors.push({
               code: "PACKAGE_BIND_FAILED",
@@ -431,8 +452,8 @@ export async function runComposeFromReadModel(
 
     const soldLines = model.orderedLineItems.filter((l) => l.executionMode === "SOLD_SCOPE");
     if (soldLines.length > 0) {
-      const sortedNodeIds = [...nodeIds].sort((a, b) => a.localeCompare(b));
-      const defaultNodeId = sortedNodeIds[0];
+      // Default to the first node defined in the workflow snapshot (order-preserving)
+      const defaultNodeId = [...nodeIds][0];
       if (defaultNodeId === undefined) {
         errors.push({
           code: "PACKAGE_BIND_FAILED",
@@ -448,7 +469,7 @@ export async function runComposeFromReadModel(
           warnings.push({
             code: "COMMERCIAL_SOLD_DEFAULT_NODE_PLACEMENT",
             message:
-              "SOLD_SCOPE line uses first workflow node (lexicographic id) as placement placeholder until line-level target is specified.",
+              "SOLD_SCOPE line uses first workflow node as placement placeholder until line-level target is specified.",
             lineItemId: line.id,
             details: { targetNodeKey: defaultNodeId },
           });

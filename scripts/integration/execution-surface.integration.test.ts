@@ -34,7 +34,7 @@ async function testExecutionSurface() {
       versionNumber: 1, 
       status: "PUBLISHED", 
       publishedAt: new Date(),
-      snapshotJson: { nodes: [{ id: "N1", type: "TASK" }] }
+      snapshotJson: { nodes: [{ id: "install", type: "TASK" }] }
     } 
   });
 
@@ -42,7 +42,7 @@ async function testExecutionSurface() {
   const pkgV1 = {
     schemaVersion: "executionPackageSnapshot.v0",
     pinnedWorkflowVersionId: wv.id,
-    slots: [{ packageTaskId: "PT-A", nodeId: "N1", source: "SOLD_SCOPE", planTaskIds: ["PL-A"], displayTitle: "Task A", lineItemId: "L1" }],
+    slots: [{ packageTaskId: "PT-A", nodeId: "install", source: "SOLD_SCOPE", planTaskIds: ["PL-A"], displayTitle: "Task A", lineItemId: "L1" }],
     skippedSkeletonSlotCount: 0
   };
   const planV1 = { schemaVersion: "generatedPlanSnapshot.v0", quoteVersionId: qv1Id, rows: [{ planTaskId: "PL-A" }] };
@@ -69,7 +69,7 @@ async function testExecutionSurface() {
   });
 
   await prisma.runtimeTask.create({
-    data: { tenantId, flowId: flow1.id, packageTaskId: "PT-A", nodeId: "N1", quoteVersionId: qv1Id, lineItemId: "L1", planTaskIds: ["PL-A"], displayTitle: "Task A" }
+    data: { tenantId, flowId: flow1.id, packageTaskId: "PT-A", nodeId: "install", quoteVersionId: qv1Id, lineItemId: "L1", planTaskIds: ["PL-A"], displayTitle: "Task A" }
   });
 
   // 1. Initial State: Task A should be visible
@@ -86,7 +86,7 @@ async function testExecutionSurface() {
   const pkgV2 = {
     schemaVersion: "executionPackageSnapshot.v0",
     pinnedWorkflowVersionId: wv.id,
-    slots: [{ packageTaskId: "PT-B", nodeId: "N1", source: "SOLD_SCOPE", planTaskIds: ["PL-B"], displayTitle: "Task B", lineItemId: "L2" }],
+    slots: [{ packageTaskId: "PT-B", nodeId: "install", source: "SOLD_SCOPE", planTaskIds: ["PL-B"], displayTitle: "Task B", lineItemId: "L2" }],
     skippedSkeletonSlotCount: 0
   };
   const planV2 = { schemaVersion: "generatedPlanSnapshot.v0", quoteVersionId: qv2Id, rows: [{ planTaskId: "PL-B" }] };

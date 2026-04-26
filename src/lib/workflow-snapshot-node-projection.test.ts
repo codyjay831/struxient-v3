@@ -5,16 +5,16 @@ describe("projectWorkflowNodeKeys", () => {
   it("projects ordered, deduped node ids with task counts from a v0 snapshot", () => {
     const snapshot = {
       nodes: [
-        { id: "node-roof", tasks: [{ id: "sk-a" }, { id: "sk-b" }] },
-        { id: "node-attic", tasks: [{ id: "sk-c" }] },
-        { id: "node-roof", tasks: [{ id: "dup" }] },
-        { id: "node-cleanup" },
+        { id: "install", tasks: [{ id: "sk-a" }, { id: "sk-b" }] },
+        { id: "pre-work", tasks: [{ id: "sk-c" }] },
+        { id: "install", tasks: [{ id: "dup" }] },
+        { id: "closeout" },
       ],
     };
     expect(projectWorkflowNodeKeys(snapshot)).toEqual([
-      { nodeId: "node-roof", taskCount: 2, displayName: null },
-      { nodeId: "node-attic", taskCount: 1, displayName: null },
-      { nodeId: "node-cleanup", taskCount: 0, displayName: null },
+      { nodeId: "install", taskCount: 2, displayName: null },
+      { nodeId: "pre-work", taskCount: 1, displayName: null },
+      { nodeId: "closeout", taskCount: 0, displayName: null },
     ]);
   });
 

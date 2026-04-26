@@ -67,7 +67,7 @@ describe("Epic 47 payment gate e2e (author line → send freeze → activate →
       await replaceWorkflowVersionDraftSnapshotForTenant(prisma, {
         tenantId,
         workflowVersionId: draft.id,
-        snapshotJson: { nodes: [{ id: "gate-node", type: "TASK" }] },
+        snapshotJson: { nodes: [{ id: "install", type: "TASK" }] },
       });
 
       const published = await publishWorkflowVersionForTenant(prisma, {

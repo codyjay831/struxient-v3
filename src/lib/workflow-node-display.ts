@@ -1,3 +1,5 @@
+import { getCanonicalExecutionStage } from "./canonical-execution-stages";
+
 /**
  * Display helpers for raw workflow node ids in the authoring UI.
  *
@@ -30,6 +32,11 @@ const COLLAPSE_WS = /\s+/g;
 export function humanizeWorkflowNodeId(id: string): string {
   const trimmed = id.trim();
   if (trimmed === "") return "";
+
+  // Prefer canonical stage label if it matches exactly
+  const canonical = getCanonicalExecutionStage(trimmed);
+  if (canonical) return canonical.label;
+
   if (/\s/.test(trimmed) && /[A-Z]/.test(trimmed)) {
     return trimmed;
   }

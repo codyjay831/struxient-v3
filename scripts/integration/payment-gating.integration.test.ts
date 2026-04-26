@@ -53,7 +53,7 @@ async function testPaymentGating() {
       versionNumber: 1, 
       status: "PUBLISHED", 
       publishedAt: new Date(),
-      snapshotJson: { nodes: [{ id: "N1", type: "TASK" }] }
+      snapshotJson: { nodes: [{ id: "install", type: "TASK" }] }
     } 
   });
 
@@ -81,7 +81,7 @@ async function testPaymentGating() {
       tenantId,
       flowId: flow.id,
       packageTaskId: "PT1",
-      nodeId: "N1",
+      nodeId: "install",
       quoteVersionId: qv.id,
       lineItemId: "L1",
       planTaskIds: [],

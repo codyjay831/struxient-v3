@@ -32,7 +32,7 @@ async function testChangeOrders() {
       versionNumber: 1, 
       status: "PUBLISHED", 
       publishedAt: new Date(),
-      snapshotJson: { nodes: [{ id: "N1", type: "TASK" }, { id: "N2", type: "TASK" }] }
+      snapshotJson: { nodes: [{ id: "install", type: "TASK" }, { id: "final-inspection", type: "TASK" }] }
     } 
   });
 
@@ -42,7 +42,7 @@ async function testChangeOrders() {
     schemaVersion: "executionPackageSnapshot.v0",
     pinnedWorkflowVersionId: wv.id,
     slots: [
-      { packageTaskId: "PT-A", nodeId: "N1", source: "SOLD_SCOPE", planTaskIds: ["PL-A"], displayTitle: "Task A", lineItemId: "L1" }
+      { packageTaskId: "PT-A", nodeId: "install", source: "SOLD_SCOPE", planTaskIds: ["PL-A"], displayTitle: "Task A", lineItemId: "L1" }
     ],
     skippedSkeletonSlotCount: 0
   };
@@ -93,7 +93,7 @@ async function testChangeOrders() {
       tenantId,
       flowId: flow1.id,
       packageTaskId: "PT-A",
-      nodeId: "N1",
+      nodeId: "install",
       quoteVersionId: qv1.id,
       lineItemId: "L1",
       planTaskIds: ["PL-A"],
@@ -129,8 +129,8 @@ async function testChangeOrders() {
     schemaVersion: "executionPackageSnapshot.v0",
     pinnedWorkflowVersionId: wv.id,
     slots: [
-      { packageTaskId: "PT-A", nodeId: "N1", source: "SOLD_SCOPE", planTaskIds: ["PL-A"], displayTitle: "Task A", lineItemId: "L1" },
-      { packageTaskId: "PT-B", nodeId: "N2", source: "SOLD_SCOPE", planTaskIds: ["PL-B"], displayTitle: "Task B", lineItemId: "L2" }
+      { packageTaskId: "PT-A", nodeId: "install", source: "SOLD_SCOPE", planTaskIds: ["PL-A"], displayTitle: "Task A", lineItemId: "L1" },
+      { packageTaskId: "PT-B", nodeId: "final-inspection", source: "SOLD_SCOPE", planTaskIds: ["PL-B"], displayTitle: "Task B", lineItemId: "L2" }
     ],
     skippedSkeletonSlotCount: 0
   };

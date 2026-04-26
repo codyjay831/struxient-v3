@@ -98,8 +98,8 @@ async function seedSentSignedQuote(suffix: string): Promise<SeedResult> {
     workflowVersionId: draft.id,
     snapshotJson: {
       nodes: [
-        { id: "N1", type: "TASK" },
-        { id: "N2", type: "TASK" },
+        { id: "install", type: "TASK" },
+        { id: "final-inspection", type: "TASK" },
       ],
     },
   });
@@ -148,7 +148,7 @@ async function seedSentSignedQuote(suffix: string): Promise<SeedResult> {
       lineKey: `pl-${suffix}`,
       sortOrder: 0,
       lineKind: "LIBRARY",
-      targetNodeKey: "N1",
+      targetNodeKey: "install",
       embeddedPayloadJson: { title: "Original library task title", taskKind: "LABOR" },
       taskDefinitionId: taskDef.id,
     },
@@ -169,7 +169,7 @@ async function seedSentSignedQuote(suffix: string): Promise<SeedResult> {
       lineKey: `ll-${suffix}`,
       sortOrder: 0,
       lineKind: "EMBEDDED",
-      targetNodeKey: "N2",
+      targetNodeKey: "final-inspection",
       embeddedPayloadJson: {
         title: "Original local task title",
         taskKind: "LABOR",

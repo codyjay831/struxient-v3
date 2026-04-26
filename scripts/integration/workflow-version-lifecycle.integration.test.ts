@@ -42,7 +42,7 @@ describe("workflow version lifecycle (DB integration)", () => {
         versionNumber: 1,
         status: "DRAFT",
         publishedAt: null,
-        snapshotJson: { nodes: [{ id: "n1" }] },
+        snapshotJson: { nodes: [{ id: "install" }] },
       },
     });
 
@@ -52,7 +52,7 @@ describe("workflow version lifecycle (DB integration)", () => {
         versionNumber: 2,
         status: "SUPERSEDED",
         publishedAt: new Date("2026-01-01T00:00:00.000Z"),
-        snapshotJson: { nodes: [{ id: "n1" }] },
+        snapshotJson: { nodes: [{ id: "install" }] },
       },
     });
 
@@ -62,7 +62,7 @@ describe("workflow version lifecycle (DB integration)", () => {
         versionNumber: 3,
         status: "PUBLISHED",
         publishedAt: new Date(),
-        snapshotJson: { nodes: [{ id: "n1" }] },
+        snapshotJson: { nodes: [{ id: "install" }] },
       },
     });
 
@@ -117,7 +117,7 @@ describe("workflow version lifecycle (DB integration)", () => {
         versionNumber: 4,
         status: "PUBLISHED",
         publishedAt: null,
-        snapshotJson: { nodes: [{ id: "n1" }] },
+        snapshotJson: { nodes: [{ id: "install" }] },
       },
     });
     await expect(

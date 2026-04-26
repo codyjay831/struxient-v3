@@ -48,7 +48,7 @@ describe("packet task line — LIBRARY ref on DRAFT scope packet revision", () =
         scopePacketId: scopePacket.id,
         scopePacketRevisionId: scopePacketRevision.id,
         lineKey: "lib-row-1",
-        targetNodeKey: "node-a",
+        targetNodeKey: "install",
         taskDefinitionId: td.id,
       });
       expect(created).not.toBe("not_found");
@@ -60,7 +60,7 @@ describe("packet task line — LIBRARY ref on DRAFT scope packet revision", () =
       expect(row.lineKind).toBe("LIBRARY");
       expect(row.taskDefinitionId).toBe(td.id);
       expect(row.embeddedPayloadJson).toEqual({});
-      expect(row.targetNodeKey).toBe("node-a");
+      expect(row.targetNodeKey).toBe("install");
 
       const withTd = await prisma.packetTaskLine.findMany({
         where: { scopePacketRevisionId: scopePacketRevision.id },
@@ -215,7 +215,7 @@ describe("packet task line — LIBRARY ref on DRAFT scope packet revision", () =
         scopePacketId: scopePacket.id,
         scopePacketRevisionId: scopePacketRevision.id,
         lineKey: "emb-1",
-        targetNodeKey: "n1",
+        targetNodeKey: "install",
         title: "T",
       });
 
@@ -225,7 +225,7 @@ describe("packet task line — LIBRARY ref on DRAFT scope packet revision", () =
         scopePacketId: scopePacket.id,
         scopePacketRevisionId: scopePacketRevision.id,
         lineKey: "lib-1",
-        targetNodeKey: "n2",
+        targetNodeKey: "final-inspection",
         taskDefinitionId: td.id,
       });
 
@@ -282,7 +282,7 @@ describe("packet task line — reorder sortOrder (DRAFT revision)", () => {
         scopePacketId: scopePacket.id,
         scopePacketRevisionId: scopePacketRevision.id,
         lineKey: "aaa-first",
-        targetNodeKey: "n1",
+        targetNodeKey: "install",
         title: "A",
       });
       const second = await createEmbeddedPacketTaskLineForLibraryDraftRevision(prisma, {
@@ -291,7 +291,7 @@ describe("packet task line — reorder sortOrder (DRAFT revision)", () => {
         scopePacketId: scopePacket.id,
         scopePacketRevisionId: scopePacketRevision.id,
         lineKey: "bbb-second",
-        targetNodeKey: "n2",
+        targetNodeKey: "final-inspection",
         title: "B",
       });
       if (first === "not_found" || second === "not_found") throw new Error("unexpected");
@@ -462,7 +462,7 @@ describe("packet task line — reorder sortOrder (DRAFT revision)", () => {
         scopePacketId: scopePacket.id,
         scopePacketRevisionId: scopePacketRevision.id,
         lineKey: "z-emb",
-        targetNodeKey: "n1",
+        targetNodeKey: "install",
         title: "E",
       });
       const lib = await createLibraryRefPacketTaskLineForLibraryDraftRevision(prisma, {
@@ -471,7 +471,7 @@ describe("packet task line — reorder sortOrder (DRAFT revision)", () => {
         scopePacketId: scopePacket.id,
         scopePacketRevisionId: scopePacketRevision.id,
         lineKey: "a-lib",
-        targetNodeKey: "n2",
+        targetNodeKey: "final-inspection",
         taskDefinitionId: td.id,
       });
       if (lib === "not_found") throw new Error("unexpected");
@@ -609,7 +609,7 @@ describe("packet task line — edit-in-place (DRAFT revision)", () => {
         scopePacketId: scopePacket.id,
         scopePacketRevisionId: scopePacketRevision.id,
         lineKey: "lib-ed",
-        targetNodeKey: "n1",
+        targetNodeKey: "install",
         taskDefinitionId: td.id,
       });
       if (row === "not_found") throw new Error("unexpected");

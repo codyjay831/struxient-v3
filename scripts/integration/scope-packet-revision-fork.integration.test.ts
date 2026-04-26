@@ -269,14 +269,14 @@ describe("quote-local fork from PUBLISHED ScopePacketRevision (HTTP API)", () =>
     await addEmbeddedItem(baseUrl, cookieOffice, sourceLocal.id, {
       lineKey: "task-a",
       sortOrder: 0,
-      targetNodeKey: "node-a",
+      targetNodeKey: "install",
       embeddedPayloadJson: { title: "A original", taskKind: "LABOR" },
       tierCode: "GOOD",
     });
     await addEmbeddedItem(baseUrl, cookieOffice, sourceLocal.id, {
       lineKey: "task-b",
       sortOrder: 10,
-      targetNodeKey: "node-b",
+      targetNodeKey: "final-inspection",
       embeddedPayloadJson: { title: "B original", taskKind: "LABOR", deep: { nested: [1, 2] } },
     });
 
@@ -351,7 +351,7 @@ describe("quote-local fork from PUBLISHED ScopePacketRevision (HTTP API)", () =>
     expect(taskA!.sortOrder).toBe(0);
     expect(taskA!.tierCode).toBe("GOOD");
     expect(taskA!.lineKind).toBe("EMBEDDED");
-    expect(taskA!.targetNodeKey).toBe("node-a");
+    expect(taskA!.targetNodeKey).toBe("install");
     expect(taskA!.embeddedPayloadJson).toEqual({ title: "A original", taskKind: "LABOR" });
     expect(taskB!.sortOrder).toBe(10);
     expect(taskB!.embeddedPayloadJson).toEqual({
@@ -400,7 +400,7 @@ describe("quote-local fork from PUBLISHED ScopePacketRevision (HTTP API)", () =>
     await addEmbeddedItem(baseUrl, cookieOffice, sourceLocal.id, {
       lineKey: "task-1",
       sortOrder: 0,
-      targetNodeKey: "node-x",
+      targetNodeKey: "install",
     });
     const packetKey = `fork-draft-${suffix}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
     const { scopePacketRevisionId } = await promote(
@@ -433,7 +433,7 @@ describe("quote-local fork from PUBLISHED ScopePacketRevision (HTTP API)", () =>
     await addEmbeddedItem(baseUrl, cookieOffice, sourceLocal.id, {
       lineKey: "x",
       sortOrder: 0,
-      targetNodeKey: "node-x",
+      targetNodeKey: "install",
     });
     const packetKey = `fork-iso-${suffix}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
     const { scopePacketId, scopePacketRevisionId } = await promote(

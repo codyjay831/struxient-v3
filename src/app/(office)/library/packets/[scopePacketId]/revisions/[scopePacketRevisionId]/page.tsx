@@ -7,6 +7,7 @@ import { EditPacketTaskLineForm } from "@/components/catalog-packets/edit-packet
 import { LibraryPacketComposeHintWorkflowProvider } from "@/components/catalog-packets/library-packet-compose-hint-workflow-provider";
 import { ReorderPacketTaskLineButtons } from "@/components/catalog-packets/reorder-packet-task-line-buttons";
 import { PublishRevisionForm } from "@/components/catalog-packets/publish-revision-form";
+import { humanizeCanonicalExecutionStageKey } from "@/lib/canonical-execution-stages";
 import { principalHasCapability, tryGetApiPrincipal } from "@/lib/auth/api-principal";
 import { formatLibraryPacketComposeHintWorkflowLabel } from "@/lib/library-packet-compose-hint-workflow";
 import { getPrisma } from "@/server/db/prisma";
@@ -20,9 +21,9 @@ import { listTaskDefinitionsForTenant } from "@/server/slice1/reads/task-definit
  * revisions when the principal has `office_mutate`, and interim publish when readiness is satisfied.
  *
  * Reuses `getScopePacketRevisionDetailForTenant` and the shared readiness
- * predicate (same canon truth as `/dev/...`). Optional compose-hint workflow
- * selection drives `targetNodeKey` pickers (Epic 15 + 16); full catalog designer
- * and graph authoring remain out of scope.
+ * predicate (same canon truth as `/dev/...`). Task lines use canonical stages
+ * for execution routing. Optional technical validation against a specific
+ * process template helps authors ensure stage alignment.
  */
 export const dynamic = "force-dynamic";
 
@@ -324,7 +325,11 @@ export default async function OfficeLibraryPacketRevisionPage({ params }: PagePr
                   )}
 
                   <div className="mt-2 text-[11px] text-zinc-500">
-                    targetNodeKey: <code className="text-zinc-300">{line.targetNodeKey}</code>
+                    Execution stage:{" "}
+                    <span className="text-zinc-300">
+                      {humanizeCanonicalExecutionStageKey(line.targetNodeKey)}
+                    </span>
+                    <code className="ml-2 text-[9px] text-zinc-600">{line.targetNodeKey}</code>
                   </div>
 
                   <div className="mt-2 text-[11px] text-zinc-500">

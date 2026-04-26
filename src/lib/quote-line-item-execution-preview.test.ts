@@ -98,7 +98,7 @@ describe("projectLineItemExecutionPreview", () => {
               lineKey: "a",
               sortOrder: 1,
               tierCode: null,
-              targetNodeKey: "install-rooftop-unit",
+              targetNodeKey: "install",
               taskDefinition: {
                 id: "td-1",
                 taskKey: "tk-1",
@@ -130,7 +130,7 @@ describe("projectLineItemExecutionPreview", () => {
               lineKey: "a",
               sortOrder: 1,
               tierCode: null,
-              targetNodeKey: "install-rooftop-unit",
+              targetNodeKey: "install",
               taskDefinition: null,
               embeddedPayloadJson: { title: "Install" },
             },
@@ -140,8 +140,8 @@ describe("projectLineItemExecutionPreview", () => {
     );
     if (out.kind !== "manifestLibrary") throw new Error("expected manifestLibrary");
     expect(out.tasks[0].stage).toEqual({
-      nodeId: "install-rooftop-unit",
-      displayLabel: "Install rooftop unit",
+      nodeId: "install",
+      displayLabel: "Install",
       isOnSnapshot: false,
     });
   });
@@ -156,20 +156,20 @@ describe("projectLineItemExecutionPreview", () => {
               lineKey: "a",
               sortOrder: 1,
               tierCode: null,
-              targetNodeKey: "node-7",
+              targetNodeKey: "pre-work",
               taskDefinition: null,
               embeddedPayloadJson: null,
             },
           ],
         }),
         workflowNodeKeys: [
-          { nodeId: "node-7", taskCount: 4, displayName: "Pre-flight checks" },
+          { nodeId: "pre-work", taskCount: 4, displayName: "Pre-flight checks" },
         ],
       }),
     );
     if (out.kind !== "manifestLibrary") throw new Error("expected manifestLibrary");
     expect(out.tasks[0].stage).toEqual({
-      nodeId: "node-7",
+      nodeId: "pre-work",
       displayLabel: "Pre-flight checks",
       isOnSnapshot: true,
     });
@@ -206,9 +206,9 @@ describe("projectLineItemExecutionPreview", () => {
         scopePacketRevisionId: "rev-1",
         libraryRevision: libraryRevision({
           packetTaskLines: [
-            { lineKey: "z", sortOrder: 2, tierCode: null, targetNodeKey: "n", taskDefinition: null, embeddedPayloadJson: null },
-            { lineKey: "b", sortOrder: 1, tierCode: null, targetNodeKey: "n", taskDefinition: null, embeddedPayloadJson: null },
-            { lineKey: "a", sortOrder: 1, tierCode: null, targetNodeKey: "n", taskDefinition: null, embeddedPayloadJson: null },
+            { lineKey: "z", sortOrder: 2, tierCode: null, targetNodeKey: "install", taskDefinition: null, embeddedPayloadJson: null },
+            { lineKey: "b", sortOrder: 1, tierCode: null, targetNodeKey: "install", taskDefinition: null, embeddedPayloadJson: null },
+            { lineKey: "a", sortOrder: 1, tierCode: null, targetNodeKey: "install", taskDefinition: null, embeddedPayloadJson: null },
           ],
         }),
       }),
@@ -249,7 +249,7 @@ describe("projectLineItemExecutionPreview", () => {
               lineKey: "a",
               sortOrder: 1,
               tierCode: "STANDARD",
-              targetNodeKey: "node-1",
+              targetNodeKey: "install",
               taskDefinition: null,
               embeddedPayloadJson: {
                 title: "  Inline task  ",
@@ -283,7 +283,7 @@ describe("projectLineItemExecutionPreview", () => {
               lineKey: "fallback-key",
               sortOrder: 1,
               tierCode: null,
-              targetNodeKey: "node-1",
+              targetNodeKey: "install",
               taskDefinition: null,
               embeddedPayloadJson: { title: "   " },
             },
@@ -305,7 +305,7 @@ describe("projectLineItemExecutionPreview", () => {
               lineKey: "a",
               sortOrder: 1,
               tierCode: null,
-              targetNodeKey: "n",
+              targetNodeKey: "install",
               taskDefinition: { id: "td-missing", taskKey: "tk", displayName: "X", status: "PUBLISHED" },
               embeddedPayloadJson: null,
             },
@@ -328,7 +328,7 @@ describe("projectLineItemExecutionPreview", () => {
               lineKey: "a",
               sortOrder: 1,
               tierCode: null,
-              targetNodeKey: "n",
+              targetNodeKey: "install",
               taskDefinition: null,
               embeddedPayloadJson: { completionRequirementsJson: "not-an-array" },
             },
@@ -350,7 +350,7 @@ describe("projectLineItemExecutionPreview", () => {
               lineKey: "a",
               sortOrder: 1,
               tierCode: null,
-              targetNodeKey: "n",
+              targetNodeKey: "install",
               taskDefinition: { id: "td-1", taskKey: "tk", displayName: "Library title", status: "PUBLISHED" },
               embeddedPayloadJson: { title: "Embedded title" },
             },

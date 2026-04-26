@@ -53,7 +53,7 @@ describe("Epic 14 quote void + supersede", () => {
       await replaceWorkflowVersionDraftSnapshotForTenant(prisma, {
         tenantId,
         workflowVersionId: draft.id,
-        snapshotJson: { nodes: [{ id: "n1", type: "TASK" }] },
+        snapshotJson: { nodes: [{ id: "install", type: "TASK" }] },
       });
       const pub = await publishWorkflowVersionForTenant(prisma, {
         tenantId,
@@ -83,7 +83,7 @@ describe("Epic 14 quote void + supersede", () => {
           lineKey: "lk1",
           sortOrder: 0,
           lineKind: "EMBEDDED",
-          targetNodeKey: "n1",
+          targetNodeKey: "install",
           embeddedPayloadJson: { title: "Task A", taskKind: "LABOR" },
         },
       });

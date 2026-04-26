@@ -162,13 +162,13 @@ describe("interim one-step QuoteLocalPacket promotion (HTTP API)", () => {
     await addEmbeddedItem(baseUrl, cookieOffice, packet.id, {
       lineKey: "tear-off-1",
       sortOrder: 0,
-      targetNodeKey: "node-roof",
+      targetNodeKey: "install",
       tierCode: "GOOD",
     });
     await addEmbeddedItem(baseUrl, cookieOffice, packet.id, {
       lineKey: "haul-off-1",
       sortOrder: 1,
-      targetNodeKey: "node-haul",
+      targetNodeKey: "closeout",
     });
 
     const packetKey = `promo-happy-${suffix}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
@@ -249,10 +249,10 @@ describe("interim one-step QuoteLocalPacket promotion (HTTP API)", () => {
     const lines = rj.data?.packetTaskLines ?? [];
     expect(lines.length).toBe(2);
     const byKey = Object.fromEntries(lines.map((l) => [l.lineKey, l]));
-    expect(byKey["tear-off-1"]?.targetNodeKey).toBe("node-roof");
+    expect(byKey["tear-off-1"]?.targetNodeKey).toBe("install");
     expect(byKey["tear-off-1"]?.tierCode).toBe("GOOD");
     expect(byKey["tear-off-1"]?.lineKind).toBe("EMBEDDED");
-    expect(byKey["haul-off-1"]?.targetNodeKey).toBe("node-haul");
+    expect(byKey["haul-off-1"]?.targetNodeKey).toBe("closeout");
     expect(byKey["haul-off-1"]?.tierCode).toBeNull();
 
     // Publish-readiness predicate: a clean-source promotion must come back as
@@ -287,7 +287,7 @@ describe("interim one-step QuoteLocalPacket promotion (HTTP API)", () => {
     await addEmbeddedItem(baseUrl, cookieOffice, packet.id, {
       lineKey: "empty-payload",
       sortOrder: 0,
-      targetNodeKey: "node-x",
+      targetNodeKey: "install",
       embeddedPayloadJson: {},
     });
 
@@ -331,7 +331,7 @@ describe("interim one-step QuoteLocalPacket promotion (HTTP API)", () => {
     await addEmbeddedItem(baseUrl, cookieOffice, packet.id, {
       lineKey: "x",
       sortOrder: 0,
-      targetNodeKey: "node-x",
+      targetNodeKey: "install",
     });
 
     const packetKey = `promo-rep-${suffix}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
@@ -352,13 +352,13 @@ describe("interim one-step QuoteLocalPacket promotion (HTTP API)", () => {
     await addEmbeddedItem(baseUrl, cookieOffice, packetA.id, {
       lineKey: "a",
       sortOrder: 0,
-      targetNodeKey: "node-a",
+      targetNodeKey: "install",
     });
     const packetB = await createLocalPacket(baseUrl, cookieOffice, quoteVersionId, "B");
     await addEmbeddedItem(baseUrl, cookieOffice, packetB.id, {
       lineKey: "b",
       sortOrder: 0,
-      targetNodeKey: "node-b",
+      targetNodeKey: "final-inspection",
     });
 
     const packetKey = `promo-coll-${suffix}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
@@ -378,7 +378,7 @@ describe("interim one-step QuoteLocalPacket promotion (HTTP API)", () => {
     await addEmbeddedItem(baseUrl, cookieOffice, packet.id, {
       lineKey: "x",
       sortOrder: 0,
-      targetNodeKey: "node-x",
+      targetNodeKey: "install",
     });
 
     const res = await promote(baseUrl, cookieOffice, packet.id, { packetKey: "Not A Slug!" });
@@ -394,7 +394,7 @@ describe("interim one-step QuoteLocalPacket promotion (HTTP API)", () => {
     await addEmbeddedItem(baseUrl, cookieOffice, packet.id, {
       lineKey: "x",
       sortOrder: 0,
-      targetNodeKey: "node-x",
+      targetNodeKey: "install",
     });
 
     const packetKey = `promo-iso-${suffix}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");

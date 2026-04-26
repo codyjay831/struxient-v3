@@ -287,14 +287,14 @@ describe("revision-2 evolution: create-DRAFT, publish-with-supersede, read-pin-b
     await addEmbeddedItem(baseUrl, cookieOffice, local.id, {
       lineKey: "task-a",
       sortOrder: 0,
-      targetNodeKey: "node-a",
+      targetNodeKey: "install",
       embeddedPayloadJson: { title: "A r1", taskKind: "LABOR", deep: { tags: ["x"] } },
       tierCode: "GOOD",
     });
     await addEmbeddedItem(baseUrl, cookieOffice, local.id, {
       lineKey: "task-b",
       sortOrder: 10,
-      targetNodeKey: "node-b",
+      targetNodeKey: "final-inspection",
       embeddedPayloadJson: { title: "B r1", taskKind: "LABOR" },
     });
 
@@ -424,7 +424,7 @@ describe("revision-2 evolution: create-DRAFT, publish-with-supersede, read-pin-b
     await addEmbeddedItem(baseUrl, cookieOffice, local.id, {
       lineKey: "x",
       sortOrder: 0,
-      targetNodeKey: "node-x",
+      targetNodeKey: "install",
     });
     const packetKey = `rev2-no-pub-${suffix}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
     const { scopePacketId } = await promote(baseUrl, cookieOffice, local.id, packetKey);
@@ -443,7 +443,7 @@ describe("revision-2 evolution: create-DRAFT, publish-with-supersede, read-pin-b
     await addEmbeddedItem(baseUrl, cookieOffice, local.id, {
       lineKey: "x",
       sortOrder: 0,
-      targetNodeKey: "node-x",
+      targetNodeKey: "install",
     });
     const packetKey = `rev2-iso-${suffix}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
     const { scopePacketId, scopePacketRevisionId } = await promote(
@@ -476,7 +476,7 @@ describe("revision-2 evolution: create-DRAFT, publish-with-supersede, read-pin-b
     await addEmbeddedItem(baseUrl, cookieOffice, local.id, {
       lineKey: "x",
       sortOrder: 0,
-      targetNodeKey: "node-x",
+      targetNodeKey: "install",
     });
     const packetKey = `rev2-sup-${suffix}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
     const { scopePacketId, scopePacketRevisionId: r1Id } = await promote(
@@ -513,7 +513,7 @@ describe("revision-2 evolution: create-DRAFT, publish-with-supersede, read-pin-b
     await addEmbeddedItem(baseUrl, cookieOffice, local.id, {
       lineKey: "x",
       sortOrder: 0,
-      targetNodeKey: "node-x",
+      targetNodeKey: "install",
     });
     const packetKey = `rev2-forksup-${suffix}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
     const { scopePacketId, scopePacketRevisionId: r1Id } = await promote(

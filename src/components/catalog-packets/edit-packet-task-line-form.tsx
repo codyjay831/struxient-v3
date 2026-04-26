@@ -104,14 +104,14 @@ export function EditPacketTaskLineForm({
       {open ? (
         <form onSubmit={(ev) => void onSubmit(ev)} className="mt-2 space-y-2 rounded border border-zinc-800 bg-zinc-950/50 p-3">
           <div>
-            <span className="block text-[10px] font-medium text-zinc-500">targetNodeKey</span>
+            <span className="block text-[10px] font-medium text-zinc-500">Execution stage</span>
             <div className="mt-0.5">
               <TargetNodePicker
                 workflowVersionIdForNodeKeys={hintWorkflowVersionId}
                 value={targetNodeKey}
                 disabled={busy}
                 onChange={setTargetNodeKey}
-                copyVariant="catalogLibraryHint"
+                copyVariant="catalogLibrary"
               />
             </div>
           </div>
