@@ -74,6 +74,12 @@ export type Slice1InvariantCode =
   | "QUOTE_LOCAL_PACKET_PROMOTION_ALREADY_PROMOTED"
   | "QUOTE_LOCAL_PACKET_PROMOTION_SOURCE_HAS_NO_ITEMS"
   | "QUOTE_LOCAL_PACKET_PROMOTION_INVALID_DISPLAY_NAME"
+  // Promote-into-existing-saved-packet path (canon: docs/canon/05-packet-canon.md
+  // single-DRAFT canon §4; mirrors the lifecycle of the promote-to-NEW-packet
+  // path above).
+  | "QUOTE_LOCAL_PACKET_PROMOTION_INTO_EXISTING_ALREADY_PROMOTED"
+  | "QUOTE_LOCAL_PACKET_PROMOTION_INTO_EXISTING_SOURCE_HAS_NO_ITEMS"
+  | "QUOTE_LOCAL_PACKET_PROMOTION_INTO_EXISTING_TARGET_HAS_DRAFT"
   // Interim publish action for ScopePacketRevision (canon: docs/canon/05-packet-canon.md
   // "Canon amendment — interim publish authority", docs/implementation/decision-packs/
   // interim-publish-authority-decision-pack.md). All three are state-conflicts between

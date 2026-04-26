@@ -9,21 +9,33 @@ import type {
   ConditionalRuleRequire,
   ConditionalRuleTrigger,
 } from "@/lib/task-definition-conditional-rules";
-import { tryGetApiPrincipal } from "@/lib/auth/api-principal";
+import { principalHasCapability, tryGetApiPrincipal } from "@/lib/auth/api-principal";
 import { getPrisma } from "@/server/db/prisma";
 import { getTaskDefinitionDetailForTenant } from "@/server/slice1/reads/task-definition-reads";
+import { TaskDefinitionEditor } from "@/components/task-definitions/task-definition-editor";
 
 /**
- * Office-surface TaskDefinition detail. Read-only inspector.
+ * Office-surface TaskDefinition detail.
  *
  * Reuses `getTaskDefinitionDetailForTenant` and the parsed durable shapes
- * (`CompletionRequirement`, `ConditionalRule`) already returned by the read
- * model — same canon truth rendered in the `TaskDefinitionEditor` on `/dev/...`.
- * The authoring editor component itself is intentionally NOT mounted here: it
- * owns mutation wiring and is the correct home for create/edit/status
- * transitions until the catalog-authoring epic reaches office.
+ * (`CompletionRequirement`, `ConditionalRule`) returned by the read model —
+ * same canon truth surfaced on `/dev/task-definitions`.
+ *
+ * Authoring posture:
+ *   • Principals with `office_mutate` get the full `TaskDefinitionEditor` —
+ *     the same client component used by the dev surface. The editor itself
+ *     enforces the DRAFT-only content-edit guard client-side and the API
+ *     route enforces it again server-side, so PUBLISHED/ARCHIVED definitions
+ *     show their truth read-only with explicit status-transition controls.
+ *   • Principals without `office_mutate` get a focused read-only inspector.
+ *
+ * Canon: TaskDefinition content is **frozen into**
+ * `executionPackageSnapshot.v0` at quote SEND. Edits to a definition
+ * therefore never disturb already-frozen quote versions or RuntimeTask rows.
  */
 export const dynamic = "force-dynamic";
+
+const OFFICE_ROUTE_PREFIX = "/library/task-definitions";
 
 type PageProps = { params: Promise<{ taskDefinitionId: string }> };
 
@@ -139,12 +151,13 @@ export default async function OfficeLibraryTaskDefinitionDetailPage({ params }: 
     notFound();
   }
 
+  const canMutate = principalHasCapability(auth.principal, "office_mutate");
   const totalRefs = detail.packetTaskLineRefCount + detail.quoteLocalPacketItemRefCount;
 
   return (
     <main className="mx-auto max-w-4xl p-8 text-zinc-200">
       <nav className="mb-4 text-xs text-zinc-500">
-        <Link href="/library/task-definitions" className="hover:text-zinc-300">
+        <Link href={OFFICE_ROUTE_PREFIX} className="hover:text-zinc-300">
           Task definitions
         </Link>
         <span className="mx-2 text-zinc-700">/</span>
@@ -164,9 +177,15 @@ export default async function OfficeLibraryTaskDefinitionDetailPage({ params }: 
               >
                 {detail.status}
               </span>
-              <span className="rounded border border-zinc-700 bg-zinc-950/40 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
-                Read-only
-              </span>
+              {canMutate && detail.status === "DRAFT" ? (
+                <span className="rounded border border-sky-800/60 bg-sky-950/30 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-300">
+                  Editable
+                </span>
+              ) : (
+                <span className="rounded border border-zinc-700 bg-zinc-950/40 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
+                  {canMutate ? "Status-only edits" : "Read-only"}
+                </span>
+              )}
             </h1>
             <p className="mt-2 text-xs leading-relaxed text-zinc-500">
               {detail.requirementsCount} requirement{detail.requirementsCount === 1 ? "" : "s"}
@@ -177,11 +196,16 @@ export default async function OfficeLibraryTaskDefinitionDetailPage({ params }: 
               Referenced by {totalRefs} ({detail.packetTaskLineRefCount} catalog packet line
               {detail.packetTaskLineRefCount === 1 ? "" : "s"},{" "}
               {detail.quoteLocalPacketItemRefCount} quote-local packet item
-              {detail.quoteLocalPacketItemRefCount === 1 ? "" : "s"}).
+              {detail.quoteLocalPacketItemRefCount === 1 ? "" : "s"}).{" "}
+              {totalRefs > 0 ? (
+                <span className="text-zinc-400">
+                  Existing references stay stable — content is frozen into quotes at send time.
+                </span>
+              ) : null}
             </p>
           </div>
           <Link
-            href="/library/task-definitions"
+            href={OFFICE_ROUTE_PREFIX}
             className="text-sm text-zinc-500 hover:text-zinc-400"
           >
             ← All task definitions
@@ -189,6 +213,38 @@ export default async function OfficeLibraryTaskDefinitionDetailPage({ params }: 
         </div>
       </header>
 
+      {canMutate ? (
+        <TaskDefinitionEditor
+          mode="edit"
+          routePrefix={OFFICE_ROUTE_PREFIX}
+          initial={{
+            id: detail.id,
+            taskKey: detail.taskKey,
+            displayName: detail.displayName,
+            status: detail.status,
+            instructions: detail.instructions,
+            completionRequirements: detail.completionRequirements,
+            conditionalRules: detail.conditionalRules,
+          }}
+        />
+      ) : (
+        <ReadOnlyInspector detail={detail} />
+      )}
+    </main>
+  );
+}
+
+function ReadOnlyInspector({
+  detail,
+}: {
+  detail: {
+    instructions: string | null;
+    completionRequirements: CompletionRequirement[];
+    conditionalRules: ConditionalRule[];
+  };
+}) {
+  return (
+    <>
       {detail.instructions && detail.instructions.trim() ? (
         <section className="mb-6 space-y-2">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">
@@ -235,6 +291,6 @@ export default async function OfficeLibraryTaskDefinitionDetailPage({ params }: 
           </ul>
         )}
       </section>
-    </main>
+    </>
   );
 }

@@ -239,6 +239,12 @@ export default async function OfficeQuoteScopePage({ params }: PageProps) {
             canOfficeMutate={canOfficeMutate}
             initialPackets={localPackets}
             pinnedWorkflowVersionId={dto.quoteVersion.pinnedWorkflowVersionId}
+            availableSavedPackets={libraryPackets.map((p) => ({
+              id: p.id,
+              packetKey: p.packetKey,
+              displayName: p.displayName,
+              hasDraftRevision: p.hasDraftRevision,
+            }))}
           />
         </section>
       ) : null}

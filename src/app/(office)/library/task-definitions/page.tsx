@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { tryGetApiPrincipal } from "@/lib/auth/api-principal";
+import { principalHasCapability, tryGetApiPrincipal } from "@/lib/auth/api-principal";
 import { getPrisma } from "@/server/db/prisma";
 import { listTaskDefinitionsForTenant } from "@/server/slice1/reads/task-definition-reads";
 
@@ -8,8 +8,10 @@ import { listTaskDefinitionsForTenant } from "@/server/slice1/reads/task-definit
  * Office-surface library index for TaskDefinitions.
  *
  * Reuses `listTaskDefinitionsForTenant` — same tenant-scoped read consumed by
- * `/dev/task-definitions`. Read-only. Authoring (create / edit / status
- * transitions) stays on the dev surface in this slice.
+ * `/dev/task-definitions`. Office admins (`office_mutate`) get an inline
+ * "+ New" entry point and an "Edit" affordance per row; everyone else sees a
+ * read-only inspector. Authoring posts to the same `/api/task-definitions`
+ * routes that the dev surface uses (server gate + tenant scope unchanged).
  */
 export const dynamic = "force-dynamic";
 
@@ -32,17 +34,28 @@ export default async function OfficeLibraryTaskDefinitionsPage() {
     limit: LIST_LIMIT,
   });
 
+  const canAuthor = principalHasCapability(auth.principal, "office_mutate");
+
   return (
     <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-wrap items-start justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-semibold text-zinc-50">Task definitions</h1>
-          <p className="text-sm text-zinc-500 mt-1">
+          <p className="text-sm text-zinc-500 mt-1 max-w-2xl">
             Curated reusable work intelligence. Each definition declares completion
             requirements that the field UI shapes itself against and the runtime validator
-            enforces after activation.
+            enforces after activation. Editing a definition does not affect previously sent
+            quotes — their requirements were frozen at send time.
           </p>
         </div>
+        {canAuthor ? (
+          <Link
+            href="/library/task-definitions/new"
+            className="shrink-0 rounded-lg bg-sky-700 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600 transition-colors"
+          >
+            New task definition
+          </Link>
+        ) : null}
       </div>
 
       {items.length === 0 ? (
@@ -66,9 +79,18 @@ export default async function OfficeLibraryTaskDefinitionsPage() {
           </div>
           <h2 className="text-zinc-200 font-medium">No task definitions yet</h2>
           <p className="text-zinc-500 text-sm mt-1 max-w-sm mx-auto">
-            Task definitions appear here once authored. They are referenced by catalog
-            packet lines and quote-local packet items.
+            Task definitions describe a unit of field work — what evidence the tech must
+            capture, and any conditional follow-ups. They are referenced by saved packet
+            lines and one-off quote work.
           </p>
+          {canAuthor ? (
+            <Link
+              href="/library/task-definitions/new"
+              className="mt-6 inline-block rounded-lg bg-sky-700 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600 transition-colors"
+            >
+              Create your first task definition
+            </Link>
+          ) : null}
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/20">
@@ -130,7 +152,7 @@ export default async function OfficeLibraryTaskDefinitionsPage() {
                         href={`/library/task-definitions/${td.id}`}
                         className="inline-flex items-center px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-zinc-50 rounded text-xs font-medium transition-all"
                       >
-                        Open
+                        {canAuthor && td.status === "DRAFT" ? "Edit" : "Open"}
                       </Link>
                     </td>
                   </tr>

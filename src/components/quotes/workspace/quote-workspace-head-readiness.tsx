@@ -6,7 +6,11 @@ import {
 } from "@/lib/workspace/derive-quote-head-workspace-readiness";
 import type { QuoteVersionHistoryItemDto } from "@/server/slice1/reads/quote-version-history-reads";
 
-function toReadinessInput(row: QuoteVersionHistoryItemDto, lineItemCount: number): QuoteHeadReadinessInput {
+function toReadinessInput(
+  row: QuoteVersionHistoryItemDto,
+  lineItemCount: number,
+  packetStageReadiness: QuoteHeadReadinessInput["packetStageReadiness"] = null,
+): QuoteHeadReadinessInput {
   return {
     id: row.id,
     versionNumber: row.versionNumber,
@@ -18,6 +22,7 @@ function toReadinessInput(row: QuoteVersionHistoryItemDto, lineItemCount: number
     proposalGroupCount: row.proposalGroupCount,
     sentAt: row.sentAt,
     signedAt: row.signedAt,
+    packetStageReadiness,
   };
 }
 
@@ -25,13 +30,27 @@ type Props = {
   head: QuoteVersionHistoryItemDto | null;
   /** Count of line items on the head version (drives the "scope authored" check). */
   headLineItemCount?: number;
+  /**
+   * Optional pre-derived packet/stage readiness signal. When provided, the
+   * checklist gains a "Field-work lines are stage-ready" row sourced from
+   * the same per-line execution preview the scope editor already shows.
+   * Omit on routes that don't load preview data — the row is simply absent
+   * (preserves prior behavior).
+   */
+  packetStageReadiness?: QuoteHeadReadinessInput["packetStageReadiness"];
 };
 
 /**
  * Enhanced readiness / blockers summary for the quote workspace.
  */
-export function QuoteWorkspaceHeadReadiness({ head, headLineItemCount = 0 }: Props) {
-  const r = deriveQuoteHeadWorkspaceReadiness(head ? toReadinessInput(head, headLineItemCount) : null);
+export function QuoteWorkspaceHeadReadiness({
+  head,
+  headLineItemCount = 0,
+  packetStageReadiness = null,
+}: Props) {
+  const r = deriveQuoteHeadWorkspaceReadiness(
+    head ? toReadinessInput(head, headLineItemCount, packetStageReadiness) : null,
+  );
 
   if (r.kind === "no_versions") {
     return (

@@ -8,10 +8,8 @@ import type { ScopeProposalGroupWithItems } from "@/lib/quote-scope/quote-scope-
 import type { ScopePacketSummaryDto } from "@/server/slice1/reads/scope-packet-catalog-reads";
 import type { QuoteLocalPacketDto } from "@/server/slice1/reads/quote-local-packet-reads";
 import type { LineItemPresetSummaryDto } from "@/server/slice1/reads/line-item-preset-reads";
-import {
-  buildExecutionPreviewSummary,
-  type LineItemExecutionPreviewDto,
-} from "@/lib/quote-line-item-execution-preview";
+import { type LineItemExecutionPreviewDto } from "@/lib/quote-line-item-execution-preview";
+import { LineItemExecutionPreviewBlock } from "@/components/quote-scope/line-item-execution-preview-block";
 import { QuickAddLineItemPicker } from "@/components/quote-scope/quick-add-line-item-picker";
 import type { LineItemForRecent } from "@/lib/quick-add-line-item-picker-filter";
 import {
@@ -19,6 +17,10 @@ import {
   buildFieldsFromPreset,
 } from "@/lib/quote-line-item-prefill";
 import { formatExecutionModeLabel } from "@/lib/quote-line-item-execution-mode-label";
+import {
+  mergeLocalPacketsForPicker,
+  validateOneOffWorkDisplayNameInput,
+} from "@/lib/quote-line-item-local-packet-quick-create";
 
 type ProposalGroup = QuoteVersionScopeApiDto["proposalGroups"][number];
 type LineItem = QuoteVersionScopeApiDto["orderedLineItems"][number];
@@ -195,6 +197,26 @@ export function ScopeEditor({
   const [pendingPrefillByGroupId, setPendingPrefillByGroupId] = useState<
     Record<string, FormFields>
   >({});
+
+  // Quote-local packets created inline from the line-item form within
+  // this render lifecycle. Augments `availableLocalPackets` (which is
+  // server-supplied via the parent page and only refreshes after a full
+  // `router.refresh()`) so a freshly-created packet is selectable in the
+  // dropdown without forcing a refresh that would close the in-progress
+  // line-item form.
+  //
+  // Cleared opportunistically by `router.refresh()` re-mounting the
+  // editor. We don't bother clearing it eagerly on packet save: the
+  // dedup in `mergeLocalPacketsForPicker` ensures the server entry wins
+  // once the next refresh re-reads canon.
+  const [freshlyCreatedLocalPackets, setFreshlyCreatedLocalPackets] = useState<
+    LocalPacketOption[]
+  >([]);
+
+  const mergedLocalPackets = useMemo(
+    () => mergeLocalPacketsForPicker(availableLocalPackets, freshlyCreatedLocalPackets),
+    [availableLocalPackets, freshlyCreatedLocalPackets],
+  );
 
   const noGroups = proposalGroups.length === 0;
 
@@ -456,6 +478,64 @@ export function ScopeEditor({
     }
   }
 
+  /**
+   * Inline quote-local packet creation for the line-item form
+   * (Triangle Mode UX bridge slice). Wraps the existing
+   * `POST /api/quote-versions/:quoteVersionId/local-packets` mutation —
+   * server still re-asserts DRAFT-only, tenant scope, and `displayName`
+   * validation. The newly returned DTO is added to the in-memory
+   * `freshlyCreatedLocalPackets` list so the picker dropdown surfaces it
+   * before the next `router.refresh()`.
+   *
+   * Returns the new packet on success so the caller (the picker's
+   * inline form) can immediately set `fields.quoteLocalPacketId` and
+   * `fields.packetSource = "local"`. We deliberately do NOT call
+   * `router.refresh()` here — that would re-render the page and unmount
+   * the in-progress line-item form, defeating the entire bridge UX.
+   * Refresh happens for free after the line-item POST/PATCH that
+   * follows, and at that point the new packet shows up in the bottom
+   * `<QuoteLocalPacketEditor/>` too.
+   */
+  async function handleCreateOneOffWork(
+    displayName: string,
+  ): Promise<{ ok: true; packet: LocalPacketOption } | { ok: false; message: string }> {
+    const validated = validateOneOffWorkDisplayNameInput(displayName);
+    if (!validated.ok) {
+      return { ok: false, message: validated.message };
+    }
+    try {
+      const res = await fetch(
+        `/api/quote-versions/${encodeURIComponent(quoteVersionId)}/local-packets`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ displayName: validated.trimmed }),
+        },
+      );
+      const json = (await res.json().catch(() => ({}))) as {
+        data?: LocalPacketOption;
+        error?: { code?: string; message?: string };
+      };
+      if (!res.ok || !json.data) {
+        return {
+          ok: false,
+          message: json.error?.message ?? `${res.status} ${json.error?.code ?? "ERROR"}`,
+        };
+      }
+      const packet = json.data;
+      setFreshlyCreatedLocalPackets((prev) =>
+        prev.some((p) => p.id === packet.id) ? prev : [...prev, packet],
+      );
+      return { ok: true, packet };
+    } catch (e) {
+      return {
+        ok: false,
+        message: e instanceof Error ? e.message : "Network error creating one-off work.",
+      };
+    }
+  }
+
   async function handleDelete(item: LineItem) {
     if (
       !window.confirm(
@@ -565,7 +645,8 @@ export function ScopeEditor({
                   initial={pendingPrefillByGroupId[group.id] ?? blankFields(group)}
                   proposalGroupOptions={[group]}
                   pinnableLibraryPackets={pinnableLibraryPackets}
-                  availableLocalPackets={availableLocalPackets}
+                  availableLocalPackets={mergedLocalPackets}
+                  onCreateOneOffWork={handleCreateOneOffWork}
                   busy={busyKey === `create:${group.id}`}
                   submitLabel="Create line item"
                   onCancel={() => {
@@ -594,7 +675,8 @@ export function ScopeEditor({
                           initial={deriveInitialFromItem(item)}
                           proposalGroupOptions={[group]}
                           pinnableLibraryPackets={pinnableLibraryPackets}
-                          availableLocalPackets={availableLocalPackets}
+                          availableLocalPackets={mergedLocalPackets}
+                          onCreateOneOffWork={handleCreateOneOffWork}
                           existingItem={item}
                           busy={busyKey === `update:${item.id}`}
                           submitLabel="Save changes"
@@ -690,6 +772,7 @@ function LineItemForm({
   proposalGroupOptions,
   pinnableLibraryPackets,
   availableLocalPackets,
+  onCreateOneOffWork,
   existingItem,
   busy,
   submitLabel,
@@ -700,6 +783,17 @@ function LineItemForm({
   proposalGroupOptions: ProposalGroup[];
   pinnableLibraryPackets: LibraryPacketOption[];
   availableLocalPackets: LocalPacketOption[];
+  /**
+   * Callback for the picker's "Create one-off work for this quote"
+   * inline action (Triangle Mode UX bridge slice). Wraps a single POST
+   * to the existing quote-local-packet create API. On success the form
+   * sets `quoteLocalPacketId` to the new packet's id and switches the
+   * picker into the local-packet branch so the user lands on a fully
+   * pinned line.
+   */
+  onCreateOneOffWork: (
+    displayName: string,
+  ) => Promise<{ ok: true; packet: LocalPacketOption } | { ok: false; message: string }>;
   /** Provided in edit mode so the picker can surface a saved-but-not-latest revision. */
   existingItem?: LineItem;
   busy: boolean;
@@ -821,6 +915,18 @@ function LineItemForm({
         onSourceChange={setPacketSource}
         onLibraryChange={(id) => setFields({ ...fields, scopePacketRevisionId: id })}
         onLocalChange={(id) => setFields({ ...fields, quoteLocalPacketId: id })}
+        onCreateOneOffWork={async (displayName) => {
+          const result = await onCreateOneOffWork(displayName);
+          if (result.ok) {
+            setFields({
+              ...fields,
+              packetSource: "local",
+              scopePacketRevisionId: "",
+              quoteLocalPacketId: result.packet.id,
+            });
+          }
+          return result;
+        }}
       />
 
       <label className="flex items-start gap-2 text-xs text-zinc-300">
@@ -985,6 +1091,7 @@ function PacketPicker({
   onSourceChange,
   onLibraryChange,
   onLocalChange,
+  onCreateOneOffWork,
 }: {
   executionMode: ExecutionMode;
   packetSource: PacketSource;
@@ -997,6 +1104,17 @@ function PacketPicker({
   onSourceChange: (next: PacketSource) => void;
   onLibraryChange: (next: string) => void;
   onLocalChange: (next: string) => void;
+  /**
+   * Inline "Create one-off work for this quote" callback. The picker
+   * never routes around the existing local-packet API — this just lets
+   * estimators stay in the line-item form instead of scrolling to the
+   * standalone `<QuoteLocalPacketEditor/>` to seed an empty packet.
+   * On success the parent form sets `quoteLocalPacketId` to the new
+   * id and switches `packetSource` to `"local"`.
+   */
+  onCreateOneOffWork: (
+    displayName: string,
+  ) => Promise<{ ok: true; packet: LocalPacketOption } | { ok: false; message: string }>;
 }) {
   // Synthetic option: when editing a line whose saved library revision is
   // not the latest published revision of its parent packet, render an extra
@@ -1042,6 +1160,14 @@ function PacketPicker({
         Work template (required when this line creates field work)
       </legend>
 
+      <p className="text-[10px] leading-relaxed text-zinc-500">
+        <span className="text-zinc-400">Line item</span> = what you&rsquo;re selling.{" "}
+        <span className="text-zinc-400">Saved work template</span> = a reusable set of crew tasks
+        you&rsquo;ve saved before.{" "}
+        <span className="text-zinc-400">One-off work for this quote</span> = crew tasks that only
+        live on this quote (you can promote them into a saved template later).
+      </p>
+
       <div className="flex flex-wrap gap-3 text-xs text-zinc-300">
         <label className="inline-flex items-center gap-1.5">
           <input
@@ -1053,7 +1179,7 @@ function PacketPicker({
             disabled={busy || (!hasLibrary && !savedNonLatestLibrary)}
           />
           <span className={!hasLibrary && !savedNonLatestLibrary ? "text-zinc-600" : ""}>
-            Saved work template
+            Use saved work template
           </span>
         </label>
         <label className="inline-flex items-center gap-1.5">
@@ -1063,9 +1189,9 @@ function PacketPicker({
             value="local"
             checked={packetSource === "local"}
             onChange={() => onSourceChange("local")}
-            disabled={busy || !hasLocal}
+            disabled={busy}
           />
-          <span className={!hasLocal ? "text-zinc-600" : ""}>One-off work for this quote</span>
+          <span>One-off work for this quote</span>
         </label>
       </div>
 
@@ -1114,30 +1240,42 @@ function PacketPicker({
       ) : null}
 
       {packetSource === "local" ? (
-        <div className="space-y-1">
-          <select
-            value={quoteLocalPacketId}
-            onChange={(e) => onLocalChange(e.target.value)}
-            disabled={busy}
-            className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-100 focus:border-sky-600 focus:outline-none disabled:opacity-60"
-          >
-            <option value="">— Choose one-off work —</option>
-            {availableLocalPackets.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.displayName} · {p.itemCount} item{p.itemCount === 1 ? "" : "s"}
-              </option>
-            ))}
-          </select>
-          {!hasLocal ? (
-            <p className="text-[10px] text-amber-400">
-              No one-off work has been authored on this quote yet. Create some in the
-              &ldquo;One-off work for this quote&rdquo; section below.
-            </p>
+        <div className="space-y-2">
+          {hasLocal ? (
+            <>
+              <select
+                value={quoteLocalPacketId}
+                onChange={(e) => onLocalChange(e.target.value)}
+                disabled={busy}
+                className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-100 focus:border-sky-600 focus:outline-none disabled:opacity-60"
+              >
+                <option value="">— Choose one-off work —</option>
+                {availableLocalPackets.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.displayName} · {p.itemCount} item{p.itemCount === 1 ? "" : "s"}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[10px] text-zinc-500">
+                One-off work is authored on this quote and travels with it through freeze/send.
+                You can add or edit its tasks in the &ldquo;One-off work for this quote&rdquo;
+                section below the line items, and promote it to a saved template later.
+              </p>
+            </>
           ) : (
             <p className="text-[10px] text-zinc-500">
-              One-off work is authored on this quote and travels with it through freeze/send.
+              No one-off work exists on this quote yet. Create one below to attach it to this
+              line — you can add its crew tasks afterwards in the &ldquo;One-off work for this
+              quote&rdquo; section below the line items.
             </p>
           )}
+          <InlineCreateOneOffWork
+            busy={busy}
+            onSubmit={onCreateOneOffWork}
+            ctaLabel={
+              hasLocal ? "+ Create new one-off work" : "+ Create one-off work for this line"
+            }
+          />
         </div>
       ) : null}
 
@@ -1148,6 +1286,129 @@ function PacketPicker({
         </p>
       ) : null}
     </fieldset>
+  );
+}
+
+/**
+ * Inline "Create one-off work for this quote" form embedded inside the
+ * `<PacketPicker/>` (Triangle Mode UX bridge slice). Wraps a single
+ * displayName input + Create/Cancel buttons. Calls back into
+ * `<ScopeEditor/>` which fetches the existing
+ * `POST /api/quote-versions/:id/local-packets` API. The new packet is
+ * auto-pinned to the line item by the parent form on success — the
+ * estimator never has to scroll to the standalone editor first.
+ *
+ * State machine:
+ *   - "closed": only the CTA button is rendered.
+ *   - "open":   input + buttons. The local error message is cleared on
+ *               every keystroke; the server's reply is shown verbatim.
+ *
+ * Validation mirrors the server's `assertDisplayName` (max 200, trimmed
+ * non-empty) via `validateOneOffWorkDisplayNameInput`. The server is
+ * still authoritative.
+ */
+function InlineCreateOneOffWork({
+  busy,
+  ctaLabel,
+  onSubmit,
+}: {
+  busy: boolean;
+  ctaLabel: string;
+  onSubmit: (
+    displayName: string,
+  ) => Promise<{ ok: true; packet: LocalPacketOption } | { ok: false; message: string }>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [displayName, setDisplayName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  function close() {
+    setOpen(false);
+    setDisplayName("");
+    setError(null);
+  }
+
+  async function handleClick() {
+    setError(null);
+    const validated = validateOneOffWorkDisplayNameInput(displayName);
+    if (!validated.ok) {
+      setError(validated.message);
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const result = await onSubmit(validated.trimmed);
+      if (result.ok) {
+        close();
+      } else {
+        setError(result.message);
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        disabled={busy}
+        className="rounded border border-emerald-800/60 bg-emerald-950/20 px-2 py-1 text-[11px] font-medium text-emerald-200 hover:text-emerald-100 hover:border-emerald-700 disabled:opacity-50 transition-colors"
+      >
+        {ctaLabel}
+      </button>
+    );
+  }
+
+  const disableSubmit = busy || submitting;
+
+  return (
+    <div className="rounded border border-emerald-900/40 bg-emerald-950/10 p-2 space-y-2">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-300/80">
+        New one-off work for this quote
+      </p>
+      <input
+        type="text"
+        value={displayName}
+        onChange={(e) => {
+          setDisplayName(e.target.value);
+          if (error) setError(null);
+        }}
+        disabled={disableSubmit}
+        autoFocus
+        placeholder="e.g. Roof tear-off for this house"
+        maxLength={200}
+        className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-100 focus:border-emerald-600 focus:outline-none disabled:opacity-60"
+      />
+      {error ? (
+        <p className="text-[10px] text-amber-400">{error}</p>
+      ) : (
+        <p className="text-[10px] text-zinc-500">
+          Creates an empty one-off work pinned to this line. Add its crew tasks afterwards in the
+          &ldquo;One-off work for this quote&rdquo; section below the line items.
+        </p>
+      )}
+      <div className="flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={close}
+          disabled={disableSubmit}
+          className="rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-400 hover:text-zinc-200 disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={() => void handleClick()}
+          disabled={disableSubmit || displayName.trim() === ""}
+          className="rounded bg-emerald-700/90 px-2 py-0.5 text-[11px] font-medium text-emerald-50 hover:bg-emerald-600 disabled:opacity-50"
+        >
+          {submitting ? "Creating…" : "Create and attach"}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -1257,177 +1518,6 @@ function ReadOnlyView({
         </section>
       ))}
     </div>
-  );
-}
-
-/**
- * Read-only execution preview rendered under each line item. Triangle Mode
- * surfaces what runtime tasks each MANIFEST line will compose into so the
- * operator can verify the packet → stage binding before send. This is a
- * direct projection of the pinned packet contents — it is not the compose
- * engine. The same data is what `runComposeFromReadModel` would later
- * iterate over (compose remains the source of truth at send/freeze).
- *
- * Five rendered shapes (one per `LineItemExecutionPreviewDto.kind`):
- *  - `soldScopeCommercial`: zinc note, commercial-only.
- *  - `manifestNoPacket`: amber warning matching the picker validator.
- *  - `manifestLibraryMissing` / `manifestLocalMissing`: red diagnostic.
- *  - `manifestLibrary` / `manifestLocal`: header (packet name + revision badge
- *    when library) + a compact list of tasks with stage label and
- *    requirement-kind tags. Empty packets render the header with a "0 tasks"
- *    note so the empty state is explicit, not silent.
- */
-function LineItemExecutionPreviewBlock({ preview }: { preview: LineItemExecutionPreviewDto }) {
-  if (preview.kind === "soldScopeCommercial") {
-    return (
-      <div className="rounded border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-[11px] text-zinc-400">
-        Quote-only line. Won&rsquo;t create any crew work unless a work template is attached.
-      </div>
-    );
-  }
-  if (preview.kind === "manifestNoPacket") {
-    return (
-      <div className="rounded border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-300">
-        No work template attached. Field-work lines create crew tasks only when a saved work
-        template or one-off work for this quote is attached.
-      </div>
-    );
-  }
-  if (preview.kind === "manifestLibraryMissing") {
-    return (
-      <div className="rounded border border-red-900/50 bg-red-950/20 px-3 py-2 text-[11px] text-red-300 space-y-1">
-        <p className="font-medium">Saved work template version isn&rsquo;t loaded</p>
-        <p className="font-mono opacity-90">revisionId: {preview.scopePacketRevisionId}</p>
-        <p className="opacity-80">
-          The template may have been archived or moved out of this tenant. Re-attach the line to a
-          visible template to clear this state.
-        </p>
-      </div>
-    );
-  }
-  if (preview.kind === "manifestLocalMissing") {
-    return (
-      <div className="rounded border border-red-900/50 bg-red-950/20 px-3 py-2 text-[11px] text-red-300 space-y-1">
-        <p className="font-medium">One-off work for this quote isn&rsquo;t loaded</p>
-        <p className="font-mono opacity-90">quoteLocalPacketId: {preview.quoteLocalPacketId}</p>
-        <p className="opacity-80">
-          It may have been deleted from this quote. Re-attach the line to a visible template to
-          clear this state.
-        </p>
-      </div>
-    );
-  }
-  // manifestLibrary | manifestLocal
-  const headerTitle = preview.packetName;
-  const taskCount = preview.tasks.length;
-  // Subtitle uses display-only labels; the technical packetKey / revision id
-  // remain on the library shape so reviewers can still cross-reference the
-  // catalog row if needed.
-  const headerSubtitle =
-    preview.kind === "manifestLibrary"
-      ? `Saved work template · ${preview.packetKey} · v${preview.revisionNumber} ${preview.revisionStatus}${preview.revisionIsLatest ? "" : " · older version"}`
-      : "One-off work for this quote";
-  const headerTone =
-    preview.kind === "manifestLibrary"
-      ? preview.revisionIsLatest
-        ? "border-sky-900/50 bg-sky-950/20"
-        : "border-amber-900/50 bg-amber-950/20"
-      : "border-emerald-900/50 bg-emerald-950/20";
-  return (
-    <div className={`rounded border ${headerTone} px-3 py-2 space-y-2`}>
-      <div className="flex items-baseline justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[11px] font-semibold text-zinc-100 truncate">{headerTitle}</p>
-          <p className="mt-0.5 text-[10px] text-zinc-400 font-mono truncate">{headerSubtitle}</p>
-        </div>
-        <p className="text-[10px] uppercase tracking-wider text-zinc-400 shrink-0">
-          {taskCount} {taskCount === 1 ? "task" : "tasks"}
-        </p>
-      </div>
-      {taskCount === 0 ? (
-        <p className="text-[10px] text-zinc-500 italic">
-          This template has no work yet — no crew tasks will be created for this line.
-        </p>
-      ) : (
-        <>
-          <p className="text-[11px] text-zinc-300">
-            {buildExecutionPreviewSummary(preview.tasks)}
-          </p>
-          <ul className="space-y-1.5">
-            {preview.tasks.map((t) => (
-              <ExecutionPreviewTaskItem key={t.lineKey} task={t} />
-            ))}
-          </ul>
-        </>
-      )}
-    </div>
-  );
-}
-
-function ExecutionPreviewTaskItem({
-  task,
-}: {
-  // We intentionally accept the array element type structurally so the
-  // helper module's union doesn't have to expose the per-task shape twice.
-  task: Extract<
-    LineItemExecutionPreviewDto,
-    { kind: "manifestLibrary" | "manifestLocal" }
-  >["tasks"][number];
-}) {
-  const sourceBadgeTone =
-    task.sourceKind === "taskDefinition"
-      ? "border-sky-800/60 bg-sky-950/40 text-sky-300"
-      : "border-zinc-700 bg-zinc-900 text-zinc-300";
-  const sourceBadgeLabel =
-    task.sourceKind === "taskDefinition"
-      ? `TaskDef${task.taskDefinitionRef ? ` · ${task.taskDefinitionRef.taskKey}` : ""}`
-      : "Embedded";
-  return (
-    <li className="rounded bg-zinc-950/60 border border-zinc-800/80 px-2 py-1.5">
-      <div className="flex items-baseline justify-between gap-2">
-        <p className="text-[11px] font-medium text-zinc-100 truncate min-w-0">{task.title}</p>
-        <span
-          className={`text-[9px] uppercase tracking-wider rounded border px-1 py-0.5 shrink-0 ${sourceBadgeTone}`}
-        >
-          {sourceBadgeLabel}
-        </span>
-      </div>
-      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-zinc-400">
-        <span className="inline-flex items-baseline gap-1">
-          <span className="opacity-70">Stage:</span>
-          <span className={task.stage.isOnSnapshot ? "text-zinc-200" : "text-amber-300"}>
-            {task.stage.displayLabel}
-          </span>
-          <span className="font-mono opacity-60">({task.stage.nodeId})</span>
-          {!task.stage.isOnSnapshot ? (
-            <span className="text-amber-300 opacity-90">
-              · stage isn&rsquo;t in this process template
-            </span>
-          ) : null}
-        </span>
-        {task.tierCode ? (
-          <span className="inline-flex items-baseline gap-1">
-            <span className="opacity-70">Tier:</span>
-            <span className="font-mono">{task.tierCode}</span>
-          </span>
-        ) : null}
-      </div>
-      {task.requirementKinds.length > 0 ? (
-        <div className="mt-1 flex flex-wrap items-center gap-1">
-          <span className="text-[9px] uppercase tracking-wider text-zinc-500">requires:</span>
-          {task.requirementKinds.map((k) => (
-            <span
-              key={k}
-              className="rounded border border-zinc-700 bg-zinc-900/80 px-1 py-px text-[9px] text-zinc-300"
-            >
-              {k}
-            </span>
-          ))}
-        </div>
-      ) : (
-        <p className="mt-1 text-[9px] text-zinc-600 italic">no authored completion requirements</p>
-      )}
-    </li>
   );
 }
 

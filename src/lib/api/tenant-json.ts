@@ -136,6 +136,12 @@ function invariantToHttpStatus(code: Slice1InvariantCode): number {
     case "SCOPE_PACKET_TASK_LINE_LINE_KEY_TAKEN":
     case "QUOTE_LOCAL_PACKET_PROMOTION_PACKET_KEY_TAKEN":
     case "QUOTE_LOCAL_PACKET_PROMOTION_ALREADY_PROMOTED":
+    // Promote-into-existing-saved-packet path: same lifecycle-conflict
+    // semantics as the promote-to-NEW path above (already-promoted source +
+    // target-already-has-DRAFT both describe a state collision between the
+    // requested transition and current state).
+    case "QUOTE_LOCAL_PACKET_PROMOTION_INTO_EXISTING_ALREADY_PROMOTED":
+    case "QUOTE_LOCAL_PACKET_PROMOTION_INTO_EXISTING_TARGET_HAS_DRAFT":
     // Resource exists but is in the wrong lifecycle state for the requested
     // pin action — semantically a Conflict, not a Bad Request.
     case "LINE_SCOPE_REVISION_NOT_PUBLISHED":
@@ -208,6 +214,7 @@ function invariantToHttpStatus(code: Slice1InvariantCode): number {
     case "QUOTE_LOCAL_PACKET_PROMOTION_INVALID_PACKET_KEY":
     case "QUOTE_LOCAL_PACKET_PROMOTION_INVALID_DISPLAY_NAME":
     case "QUOTE_LOCAL_PACKET_PROMOTION_SOURCE_HAS_NO_ITEMS":
+    case "QUOTE_LOCAL_PACKET_PROMOTION_INTO_EXISTING_SOURCE_HAS_NO_ITEMS":
     case "SCOPE_PACKET_REVISION_FORK_SOURCE_HAS_NO_ITEMS":
     case "SCOPE_PACKET_REVISION_CREATE_DRAFT_SOURCE_HAS_NO_ITEMS":
     case "WORKFLOW_TEMPLATE_INVALID_KEY":

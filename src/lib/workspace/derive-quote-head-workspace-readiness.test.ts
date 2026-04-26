@@ -136,4 +136,66 @@ describe("deriveQuoteHeadWorkspaceReadiness", () => {
     expect(r.recommendedStepIndex).toBeNull();
     expect(r.honestyNotes.some((s) => s.toLowerCase().includes("declined"))).toBe(true);
   });
+
+  it("packetStageReadiness omitted: no 'packets' checklist row (preserves prior behavior)", () => {
+    const r = deriveQuoteHeadWorkspaceReadiness(
+      base({ status: "DRAFT", lineItemCount: 1, hasPinnedWorkflow: true }),
+    );
+    expect(r.kind).toBe("head");
+    if (r.kind !== "head") return;
+    expect(r.checklist.find((c) => c.id === "packets")).toBeUndefined();
+  });
+
+  it("packetStageReadiness yes: appends a satisfied 'packets' checklist row", () => {
+    const r = deriveQuoteHeadWorkspaceReadiness(
+      base({
+        status: "DRAFT",
+        lineItemCount: 2,
+        hasPinnedWorkflow: true,
+        packetStageReadiness: { state: "yes", note: "2 of 2 field-work line(s) resolve." },
+      }),
+    );
+    expect(r.kind).toBe("head");
+    if (r.kind !== "head") return;
+    const row = r.checklist.find((c) => c.id === "packets");
+    expect(row).toBeDefined();
+    expect(row?.state).toBe("yes");
+    expect(row?.label.toLowerCase()).toContain("field-work");
+    expect(row?.note).toContain("2 of 2");
+  });
+
+  it("packetStageReadiness no: appends a needs-attention 'packets' row that surfaces in the missing bucket", () => {
+    const r = deriveQuoteHeadWorkspaceReadiness(
+      base({
+        status: "DRAFT",
+        lineItemCount: 2,
+        hasPinnedWorkflow: true,
+        packetStageReadiness: {
+          state: "no",
+          note: "1 of 2 field-work line(s) need attention — 1 line(s) have no work template attached.",
+        },
+      }),
+    );
+    expect(r.kind).toBe("head");
+    if (r.kind !== "head") return;
+    const row = r.checklist.find((c) => c.id === "packets");
+    expect(row).toBeDefined();
+    expect(row?.state).toBe("no");
+    expect(row?.note?.toLowerCase()).toContain("need attention");
+  });
+
+  it("packetStageReadiness n/a: appends a 'packets' row in N/A state (no field-work lines)", () => {
+    const r = deriveQuoteHeadWorkspaceReadiness(
+      base({
+        status: "DRAFT",
+        lineItemCount: 1,
+        hasPinnedWorkflow: true,
+        packetStageReadiness: { state: "n/a", note: "No field-work lines on this draft yet." },
+      }),
+    );
+    expect(r.kind).toBe("head");
+    if (r.kind !== "head") return;
+    const row = r.checklist.find((c) => c.id === "packets");
+    expect(row?.state).toBe("n/a");
+  });
 });

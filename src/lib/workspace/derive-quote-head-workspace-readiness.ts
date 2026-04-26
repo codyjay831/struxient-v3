@@ -24,6 +24,21 @@ export type QuoteHeadReadinessInput = {
   proposalGroupCount: number;
   sentAt: string | null;
   signedAt: string | null;
+  /**
+   * Optional pre-derived packet/stage readiness signal. When provided, the
+   * checklist gains a "Field-work lines are stage-ready" row sourced
+   * verbatim from the same per-line execution preview the scope editor
+   * already shows — so the workspace cannot silently disagree with the
+   * editor about which lines need attention.
+   *
+   * Omit (null/undefined) on routes that don't have execution preview data
+   * loaded (e.g. workspace shell paths that intentionally skip the read).
+   * Absence preserves prior behavior — no checklist row is added.
+   */
+  packetStageReadiness?: {
+    state: "yes" | "no" | "n/a";
+    note?: string;
+  } | null;
 };
 
 export type ReadinessChecklistItem = {
@@ -127,6 +142,21 @@ export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput 
       `${String(head.proposalGroupCount)} group(s) — structural hint only; does not prove compose will pass.`,
     ),
   ];
+
+  // Optional packet/stage row sourced from per-line execution preview. We
+  // only append when the caller actually loaded preview data — absence
+  // means "unknown from this surface", not "passed". This preserves prior
+  // behavior on routes that don't load preview support.
+  if (head.packetStageReadiness != null) {
+    checklist.push(
+      checklistItem(
+        "packets",
+        "Field-work lines are stage-ready",
+        head.packetStageReadiness.state,
+        head.packetStageReadiness.note,
+      ),
+    );
+  }
 
   const likelyNextSteps: string[] = [];
   let recommendedStepIndex: number | null = null;

@@ -34,8 +34,8 @@ export default async function OfficeLibraryPacketsPage() {
         <div>
           <h1 className="text-2xl font-semibold text-zinc-50">Library packets</h1>
           <p className="text-sm text-zinc-500 mt-1">
-            Catalog ScopePackets visible to your tenant. Each packet groups one or more revisions
-            of authored task lines and is referenced by quote line items.
+            Saved work templates visible to your tenant. Each template groups one or more
+            revisions of authored task lines and is referenced by quote line items.
           </p>
         </div>
         {canAuthor ? (
@@ -67,20 +67,20 @@ export default async function OfficeLibraryPacketsPage() {
               <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
             </svg>
           </div>
-          <h2 className="text-zinc-200 font-medium">No catalog packets yet</h2>
+          <h2 className="text-zinc-200 font-medium">No saved templates yet</h2>
           <p className="text-zinc-500 text-sm mt-1 max-w-sm mx-auto">
             {canAuthor ? (
               <>
-                Create a packet directly with{" "}
+                Create a template directly with{" "}
                 <Link href="/library/packets/new" className="text-sky-400 hover:text-sky-300">
                   New packet
                 </Link>
-                , or promote a quote-local packet from a quote scope page.
+                , or save one-off work as a template from a quote scope page.
               </>
             ) : (
               <>
-                Catalog packets appear here after promotion from a quote scope page, or when an office admin creates one
-                in the library.
+                Saved templates appear here after one-off work is saved from a quote scope page,
+                or when an office admin creates one in the library.
               </>
             )}
           </p>

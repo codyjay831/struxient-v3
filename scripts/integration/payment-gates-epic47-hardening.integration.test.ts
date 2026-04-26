@@ -120,6 +120,7 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
       await prisma.activation.deleteMany({ where: { tenantId } });
       await prisma.flow.deleteMany({ where: { tenantId } });
       await prisma.job.deleteMany({ where: { tenantId } });
+      await prisma.auditEvent.deleteMany({ where: { tenantId } });
       await prisma.quoteVersion.deleteMany({ where: { quoteId: quote.id } });
       await prisma.quote.deleteMany({ where: { id: quote.id } });
       await prisma.workflowVersion.deleteMany({ where: { id: wv.id } });
@@ -385,6 +386,7 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
       await prisma.activation.deleteMany({ where: { tenantId } });
       await prisma.flow.deleteMany({ where: { tenantId } });
       await prisma.job.deleteMany({ where: { tenantId } });
+      await prisma.auditEvent.deleteMany({ where: { tenantId } });
       await prisma.quoteVersion.deleteMany({ where: { quoteId: quote.id } });
       await prisma.quote.deleteMany({ where: { id: quote.id } });
       await prisma.workflowVersion.deleteMany({ where: { id: wv.id } });
@@ -543,6 +545,7 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
       await prisma.activation.deleteMany({ where: { tenantId } });
       await prisma.flow.deleteMany({ where: { tenantId } });
       await prisma.job.deleteMany({ where: { tenantId } });
+      await prisma.auditEvent.deleteMany({ where: { tenantId } });
       await prisma.quoteVersion.deleteMany({ where: { quoteId: quote.id } });
       await prisma.quote.deleteMany({ where: { id: quote.id } });
       await prisma.workflowVersion.deleteMany({ where: { id: wv.id } });
@@ -670,6 +673,7 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
       await prisma.activation.deleteMany({ where: { tenantId } });
       await prisma.flow.deleteMany({ where: { tenantId } });
       await prisma.job.deleteMany({ where: { tenantId } });
+      await prisma.auditEvent.deleteMany({ where: { tenantId } });
       await prisma.quoteVersion.deleteMany({ where: { quoteId: quote.id } });
       await prisma.quote.deleteMany({ where: { id: quote.id } });
       await prisma.workflowVersion.deleteMany({ where: { id: wv.id } });
@@ -794,6 +798,7 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
       await prisma.activation.deleteMany({ where: { tenantId } });
       await prisma.flow.deleteMany({ where: { tenantId } });
       await prisma.job.deleteMany({ where: { tenantId } });
+      await prisma.auditEvent.deleteMany({ where: { tenantId } });
       await prisma.quoteVersion.deleteMany({ where: { quoteId: quote.id } });
       await prisma.quote.deleteMany({ where: { id: quote.id } });
       await prisma.workflowVersion.deleteMany({ where: { id: wv.id } });
@@ -995,6 +1000,7 @@ describe("Epic 47 payment gate hardening (frozen intent + CO retarget)", () => {
       await prisma.activation.deleteMany({ where: { tenantId } });
       await prisma.flow.deleteMany({ where: { tenantId } });
       await prisma.job.deleteMany({ where: { tenantId } });
+      await prisma.auditEvent.deleteMany({ where: { tenantId } });
       await prisma.quoteVersion.deleteMany({ where: { quoteId: quote.id } });
       await prisma.quote.deleteMany({ where: { id: quote.id } });
       await prisma.workflowVersion.deleteMany({ where: { id: wv.id } });

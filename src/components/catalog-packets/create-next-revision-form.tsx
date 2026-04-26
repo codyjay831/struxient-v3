@@ -7,7 +7,8 @@ import { useState } from "react";
  * Smallest safe revision-2 evolution affordance: create the next DRAFT
  * `ScopePacketRevision` as a deep clone of the current PUBLISHED revision.
  *
- * Surfaced inline on the dev catalog packet detail page; visible only when:
+ * Surfaced inline on the dev catalog packet detail page AND the office
+ * library packet detail page; visible only when:
  *   - the packet has a current PUBLISHED revision (`latestPublishedRevisionId != null`)
  *   - the packet has zero DRAFT revisions (`hasDraftRevision === false`)
  *
@@ -17,7 +18,9 @@ import { useState } from "react";
  * UI gate is purely a usability hint; the server is the source of truth.
  *
  * On success, the caller is navigated to the new DRAFT's revision detail page
- * so they can publish it (or, in a later epic, edit it).
+ * so they can edit task lines and publish. The `surfacePath` prop selects
+ * which surface (`/dev/catalog-packets` vs `/library/packets`) to land on,
+ * matching the surface the form was mounted under.
  *
  * No editor surface. No PacketTaskLine CRUD. No metadata edit.
  *
@@ -29,9 +32,26 @@ import { useState } from "react";
 export function CreateNextRevisionForm({
   scopePacketId,
   latestPublishedRevisionNumber,
+  surfacePath = "/dev/catalog-packets",
+  draftEditorAvailable = false,
 }: {
   scopePacketId: string;
   latestPublishedRevisionNumber: number;
+  /**
+   * Base path for the post-success redirect (no trailing slash). The form
+   * routes to `${surfacePath}/${scopePacketId}/revisions/${newRevisionId}`.
+   * Defaults to the dev surface for backward compatibility — office surface
+   * passes `/library/packets`.
+   */
+  surfacePath?: string;
+  /**
+   * Whether the destination revision page exposes a task-line editor for
+   * DRAFT revisions. Controls only user-facing copy — the server is unaware
+   * of this hint. The office library revision page mounts the embedded /
+   * library task-line forms, so it passes `true`. The dev catalog revision
+   * page is inspector-only, so the default `false` keeps that copy honest.
+   */
+  draftEditorAvailable?: boolean;
 }) {
   const router = useRouter();
   const [confirmed, setConfirmed] = useState(false);
@@ -73,7 +93,7 @@ export function CreateNextRevisionForm({
       const newRevisionId = j.data?.createDraftFromPublished?.newRevision?.id;
       if (newRevisionId) {
         router.push(
-          `/dev/catalog-packets/${encodeURIComponent(scopePacketId)}/revisions/${encodeURIComponent(newRevisionId)}`,
+          `${surfacePath}/${encodeURIComponent(scopePacketId)}/revisions/${encodeURIComponent(newRevisionId)}`,
         );
         // router.push doesn't refresh the list automatically on the same path;
         // refresh keeps the previous packet detail in sync if the user
@@ -100,10 +120,11 @@ export function CreateNextRevisionForm({
         Deep-clones every <code className="text-amber-100">PacketTaskLine</code> on
         the current PUBLISHED revision (r{latestPublishedRevisionNumber}) into a
         new <code className="text-amber-100">DRAFT</code> revision on the same
-        packet. The PUBLISHED revision is not touched. Catalog-side editing of
-        the new DRAFT is not yet available; the next slice ships create-DRAFT
-        and publish-with-supersede only. Publishing the new DRAFT will demote
-        r{latestPublishedRevisionNumber} to{" "}
+        packet. The PUBLISHED revision is not touched.{" "}
+        {draftEditorAvailable
+          ? "You will land on the new DRAFT's revision page where you can add, edit, reorder, and delete task lines before publishing."
+          : "Catalog-side editing of the new DRAFT is not available on this surface; the dev inspector only supports create-DRAFT and publish-with-supersede."}{" "}
+        Publishing the new DRAFT will demote r{latestPublishedRevisionNumber} to{" "}
         <code className="text-amber-100">SUPERSEDED</code> automatically.
       </p>
       <label className="mt-2 flex items-start gap-2 text-[11px] text-amber-200/90">
@@ -115,8 +136,11 @@ export function CreateNextRevisionForm({
           className="mt-0.5"
         />
         <span>
-          I understand that at most one DRAFT revision per packet is allowed,
-          and the new DRAFT cannot yet be edited from this inspector.
+          I understand that at most one DRAFT revision per packet is allowed
+          {draftEditorAvailable
+            ? " and that publishing it will supersede the current published revision."
+            : " and the new DRAFT cannot yet be edited from this inspector."}
+          .
         </span>
       </label>
       {error ? (

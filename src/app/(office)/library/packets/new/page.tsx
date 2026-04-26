@@ -25,9 +25,9 @@ export default async function OfficeNewScopePacketPage() {
 
       <h1 className="text-2xl font-semibold text-zinc-50">New library packet</h1>
       <p className="mt-2 text-sm text-zinc-500">
-        Creates a catalog <strong className="text-zinc-400">ScopePacket</strong> and its first{" "}
-        <strong className="text-zinc-400">DRAFT</strong> revision (empty). Add task lines before publishing; promotion from a
-        quote-local packet remains available as an alternative path.
+        Creates a saved work template and its first draft revision (empty). Add task lines
+        before publishing; saving one-off work from a quote scope page remains available as an
+        alternative path.
       </p>
 
       <div className="mt-8">

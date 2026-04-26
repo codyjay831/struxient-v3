@@ -4,6 +4,10 @@ import { tryGetApiPrincipal } from "@/lib/auth/api-principal";
 import { getPrisma } from "@/server/db/prisma";
 import { getQuoteWorkspaceForTenant } from "@/server/slice1/reads/quote-workspace-reads";
 import { getQuoteVersionScopeReadModel } from "@/server/slice1/reads/quote-version-scope";
+import { listQuoteLocalPacketsForVersion } from "@/server/slice1/reads/quote-local-packet-reads";
+import { listScopePacketsForTenant } from "@/server/slice1/reads/scope-packet-catalog-reads";
+import { loadLineItemExecutionPreviewsForTenant } from "@/server/slice1/reads/line-item-execution-preview-support";
+import { SCOPE_PACKET_LIST_LIMIT_DEFAULTS } from "@/lib/scope-packet-catalog-summary";
 import { toQuoteVersionScopeApiDto } from "@/lib/quote-version-scope-dto";
 import {
   deriveScopeVersionContext,
@@ -11,6 +15,7 @@ import {
   type ScopeVersionContext,
 } from "@/lib/quote-scope/quote-scope-grouping";
 import { formatExecutionModeLabel } from "@/lib/quote-line-item-execution-mode-label";
+import { LineItemExecutionPreviewBlock } from "@/components/quote-scope/line-item-execution-preview-block";
 
 /**
  * Office-surface read-only scope inspector for a *specific* quote version.
@@ -37,6 +42,20 @@ import { formatExecutionModeLabel } from "@/lib/quote-line-item-execution-mode-l
  * `GET …/lifecycle` deep-links, the `Technical details` `<details>`,
  * `AuthChip`, the `/dev/*` quick-jump strip, and the `QuoteLocalPacketEditor`
  * (mutation surface — head-DRAFT only, lives on the head editor route).
+ *
+ * Per-line execution preview parity (Slice: Packet readiness):
+ *   - Renders the same `LineItemExecutionPreviewBlock` the editable scope
+ *     editor uses, so office users can see frozen packet/task/stage details
+ *     for a SENT/SIGNED/historical version without having to dig into the
+ *     dev surface or freeze JSON.
+ *   - The block is purely presentational. The page itself remains read-only
+ *     and never mutates anything.
+ *   - The preview reads pinned packet revisions from the live tenant catalog;
+ *     because `scopePacketRevisionId` is immutable on a `QuoteLineItem` and
+ *     PUBLISHED revisions' `packetTaskLines` are append-only at the row
+ *     level, this is a faithful reconstruction. The canonical execution
+ *     truth for the version still lives in the frozen
+ *     `executionPackageSnapshot.v0` JSON; this preview is observation only.
  */
 export const dynamic = "force-dynamic";
 
@@ -99,6 +118,38 @@ export default async function OfficeFrozenVersionScopePage({ params }: PageProps
     dto.orderedLineItems,
   );
 
+  // Per-line execution preview support, mirroring the editable scope page's
+  // loader path (`(office)/quotes/[quoteId]/scope/page.tsx`). Frozen versions
+  // still pin specific PUBLISHED revisions, so the projection is faithful;
+  // we read the same tenant-scoped catalog/local-packet reads. No mutation,
+  // no compose run, no schema change. Library packets are fetched at the
+  // catalog list maximum (200, per `SCOPE_PACKET_LIST_LIMIT_DEFAULTS.max`)
+  // — the projection only consults the entries it needs.
+  const localPackets = await listQuoteLocalPacketsForVersion(prisma, {
+    tenantId: auth.principal.tenantId,
+    quoteVersionId,
+  });
+  const libraryPackets = await listScopePacketsForTenant(prisma, {
+    tenantId: auth.principal.tenantId,
+    limit: SCOPE_PACKET_LIST_LIMIT_DEFAULTS.max,
+  });
+  const executionPreview = await loadLineItemExecutionPreviewsForTenant(prisma, {
+    tenantId: auth.principal.tenantId,
+    pinnedWorkflowVersionId: dto.quoteVersion.pinnedWorkflowVersionId,
+    lineItems: dto.orderedLineItems.map((line) => ({
+      id: line.id,
+      executionMode: line.executionMode,
+      scopePacketRevisionId: line.scopePacketRevisionId,
+      quoteLocalPacketId: line.quoteLocalPacketId,
+      scopeRevision: line.scopeRevision
+        ? { id: line.scopeRevision.id, scopePacketId: line.scopeRevision.scopePacketId }
+        : null,
+    })),
+    libraryPackets,
+    localPackets,
+  });
+  const previewsByLineItemId = executionPreview.previewsByLineItemId;
+
   return (
     <main className="p-8 max-w-5xl mx-auto text-zinc-200">
       <ScopeBreadcrumb
@@ -158,33 +209,25 @@ export default async function OfficeFrozenVersionScopePage({ params }: PageProps
               </div>
 
               <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/20">
-                <table className="w-full text-left text-xs text-zinc-300">
-                  <thead className="bg-zinc-900/60 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                    <tr>
-                      <th className="px-4 py-2">Line title</th>
-                      <th className="px-4 py-2 text-right">Qty</th>
-                      <th className="px-4 py-2 text-center">Type</th>
-                      <th className="px-4 py-2 text-center">Source</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-800">
-                    {group.items.map((item) => (
-                      <tr key={item.id} className="hover:bg-zinc-800/40 transition-colors">
-                        <td className="px-4 py-2.5">
-                          <p className="font-medium text-zinc-200">{item.title}</p>
-                          {item.tierCode && (
-                            <p className="text-[10px] text-zinc-500 mt-0.5">Tier: {item.tierCode}</p>
-                          )}
-                        </td>
-                        <td className="px-4 py-2.5 text-right font-mono text-zinc-400">
-                          {item.quantity}
-                        </td>
-                        <td className="px-4 py-2.5 text-center">
-                          <span className="text-[10px] text-zinc-500">
-                            {formatExecutionModeLabel(item.executionMode)}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2.5 text-center">
+                <ul className="divide-y divide-zinc-800">
+                  {group.items.map((item) => {
+                    const preview = previewsByLineItemId[item.id] ?? null;
+                    return (
+                      <li key={item.id} className="px-4 py-3 space-y-2">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-zinc-100 truncate">
+                              {item.title}
+                            </p>
+                            <p className="mt-1 text-[11px] text-zinc-500">
+                              <span className="font-mono">qty {item.quantity}</span> ·{" "}
+                              <span>{formatExecutionModeLabel(item.executionMode)}</span>
+                              {item.tierCode ? (
+                                <span className="font-mono"> · tier {item.tierCode}</span>
+                              ) : null}
+                              {item.paymentBeforeWork ? " · payment before work" : ""}
+                            </p>
+                          </div>
                           <SourceBadge
                             kind={item.scopePacketRevisionId ? "library" : "local"}
                             label={
@@ -195,11 +238,12 @@ export default async function OfficeFrozenVersionScopePage({ params }: PageProps
                                   : "—"
                             }
                           />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        </div>
+                        {preview ? <LineItemExecutionPreviewBlock preview={preview} /> : null}
+                      </li>
+                    );
+                  })}
+                </ul>
               </div>
             </div>
           ))

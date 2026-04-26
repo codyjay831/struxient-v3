@@ -1,6 +1,12 @@
 import Link from "next/link";
 import { getPrisma } from "@/server/db/prisma";
 import { getQuoteWorkspaceForTenant } from "@/server/slice1/reads/quote-workspace-reads";
+import { getQuoteVersionScopeReadModel } from "@/server/slice1/reads/quote-version-scope";
+import { listQuoteLocalPacketsForVersion } from "@/server/slice1/reads/quote-local-packet-reads";
+import { listScopePacketsForTenant } from "@/server/slice1/reads/scope-packet-catalog-reads";
+import { loadLineItemExecutionPreviewsForTenant } from "@/server/slice1/reads/line-item-execution-preview-support";
+import { SCOPE_PACKET_LIST_LIMIT_DEFAULTS } from "@/lib/scope-packet-catalog-summary";
+import { derivePacketStageReadiness } from "@/lib/workspace/derive-packet-stage-readiness";
 import { principalHasCapability, tryGetApiPrincipal } from "@/lib/auth/api-principal";
 import { deriveNewestActivatedExecutionEntryTarget } from "@/lib/workspace/derive-workspace-execution-entry-target";
 import { deriveNewestSignedWithoutActivationTarget } from "@/lib/workspace/derive-workspace-signed-activate-target";
@@ -38,7 +44,11 @@ type PageProps = { params: Promise<{ quoteId: string }> };
 
 export const dynamic = "force-dynamic";
 
-function toReadinessInput(row: any, lineItemCount: number): QuoteHeadReadinessInput {
+function toReadinessInput(
+  row: any,
+  lineItemCount: number,
+  packetStageReadiness: QuoteHeadReadinessInput["packetStageReadiness"] = null,
+): QuoteHeadReadinessInput {
   return {
     id: row.id,
     versionNumber: row.versionNumber,
@@ -50,6 +60,7 @@ function toReadinessInput(row: any, lineItemCount: number): QuoteHeadReadinessIn
     proposalGroupCount: row.proposalGroupCount,
     sentAt: row.sentAt,
     signedAt: row.signedAt,
+    packetStageReadiness,
   };
 }
 
@@ -74,8 +85,68 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
 
   const head = ws.versions[0] ?? null;
   const headLineItemCount = head?.lineItemCount ?? ws.headLineItemSummary?.lineItemCount ?? 0;
+
+  // Packet/stage readiness signal (Triangle Mode visibility slice). Only
+  // loaded when the head is the editable DRAFT and actually has line items
+  // — those are the cases where pre-send authoring help is meaningful and
+  // where the scope page already pays the same I/O cost. Frozen / signed
+  // versions don't get the signal here; we deliberately leave the row off
+  // their readiness rather than re-confirm what send already verified.
+  //
+  // Reuses the exact same loader the scope page uses
+  // (`loadLineItemExecutionPreviewsForTenant`) so the workspace cannot
+  // disagree with the editor about which lines need attention. We do NOT
+  // duplicate compose logic — `derivePacketStageReadiness` only summarizes
+  // the existing per-line `LineItemExecutionPreviewDto` shapes.
+  const headIsEditableDraft = head?.status === "DRAFT";
+  const shouldLoadPacketReadiness =
+    headIsEditableDraft && head != null && headLineItemCount > 0;
+  let packetStageReadiness: QuoteHeadReadinessInput["packetStageReadiness"] = null;
+  if (shouldLoadPacketReadiness) {
+    const prisma = getPrisma();
+    const scopeModel = await getQuoteVersionScopeReadModel(prisma, {
+      tenantId: auth.principal.tenantId,
+      quoteVersionId: head.id,
+    });
+    if (scopeModel) {
+      const localPackets = await listQuoteLocalPacketsForVersion(prisma, {
+        tenantId: auth.principal.tenantId,
+        quoteVersionId: head.id,
+      });
+      const libraryPackets = await listScopePacketsForTenant(prisma, {
+        tenantId: auth.principal.tenantId,
+        limit: SCOPE_PACKET_LIST_LIMIT_DEFAULTS.max,
+      });
+      const support = await loadLineItemExecutionPreviewsForTenant(prisma, {
+        tenantId: auth.principal.tenantId,
+        pinnedWorkflowVersionId: scopeModel.pinnedWorkflowVersionId,
+        lineItems: scopeModel.orderedLineItems.map((line) => ({
+          id: line.id,
+          executionMode: line.executionMode,
+          scopePacketRevisionId: line.scopePacketRevisionId,
+          quoteLocalPacketId: line.quoteLocalPacketId,
+          scopeRevision: line.scopePacketRevision
+            ? {
+                id: line.scopePacketRevision.id,
+                scopePacketId: line.scopePacketRevision.scopePacket.id,
+              }
+            : null,
+        })),
+        libraryPackets,
+        localPackets,
+      });
+      const signal = derivePacketStageReadiness(
+        scopeModel.orderedLineItems.map((line) => ({
+          lineItemId: line.id,
+          preview: support.previewsByLineItemId[line.id]!,
+        })),
+      );
+      packetStageReadiness = { state: signal.state, note: signal.note };
+    }
+  }
+
   const readiness = deriveQuoteHeadWorkspaceReadiness(
-    head ? toReadinessInput(head, headLineItemCount) : null,
+    head ? toReadinessInput(head, headLineItemCount, packetStageReadiness) : null,
   );
   const recommendedStep = readiness.kind === "head" ? readiness.recommendedStepIndex : null;
 
@@ -255,7 +326,11 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
 
         <div className="space-y-8">
           <div className="sticky top-24 space-y-8">
-            <QuoteWorkspaceHeadReadiness head={head} headLineItemCount={headLineItemCount} />
+            <QuoteWorkspaceHeadReadiness
+              head={head}
+              headLineItemCount={headLineItemCount}
+              packetStageReadiness={packetStageReadiness}
+            />
 
             <QuoteWorkspacePreJobTasks flowGroupName={ws.flowGroup.name} tasks={ws.preJobTasks} />
 

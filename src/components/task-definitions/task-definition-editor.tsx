@@ -35,7 +35,16 @@ export type TaskDefinitionEditorInitial = {
 type Props = {
   mode: EditorMode;
   initial: TaskDefinitionEditorInitial;
+  /**
+   * Surface-relative route prefix used after a successful create to navigate
+   * to the new TaskDefinition's detail page. Defaults to the dev surface for
+   * backward compat. Office surface passes "/library/task-definitions".
+   * Must NOT include a trailing slash and must NOT include the id segment.
+   */
+  routePrefix?: string;
 };
+
+const DEFAULT_ROUTE_PREFIX = "/dev/task-definitions";
 
 type ApiErrorBody = {
   error?: {
@@ -77,8 +86,9 @@ function blankRequirement(kind: CompletionRequirementKind): CompletionRequiremen
   }
 }
 
-export function TaskDefinitionEditor({ mode, initial }: Props) {
+export function TaskDefinitionEditor({ mode, initial, routePrefix }: Props) {
   const router = useRouter();
+  const effectiveRoutePrefix = routePrefix ?? DEFAULT_ROUTE_PREFIX;
   const [taskKey, setTaskKey] = useState(initial.taskKey);
   const [displayName, setDisplayName] = useState(initial.displayName);
   const [instructions, setInstructions] = useState(initial.instructions ?? "");
@@ -298,7 +308,7 @@ export function TaskDefinitionEditor({ mode, initial }: Props) {
       }
       setSuccess(isCreate ? "Task definition created." : "Saved.");
       if (isCreate && j.data?.id) {
-        router.push(`/dev/task-definitions/${j.data.id}`);
+        router.push(`${effectiveRoutePrefix}/${j.data.id}`);
         return;
       }
       router.refresh();
@@ -833,7 +843,7 @@ export function TaskDefinitionEditor({ mode, initial }: Props) {
 
       {/* Actions */}
       <section className="flex flex-wrap items-center justify-between gap-3">
-        <Link href="/dev/task-definitions" className="text-sm text-zinc-500 hover:text-zinc-300">
+        <Link href={effectiveRoutePrefix} className="text-sm text-zinc-500 hover:text-zinc-300">
           ← Back to list
         </Link>
         {canEditContent ? (

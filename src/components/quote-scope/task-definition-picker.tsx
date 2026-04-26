@@ -147,7 +147,7 @@ export function TaskDefinitionPicker({
             disabled={disabled}
             className="rounded border border-sky-800/60 bg-sky-950/30 px-2 py-1 text-[11px] font-medium text-sky-300 hover:text-sky-200 disabled:opacity-40"
           >
-            Pick a TaskDefinition…
+            Pick a task definition…
           </button>
           <p className="mt-1 text-[10px] text-zinc-500">
             Tenant-scoped, published library only.
@@ -209,7 +209,7 @@ function SelectedSummaryCard({
           </div>
           {stale ? (
             <p className="mt-1.5 text-[10px] text-amber-400">
-              Linked TaskDefinition is not currently PUBLISHED. Existing items remain stable;
+              Linked task definition is not currently published. Existing items remain stable;
               changing the selection will only offer published definitions.
             </p>
           ) : null}
@@ -252,7 +252,7 @@ function UnknownSelectedCard({
     <div className="rounded border border-amber-900/40 bg-amber-950/20 p-2 text-[11px] text-amber-200">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <p className="font-medium">Linked TaskDefinition</p>
+          <p className="font-medium">Linked task definition</p>
           <p className="mt-0.5 font-mono text-[10px] text-amber-300/80">{id}</p>
           <p className="mt-1 text-[10px] text-amber-300/70">
             Summary not pre-loaded for this id. Pick again to refresh.
@@ -323,7 +323,7 @@ function PickerPanel({
 
       <div className="mt-2">
         {load.kind === "loading" ? (
-          <p className="px-2 py-3 text-[11px] text-zinc-500">Loading published TaskDefinitions…</p>
+          <p className="px-2 py-3 text-[11px] text-zinc-500">Loading published task definitions…</p>
         ) : load.kind === "error" ? (
           <p className="px-2 py-3 text-[11px] text-red-300">Failed to load: {load.message}</p>
         ) : load.kind === "idle" ? (
@@ -331,7 +331,7 @@ function PickerPanel({
         ) : filtered.length === 0 ? (
           <p className="px-2 py-3 text-[11px] text-zinc-500">
             {load.items.length === 0
-              ? "No published TaskDefinitions exist in this tenant yet."
+              ? "No published task definitions exist in this tenant yet."
               : `No matches for “${query}”.`}
           </p>
         ) : (

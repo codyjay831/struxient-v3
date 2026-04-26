@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useLibraryPacketComposeHintWorkflowVersionId } from "@/components/catalog-packets/library-packet-compose-hint-workflow-provider";
@@ -68,9 +69,15 @@ export function AddLibraryPacketTaskLineForm({
       <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-4 text-sm text-zinc-500">
         <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Add library line</h3>
         <p className="mt-2 text-xs leading-relaxed">
-          No published task definitions in this tenant. Publish a catalog task definition first, then you can
-          reference it here.
+          No published task definitions in this tenant yet. A library line points at a reusable
+          task definition — author one and publish it before referencing it here.
         </p>
+        <Link
+          href="/library/task-definitions/new"
+          className="mt-3 inline-flex items-center rounded border border-sky-800/60 bg-sky-950/30 px-2.5 py-1 text-[11px] font-medium text-sky-300 hover:text-sky-200 hover:border-sky-700"
+        >
+          + New task definition
+        </Link>
       </div>
     );
   }

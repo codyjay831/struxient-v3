@@ -8,6 +8,21 @@ import {
   type SelectedTaskDefinitionSummary,
 } from "@/components/quote-scope/task-definition-picker";
 import { TargetNodePicker } from "@/components/quote-scope/target-node-picker";
+import { formatQuoteLocalPacketPromotionStatusLabel } from "@/lib/quote-local-packet-promotion-status-label";
+
+/**
+ * Saved-packet summary row used by the "Add to existing saved template"
+ * promotion picker. Sourced from `listScopePacketsForTenant` so we don't
+ * need a second fetch — the office scope page already loads it for the
+ * library/local packet pickers above.
+ */
+export type SavedPacketOption = {
+  id: string;
+  packetKey: string;
+  displayName: string;
+  /** True when at least one revision on the packet is currently DRAFT. */
+  hasDraftRevision: boolean;
+};
 
 type Props = {
   quoteVersionId: string;
@@ -23,6 +38,13 @@ type Props = {
    * Mode). See {@link TargetNodePicker}.
    */
   pinnedWorkflowVersionId: string | null;
+  /**
+   * Tenant catalog packets used by the secondary promotion path "Add to
+   * existing saved template as new draft revision". Optional so dev /
+   * read-only mounts can omit it; when missing or empty, the affordance
+   * is hidden entirely (the existing promote-to-NEW path stays available).
+   */
+  availableSavedPackets?: SavedPacketOption[];
 };
 
 type ApiErrorBody = { error?: { code?: string; message?: string } };
@@ -44,6 +66,7 @@ export function QuoteLocalPacketEditor({
   canOfficeMutate,
   initialPackets,
   pinnedWorkflowVersionId,
+  availableSavedPackets,
 }: Props) {
   const router = useRouter();
   const [packets, setPackets] = useState<QuoteLocalPacketDto[]>(initialPackets);
@@ -235,6 +258,66 @@ export function QuoteLocalPacketEditor({
     }
   }
 
+  /**
+   * Secondary promotion path: copy this quote-local packet into an EXISTING
+   * tenant `ScopePacket` as the next editable DRAFT revision. Hits the
+   * same `/promote` endpoint as the primary path; the API dispatches on
+   * body shape (`targetScopePacketId` ⇒ this path).
+   *
+   * UX contract: on success, return the destination ids so the caller
+   * (PromoteIntoExistingForm) can navigate the user straight to the new
+   * draft revision in the office library — they will edit/publish from
+   * there, NOT from this surface.
+   */
+  async function handlePromotePacketIntoExisting(
+    packetId: string,
+    payload: { targetScopePacketId: string },
+  ): Promise<
+    | { ok: true; targetScopePacketId: string; revisionId: string }
+    | { ok: false; error: string }
+  > {
+    if (!editable) return { ok: false, error: "Not editable" };
+    setBusy(true);
+    setGlobalError(null);
+    try {
+      const res = await fetch(
+        `/api/quote-local-packets/${encodeURIComponent(packetId)}/promote`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ targetScopePacketId: payload.targetScopePacketId }),
+        },
+      );
+      if (!res.ok) {
+        const msg = await readApiError(res);
+        setGlobalError(msg);
+        return { ok: false, error: msg };
+      }
+      const body = (await res.json()) as {
+        data: {
+          promotion: {
+            promotedScopePacketId: string;
+            scopePacketRevision: { id: string };
+          };
+          quoteLocalPacket: QuoteLocalPacketDto | null;
+        };
+      };
+      const refreshed = body.data.quoteLocalPacket;
+      if (refreshed) {
+        setPackets((prev) => prev.map((p) => (p.id === packetId ? refreshed : p)));
+      }
+      refresh();
+      return {
+        ok: true,
+        targetScopePacketId: body.data.promotion.promotedScopePacketId,
+        revisionId: body.data.promotion.scopePacketRevision.id,
+      };
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleDeleteItem(packetId: string, itemId: string) {
     if (!editable) return;
     if (!window.confirm("Delete this task?")) return;
@@ -308,6 +391,12 @@ export function QuoteLocalPacketEditor({
               onUpdateItem={(itemId, patch) => handleUpdateItem(packet.id, itemId, patch)}
               onDeleteItem={(itemId) => handleDeleteItem(packet.id, itemId)}
               onPromotePacket={(payload) => handlePromotePacket(packet.id, payload)}
+              onPromotePacketIntoExisting={
+                availableSavedPackets && availableSavedPackets.length > 0
+                  ? (payload) => handlePromotePacketIntoExisting(packet.id, payload)
+                  : null
+              }
+              availableSavedPackets={availableSavedPackets ?? []}
             />
           ))}
         </ul>
@@ -357,6 +446,11 @@ type PromoteResult =
   | { ok: true; promotedScopePacketId: string }
   | { ok: false; error: string };
 
+type PromoteIntoExistingPayload = { targetScopePacketId: string };
+type PromoteIntoExistingResult =
+  | { ok: true; targetScopePacketId: string; revisionId: string }
+  | { ok: false; error: string };
+
 type PacketRowProps = {
   packet: QuoteLocalPacketDto;
   editable: boolean;
@@ -371,6 +465,15 @@ type PacketRowProps = {
   ) => Promise<boolean | undefined>;
   onDeleteItem: (itemId: string) => void;
   onPromotePacket: (payload: PromotePayload) => Promise<PromoteResult>;
+  /**
+   * When `null`, the secondary "Add to existing saved template" affordance
+   * is hidden entirely (e.g. there are no saved packets on the tenant yet,
+   * or the host page chose not to thread the option list through).
+   */
+  onPromotePacketIntoExisting:
+    | ((payload: PromoteIntoExistingPayload) => Promise<PromoteIntoExistingResult>)
+    | null;
+  availableSavedPackets: SavedPacketOption[];
 };
 
 function PacketRow({
@@ -384,14 +487,21 @@ function PacketRow({
   onUpdateItem,
   onDeleteItem,
   onPromotePacket,
+  onPromotePacketIntoExisting,
+  availableSavedPackets,
 }: PacketRowProps) {
   const [editingHeader, setEditingHeader] = useState(false);
   const [headerName, setHeaderName] = useState(packet.displayName);
   const [headerDescription, setHeaderDescription] = useState(packet.description ?? "");
   const [showAddItem, setShowAddItem] = useState(false);
   const [showPromote, setShowPromote] = useState(false);
+  const [showPromoteExisting, setShowPromoteExisting] = useState(false);
   const pinned = packet.pinnedByLineItemCount > 0;
   const canPromote = editable && packet.promotionStatus === "NONE" && packet.itemCount > 0;
+  const canPromoteIntoExisting =
+    canPromote &&
+    onPromotePacketIntoExisting !== null &&
+    availableSavedPackets.length > 0;
   const isPromoted =
     packet.promotionStatus === "COMPLETED" && packet.promotedScopePacketId !== null;
 
@@ -469,9 +579,9 @@ function PacketRow({
                       ? "border-emerald-800/60 bg-emerald-950/30 text-emerald-300"
                       : "border-zinc-700/60 bg-zinc-900/40 text-zinc-400"
                   }`}
-                  title="QuoteLocalPacket.promotionStatus"
+                  title="Save-to-library status for this one-off work"
                 >
-                  promotion: {packet.promotionStatus}
+                  {formatQuoteLocalPacketPromotionStatusLabel(packet.promotionStatus)}
                 </span>
                 {isPromoted && packet.promotedScopePacketId ? (
                   <a
@@ -521,7 +631,7 @@ function PacketRow({
       />
 
       {canPromote ? (
-        <div className="mt-3">
+        <div className="mt-3 flex flex-wrap gap-2">
           {showPromote ? (
             <PromoteForm
               busy={busy}
@@ -533,15 +643,38 @@ function PacketRow({
                 return result;
               }}
             />
+          ) : showPromoteExisting && onPromotePacketIntoExisting !== null ? (
+            <PromoteIntoExistingForm
+              busy={busy}
+              availableSavedPackets={availableSavedPackets}
+              onCancel={() => setShowPromoteExisting(false)}
+              onSubmit={async (payload) => {
+                const result = await onPromotePacketIntoExisting(payload);
+                if (result.ok) setShowPromoteExisting(false);
+                return result;
+              }}
+            />
           ) : (
-            <button
-              type="button"
-              onClick={() => setShowPromote(true)}
-              className="rounded border border-violet-800/60 bg-violet-950/20 px-2 py-0.5 text-[11px] text-violet-300 hover:text-violet-200"
-              title="Promote this custom packet to a new catalog library packet (DRAFT revision)."
-            >
-              ↑ Promote to catalog (DRAFT revision)
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setShowPromote(true)}
+                className="rounded border border-violet-800/60 bg-violet-950/20 px-2 py-0.5 text-[11px] text-violet-300 hover:text-violet-200"
+                title="Save this one-off work as a brand-new reusable saved template (creates a new library packet with its first DRAFT revision)."
+              >
+                ↑ Save as new template (DRAFT revision)
+              </button>
+              {canPromoteIntoExisting ? (
+                <button
+                  type="button"
+                  onClick={() => setShowPromoteExisting(true)}
+                  className="rounded border border-violet-800/60 bg-violet-950/20 px-2 py-0.5 text-[11px] text-violet-300 hover:text-violet-200"
+                  title="Add this one-off work to an existing saved template as the next editable draft revision."
+                >
+                  ↗ Add to existing saved template
+                </button>
+              ) : null}
+            </>
           )}
         </div>
       ) : null}
@@ -1032,7 +1165,7 @@ function ItemForm({
 /* ───────────────────────── Promote form ───────────────────────── */
 
 const PROMOTE_HELP_TEXT =
-  "This creates a NEW catalog library packet on this tenant with a first DRAFT revision and copies every item as a packet task line. The action is irreversible — once promoted, the source custom packet is locked to COMPLETED and the new library packet exists permanently. Future picker visibility (PUBLISHED only) is handled by a later admin-review epic.";
+  "This creates a new saved template in your library with a first draft revision and copies every item as a template task line. The action is irreversible — once saved, the source one-off work is locked and the new template exists permanently. Office admins can publish, edit, or supersede the template later from the library.";
 
 function PromoteForm({
   busy,
@@ -1062,7 +1195,7 @@ function PromoteForm({
   return (
     <div className="rounded border border-violet-900/40 bg-violet-950/10 p-3 space-y-2">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-violet-300/80">
-        Promote to catalog (DRAFT revision)
+        Save as new template (draft revision)
       </p>
       <p className="text-[11px] leading-relaxed text-zinc-400">{PROMOTE_HELP_TEXT}</p>
       <label className="block text-[11px] space-y-1">
@@ -1107,7 +1240,8 @@ function PromoteForm({
           className="mt-0.5"
         />
         <span>
-          I understand this is irreversible: a new catalog library packet will be created and the source custom packet will be locked to <code className="text-zinc-300">promotionStatus = COMPLETED</code>.
+          I understand this is irreversible: a new saved template will be created in the library
+          and this one-off work will be locked.
         </span>
       </label>
       {localError ? (
@@ -1143,6 +1277,157 @@ function PromoteForm({
           className="rounded bg-violet-700/90 px-3 py-1 text-[11px] font-semibold text-violet-50 hover:bg-violet-600 disabled:opacity-50"
         >
           {busy ? "Promoting…" : "Promote (irreversible)"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────── Promote into existing saved template ─────────────── */
+
+const PROMOTE_INTO_EXISTING_HELP_TEXT =
+  "This creates a new editable DRAFT revision on the saved template you pick, containing the items from this one-off work. The published revision is NOT changed — you'll review and publish the new draft from the office library. The source one-off work is locked once promoted.";
+
+function PromoteIntoExistingForm({
+  busy,
+  availableSavedPackets,
+  onCancel,
+  onSubmit,
+}: {
+  busy: boolean;
+  availableSavedPackets: SavedPacketOption[];
+  onCancel: () => void;
+  onSubmit: (
+    payload: { targetScopePacketId: string },
+  ) => Promise<
+    | { ok: true; targetScopePacketId: string; revisionId: string }
+    | { ok: false; error: string }
+  >;
+}) {
+  const [targetId, setTargetId] = useState<string>("");
+  const [confirmed, setConfirmed] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<
+    { targetScopePacketId: string; revisionId: string } | null
+  >(null);
+
+  const sortedOptions = useMemo(
+    () =>
+      [...availableSavedPackets].sort((a, b) =>
+        a.displayName.localeCompare(b.displayName),
+      ),
+    [availableSavedPackets],
+  );
+
+  const selected = sortedOptions.find((p) => p.id === targetId) ?? null;
+  const targetHasDraft = selected?.hasDraftRevision === true;
+  const canSubmit = selected !== null && !targetHasDraft && confirmed && !busy;
+
+  if (success) {
+    const revisionHref = `/library/packets/${encodeURIComponent(
+      success.targetScopePacketId,
+    )}/revisions/${encodeURIComponent(success.revisionId)}`;
+    return (
+      <div className="rounded border border-emerald-900/50 bg-emerald-950/20 p-3 text-[11px] text-emerald-200/90 space-y-2">
+        <p>
+          New draft revision created on the selected saved template. The
+          published revision was not changed.
+        </p>
+        <a
+          href={revisionHref}
+          className="inline-block rounded border border-emerald-700/60 bg-emerald-900/40 px-2 py-0.5 text-emerald-100 hover:text-white"
+        >
+          Open new draft revision ↗
+        </a>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="ml-2 rounded border border-zinc-700 px-2 py-0.5 text-zinc-300 hover:text-zinc-100"
+        >
+          Close
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded border border-violet-900/40 bg-violet-950/10 p-3 space-y-2">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-violet-300/80">
+        Add to existing saved template (DRAFT revision)
+      </p>
+      <p className="text-[11px] leading-relaxed text-zinc-400">
+        {PROMOTE_INTO_EXISTING_HELP_TEXT}
+      </p>
+      <label className="block text-[11px] space-y-1">
+        <span className="block text-zinc-500">Target saved template</span>
+        <select
+          value={targetId}
+          onChange={(e) => {
+            setTargetId(e.target.value);
+            setLocalError(null);
+          }}
+          disabled={busy}
+          className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-200"
+        >
+          <option value="">— pick a saved template —</option>
+          {sortedOptions.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.displayName} ({p.packetKey}){p.hasDraftRevision ? "  • already has a draft" : ""}
+            </option>
+          ))}
+        </select>
+      </label>
+      {targetHasDraft ? (
+        <p className="rounded border border-amber-900/50 bg-amber-950/20 px-2 py-1 text-[11px] text-amber-300">
+          This saved template already has an editable draft. Open that draft
+          and merge changes there instead — only one editable draft is allowed
+          per saved template.
+        </p>
+      ) : null}
+      <label className="flex items-start gap-2 text-[11px] text-zinc-400">
+        <input
+          type="checkbox"
+          checked={confirmed}
+          onChange={(e) => setConfirmed(e.target.checked)}
+          disabled={busy || selected === null || targetHasDraft}
+          className="mt-0.5"
+        />
+        <span>
+          I understand a new editable draft revision will be created on the
+          selected saved template, and this one-off work will be locked.
+        </span>
+      </label>
+      {localError ? (
+        <p className="rounded border border-red-900/60 bg-red-950/30 px-2 py-1 text-[11px] text-red-300">
+          {localError}
+        </p>
+      ) : null}
+      <div className="flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-400 hover:text-zinc-200"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          disabled={!canSubmit}
+          onClick={async () => {
+            if (selected === null) return;
+            const result = await onSubmit({ targetScopePacketId: selected.id });
+            if (result.ok) {
+              setSuccess({
+                targetScopePacketId: result.targetScopePacketId,
+                revisionId: result.revisionId,
+              });
+            } else {
+              setLocalError(result.error);
+            }
+          }}
+          className="rounded bg-violet-700/90 px-3 py-1 text-[11px] font-semibold text-violet-50 hover:bg-violet-600 disabled:opacity-50"
+        >
+          {busy ? "Adding…" : "Add as new draft revision"}
         </button>
       </div>
     </div>
