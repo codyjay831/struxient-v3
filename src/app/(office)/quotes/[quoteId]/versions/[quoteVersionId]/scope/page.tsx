@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { tryGetApiPrincipal } from "@/lib/auth/api-principal";
 import { getPrisma } from "@/server/db/prisma";
+import { ensureDraftQuoteVersionPinnedToCanonicalForTenant } from "@/server/slice1/mutations/ensure-draft-quote-version-canonical-pin";
 import { getQuoteWorkspaceForTenant } from "@/server/slice1/reads/quote-workspace-reads";
 import { getQuoteVersionScopeReadModel } from "@/server/slice1/reads/quote-version-scope";
 import { listQuoteLocalPacketsForVersion } from "@/server/slice1/reads/quote-local-packet-reads";
@@ -82,7 +83,7 @@ export default async function OfficeFrozenVersionScopePage({ params }: PageProps
     notFound();
   }
 
-  const scopeModel = await getQuoteVersionScopeReadModel(prisma, {
+  let scopeModel = await getQuoteVersionScopeReadModel(prisma, {
     tenantId: auth.principal.tenantId,
     quoteVersionId,
   });
@@ -97,6 +98,22 @@ export default async function OfficeFrozenVersionScopePage({ params }: PageProps
   // wrong context chrome. Treat as not-found rather than silently rewriting.
   if (scopeModel.quoteId !== quoteId) {
     notFound();
+  }
+
+  if (scopeModel.status === "DRAFT") {
+    const pin = await ensureDraftQuoteVersionPinnedToCanonicalForTenant(prisma, {
+      tenantId: auth.principal.tenantId,
+      quoteVersionId,
+    });
+    if (pin.ok && pin.repaired) {
+      const again = await getQuoteVersionScopeReadModel(prisma, {
+        tenantId: auth.principal.tenantId,
+        quoteVersionId,
+      });
+      if (again && again.quoteId === quoteId) {
+        scopeModel = again;
+      }
+    }
   }
 
   const dto = toQuoteVersionScopeApiDto(scopeModel);

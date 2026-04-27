@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getPrisma } from "@/server/db/prisma";
+import { ensureDraftQuoteVersionPinnedToCanonicalForTenant } from "@/server/slice1/mutations/ensure-draft-quote-version-canonical-pin";
 import { getQuoteWorkspaceForTenant } from "@/server/slice1/reads/quote-workspace-reads";
 import { getQuoteVersionScopeReadModel } from "@/server/slice1/reads/quote-version-scope";
 import { listQuoteLocalPacketsForVersion } from "@/server/slice1/reads/quote-local-packet-reads";
@@ -82,6 +83,17 @@ export default async function OfficeQuoteScopePage({ params }: PageProps) {
         </div>
       </main>
     );
+  }
+
+  let canonicalPinEnsureError: string | null = null;
+  if (head.status === "DRAFT") {
+    const pin = await ensureDraftQuoteVersionPinnedToCanonicalForTenant(prisma, {
+      tenantId: auth.principal.tenantId,
+      quoteVersionId: head.id,
+    });
+    if (!pin.ok && pin.kind === "ensure_canonical_failed") {
+      canonicalPinEnsureError = pin.message;
+    }
   }
 
   const scopeModel = await getQuoteVersionScopeReadModel(prisma, {
@@ -172,6 +184,15 @@ export default async function OfficeQuoteScopePage({ params }: PageProps) {
 
   return (
     <main className="p-8 max-w-5xl mx-auto text-zinc-200">
+      {canonicalPinEnsureError ? (
+        <div
+          className="mb-4 rounded border border-red-900/50 bg-red-950/30 p-3 text-sm text-red-100"
+          role="alert"
+        >
+          <p className="font-medium">Execution flow binding failed</p>
+          <p className="mt-1 text-xs text-red-200/90">{canonicalPinEnsureError}</p>
+        </div>
+      ) : null}
       <header className="mb-6 border-b border-zinc-800 pb-5">
         <ScopeBreadcrumb quoteId={quoteId} quoteNumber={ws.quote.quoteNumber} />
         <div className="mt-3 flex flex-wrap items-end justify-between gap-3">

@@ -10,6 +10,7 @@ import {
   sha256HexUtf8,
 } from "../compose-preview/freeze-snapshots";
 import { getQuoteVersionScopeReadModel } from "../reads/quote-version-scope";
+import { ensureDraftQuoteVersionPinnedToCanonicalInTransaction } from "./ensure-draft-quote-version-canonical-pin";
 
 export type SendQuoteVersionRequestBody = {
   clientStalenessToken?: string | null;
@@ -126,7 +127,33 @@ export async function sendQuoteVersionForTenant(
         return;
       }
 
-      const serverTok = locked.composePreviewStalenessToken ?? null;
+      const pinEnsure = await ensureDraftQuoteVersionPinnedToCanonicalInTransaction(tx, {
+        tenantId: params.tenantId,
+        quoteVersionId: params.quoteVersionId,
+      });
+      if (!pinEnsure.ok) {
+        if (pinEnsure.kind === "not_found") {
+          outcome = { ok: false, kind: "not_found" };
+          return;
+        }
+        outcome = {
+          ok: false,
+          kind: "compose_blocked",
+          errors: [
+            {
+              code: "CANONICAL_WORKFLOW_ENSURE_FAILED",
+              message: pinEnsure.message,
+            },
+          ],
+        };
+        return;
+      }
+
+      const tokenAfterPin = await tx.quoteVersion.findFirst({
+        where: { id: locked.id },
+        select: { composePreviewStalenessToken: true },
+      });
+      const serverTok = tokenAfterPin?.composePreviewStalenessToken ?? null;
       if (clientTok !== serverTok) {
         outcome = {
           ok: false,

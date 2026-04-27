@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { PrismaClientInitializationError } from "@prisma/client/runtime/library";
 import { getPrisma } from "@/server/db/prisma";
+import { ensureDraftQuoteVersionPinnedToCanonicalForTenant } from "@/server/slice1/mutations/ensure-draft-quote-version-canonical-pin";
 import { getQuoteWorkspaceForTenant } from "@/server/slice1/reads/quote-workspace-reads";
 import { getQuoteVersionScopeReadModel } from "@/server/slice1/reads/quote-version-scope";
 import { listQuoteLocalPacketsForVersion } from "@/server/slice1/reads/quote-local-packet-reads";
@@ -114,12 +115,27 @@ export default async function DevQuoteWorkspacePage({ params }: PageProps) {
   const headLineItemCount = head?.lineItemCount ?? ws.headLineItemSummary?.lineItemCount ?? 0;
   const headIsEditableDraft = head?.status === "DRAFT";
 
+  const prisma = getPrisma();
+  let headForTargets = head;
+  if (head?.status === "DRAFT") {
+    const pin = await ensureDraftQuoteVersionPinnedToCanonicalForTenant(prisma, {
+      tenantId: auth.principal.tenantId,
+      quoteVersionId: head.id,
+    });
+    if (pin.ok) {
+      headForTargets = {
+        ...head,
+        pinnedWorkflowVersionId: pin.pinnedWorkflowVersionId,
+        hasPinnedWorkflow: !!pin.pinnedWorkflowVersionId,
+      };
+    }
+  }
+
   // Mirror the office page: load the proposed execution flow when the head
   // is an editable DRAFT with line items. Pure aggregation on top of the
   // existing per-line preview support — same loader the scope editor uses.
   let proposedExecutionFlow: ProposedExecutionFlow | null = null;
   if (headIsEditableDraft && head != null && headLineItemCount > 0) {
-    const prisma = getPrisma();
     const scopeModel = await getQuoteVersionScopeReadModel(prisma, {
       tenantId: auth.principal.tenantId,
       quoteVersionId: head.id,
@@ -151,25 +167,28 @@ export default async function DevQuoteWorkspacePage({ params }: PageProps) {
         libraryPackets,
         localPackets,
       });
+      const workflowSnapshotHasStageNodes =
+        scopeModel.pinnedWorkflowVersionId != null && support.workflowNodeKeys.length > 0;
       proposedExecutionFlow = buildProposedExecutionFlow(
         scopeModel.orderedLineItems.map((line) => ({
           lineItemId: line.id,
           lineTitle: line.title ?? null,
           preview: support.previewsByLineItemId[line.id]!,
         })),
+        { workflowSnapshotHasStageNodes },
       );
     }
   }
 
   const readiness = deriveQuoteHeadWorkspaceReadiness(
-    head ? toQuoteHeadReadinessInput(head, headLineItemCount) : null,
+    headForTargets ? toQuoteHeadReadinessInput(headForTargets, headLineItemCount) : null,
   );
   const recommendedStep = readiness.kind === "head" ? readiness.recommendedStepIndex : null;
 
   const canOfficeMutate = principalHasCapability(auth.principal, "office_mutate");
 
   const { pinTarget: headDraftPinTarget, workspaceTarget: latestDraftWorkspaceTarget } =
-    deriveHeadDraftPipelineTargets(head);
+    deriveHeadDraftPipelineTargets(headForTargets);
 
   const sentSignTarget = deriveNewestSentSignTarget(ws.versions);
   const portalDeclinedSummary = deriveNewestPortalDeclinedSummary(ws.versions);

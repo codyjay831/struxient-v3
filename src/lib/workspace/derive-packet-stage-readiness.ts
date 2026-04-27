@@ -44,7 +44,8 @@ export type PacketStageReadinessIssue =
   | { kind: "manifestNoPacket"; lineItemId: string }
   | { kind: "manifestLibraryMissing"; lineItemId: string }
   | { kind: "manifestLocalMissing"; lineItemId: string }
-  | { kind: "stageOffSnapshot"; lineItemId: string; nodeId: string };
+  | { kind: "stageOffSnapshot"; lineItemId: string; nodeId: string }
+  | { kind: "executionFlowBinding" };
 
 export type PacketStageReadiness = {
   /**
@@ -80,6 +81,7 @@ function isManifestKind(kind: LineItemExecutionPreviewDto["kind"]): boolean {
 function collectIssuesForLine(
   lineItemId: string,
   preview: LineItemExecutionPreviewDto,
+  suppressStageOffSnapshot: boolean,
 ): PacketStageReadinessIssue[] {
   if (preview.kind === "manifestNoPacket") {
     return [{ kind: "manifestNoPacket", lineItemId }];
@@ -92,9 +94,11 @@ function collectIssuesForLine(
   }
   if (preview.kind === "manifestLibrary" || preview.kind === "manifestLocal") {
     const out: PacketStageReadinessIssue[] = [];
-    for (const t of preview.tasks) {
-      if (!t.stage.isOnSnapshot) {
-        out.push({ kind: "stageOffSnapshot", lineItemId, nodeId: t.stage.nodeId });
+    if (!suppressStageOffSnapshot) {
+      for (const t of preview.tasks) {
+        if (!t.stage.isOnSnapshot) {
+          out.push({ kind: "stageOffSnapshot", lineItemId, nodeId: t.stage.nodeId });
+        }
       }
     }
     return out;
@@ -110,12 +114,16 @@ function formatNote(args: {
   missingLibraryCount: number;
   missingLocalCount: number;
   stageOffSnapshotCount: number;
+  bindingDefect: boolean;
 }): string {
   if (args.manifestLineCount === 0) {
     return "No field-work lines on this draft yet — only commercial / quote-only items.";
   }
-  if (args.badLineCount === 0) {
+  if (args.badLineCount === 0 && !args.bindingDefect) {
     return `${String(args.okManifestLineCount)} of ${String(args.manifestLineCount)} field-work line(s) resolve to valid packets and stages.`;
+  }
+  if (args.badLineCount === 0 && args.bindingDefect) {
+    return `${String(args.okManifestLineCount)} of ${String(args.manifestLineCount)} field-work line(s) resolve to packets, but the bound execution flow has no stage nodes — repair workflow binding.`;
   }
   const fragments: string[] = [];
   if (args.noPacketCount > 0) {
@@ -138,6 +146,11 @@ function formatNote(args: {
       `${String(args.stageOffSnapshotCount)} task stage(s) aren't on the pinned process template`,
     );
   }
+  if (args.bindingDefect) {
+    fragments.push(
+      "execution flow binding is incomplete (no stage nodes on the bound workflow — repair binding or contact support)",
+    );
+  }
   return `${String(args.badLineCount)} of ${String(args.manifestLineCount)} field-work line(s) need attention — ${fragments.join("; ")}.`;
 }
 
@@ -153,9 +166,19 @@ function formatNote(args: {
  * a `manifestLibrary`/`manifestLocal` line with N tasks contributes at
  * most N `stageOffSnapshot` issues (one per off-snapshot stage).
  */
+export type DerivePacketStageReadinessOptions = {
+  /**
+   * When false, skip per-task `stageOffSnapshot` issues (empty bound workflow snapshot / unbound pin).
+   * A single `executionFlowBinding` issue is appended when any manifest line had off-snapshot tasks.
+   */
+  workflowSnapshotHasStageNodes?: boolean;
+};
+
 export function derivePacketStageReadiness(
   lines: ReadonlyArray<PacketStageReadinessLineInput>,
+  options: DerivePacketStageReadinessOptions = {},
 ): PacketStageReadiness {
+  const workflowSnapshotHasStageNodes = options.workflowSnapshotHasStageNodes !== false;
   let manifestLineCount = 0;
   let okManifestLineCount = 0;
   let noPacketCount = 0;
@@ -165,13 +188,23 @@ export function derivePacketStageReadiness(
   let stageOffSnapshotIssueCount = 0;
   const issues: PacketStageReadinessIssue[] = [];
   let badLineCount = 0;
+  let sawOffSnapshotSuppressed = false;
 
   for (const line of lines) {
     const kind = line.preview.kind;
     if (!isManifestKind(kind)) continue;
     manifestLineCount += 1;
 
-    const lineIssues = collectIssuesForLine(line.lineItemId, line.preview);
+    const rawIssues = collectIssuesForLine(line.lineItemId, line.preview, !workflowSnapshotHasStageNodes);
+    if (!workflowSnapshotHasStageNodes && (kind === "manifestLibrary" || kind === "manifestLocal")) {
+      for (const t of line.preview.tasks) {
+        if (!t.stage.isOnSnapshot) {
+          sawOffSnapshotSuppressed = true;
+          break;
+        }
+      }
+    }
+    const lineIssues = rawIssues;
     if (lineIssues.length === 0) {
       okManifestLineCount += 1;
       continue;
@@ -191,9 +224,15 @@ export function derivePacketStageReadiness(
     if (lineHasStageOffSnapshot) stageOffSnapshotLineCount += 1;
   }
 
+  if (!workflowSnapshotHasStageNodes && sawOffSnapshotSuppressed) {
+    issues.unshift({ kind: "executionFlowBinding" });
+  }
+
+  const bindingDefect = !workflowSnapshotHasStageNodes && sawOffSnapshotSuppressed;
   let state: PacketStageReadiness["state"];
   if (manifestLineCount === 0) state = "n/a";
-  else if (badLineCount === 0) state = "yes";
+  else if (badLineCount === 0 && !bindingDefect) state = "yes";
+  else if (badLineCount === 0 && bindingDefect) state = "no";
   else state = "no";
 
   const note = formatNote({
@@ -204,6 +243,7 @@ export function derivePacketStageReadiness(
     missingLibraryCount,
     missingLocalCount,
     stageOffSnapshotCount: stageOffSnapshotIssueCount,
+    bindingDefect,
   });
 
   // `stageOffSnapshotLineCount` is reserved for a future UX that wants to

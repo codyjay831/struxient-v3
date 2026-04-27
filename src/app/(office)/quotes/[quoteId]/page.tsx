@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getPrisma } from "@/server/db/prisma";
+import { ensureDraftQuoteVersionPinnedToCanonicalForTenant } from "@/server/slice1/mutations/ensure-draft-quote-version-canonical-pin";
 import { getQuoteWorkspaceForTenant } from "@/server/slice1/reads/quote-workspace-reads";
 import { getQuoteVersionScopeReadModel } from "@/server/slice1/reads/quote-version-scope";
 import { listQuoteLocalPacketsForVersion } from "@/server/slice1/reads/quote-local-packet-reads";
@@ -90,6 +91,27 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
   const head = ws.versions[0] ?? null;
   const headLineItemCount = head?.lineItemCount ?? ws.headLineItemSummary?.lineItemCount ?? 0;
 
+  const prisma = getPrisma();
+  let canonicalPinEnsureError: string | null = null;
+  let headForReadiness = head;
+  if (head?.status === "DRAFT") {
+    const pin = await ensureDraftQuoteVersionPinnedToCanonicalForTenant(prisma, {
+      tenantId: auth.principal.tenantId,
+      quoteVersionId: head.id,
+    });
+    if (!pin.ok) {
+      if (pin.kind === "ensure_canonical_failed") {
+        canonicalPinEnsureError = pin.message;
+      }
+    } else {
+      headForReadiness = {
+        ...head,
+        pinnedWorkflowVersionId: pin.pinnedWorkflowVersionId,
+        hasPinnedWorkflow: !!pin.pinnedWorkflowVersionId,
+      };
+    }
+  }
+
   // Packet/stage readiness signal (Triangle Mode visibility slice). Only
   // loaded when the head is the editable DRAFT and actually has line items
   // — those are the cases where pre-send authoring help is meaningful and
@@ -108,7 +130,6 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
   let packetStageReadiness: QuoteHeadReadinessInput["packetStageReadiness"] = null;
   let proposedExecutionFlow: ProposedExecutionFlow | null = null;
   if (shouldLoadPacketReadiness) {
-    const prisma = getPrisma();
     const scopeModel = await getQuoteVersionScopeReadModel(prisma, {
       tenantId: auth.principal.tenantId,
       quoteVersionId: head.id,
@@ -145,25 +166,30 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
         lineTitle: line.title ?? null,
         preview: support.previewsByLineItemId[line.id]!,
       }));
+      const workflowSnapshotHasStageNodes =
+        scopeModel.pinnedWorkflowVersionId != null && support.workflowNodeKeys.length > 0;
       const signal = derivePacketStageReadiness(
         lineInputs.map((l) => ({ lineItemId: l.lineItemId, preview: l.preview })),
+        { workflowSnapshotHasStageNodes },
       );
       packetStageReadiness = { state: signal.state, note: signal.note };
-      proposedExecutionFlow = buildProposedExecutionFlow(lineInputs);
+      proposedExecutionFlow = buildProposedExecutionFlow(lineInputs, {
+        workflowSnapshotHasStageNodes,
+      });
     }
   }
 
   const readiness = deriveQuoteHeadWorkspaceReadiness(
-    head ? toReadinessInput(head, headLineItemCount, packetStageReadiness) : null,
+    headForReadiness ? toReadinessInput(headForReadiness, headLineItemCount, packetStageReadiness) : null,
   );
   const recommendedStep = readiness.kind === "head" ? readiness.recommendedStepIndex : null;
 
   const canOfficeMutate = principalHasCapability(auth.principal, "office_mutate");
 
-  const latestDraftWorkspaceTarget = head?.status === "DRAFT" ? {
-    quoteVersionId: head.id,
-    versionNumber: head.versionNumber,
-    hasPinnedWorkflow: !!head.pinnedWorkflowVersionId,
+  const latestDraftWorkspaceTarget = headForReadiness?.status === "DRAFT" ? {
+    quoteVersionId: headForReadiness.id,
+    versionNumber: headForReadiness.versionNumber,
+    hasPinnedWorkflow: !!headForReadiness.pinnedWorkflowVersionId,
   } : null;
 
   const sentSignTarget = deriveNewestSentSignTarget(ws.versions);
@@ -213,7 +239,16 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-10">
-          <QuoteWorkspaceShellSummary quoteId={quoteId} shell={ws} head={head} />
+          {canonicalPinEnsureError ? (
+            <div
+              className="rounded border border-red-900/50 bg-red-950/30 p-3 text-sm text-red-100"
+              role="alert"
+            >
+              <p className="font-medium">Execution flow binding failed</p>
+              <p className="mt-1 text-xs text-red-200/90">{canonicalPinEnsureError}</p>
+            </div>
+          ) : null}
+          <QuoteWorkspaceShellSummary quoteId={quoteId} shell={ws} head={headForReadiness ?? head} />
 
           <section aria-labelledby="workflow-heading">
             <div className="mb-6 border-b border-zinc-800 pb-2">

@@ -143,6 +143,27 @@ describe("derivePacketStageReadiness", () => {
     expect(r.note.toLowerCase()).toContain("pinned process template");
   });
 
+  it("workflowSnapshotHasStageNodes false: executionFlowBinding replaces stageOffSnapshot issues", () => {
+    const r = derivePacketStageReadiness(
+      [
+        input(
+          "li-z",
+          manifestLibrary([
+            task({
+              lineKey: "lk-off",
+              stage: { nodeId: "install", displayLabel: "Install", isOnSnapshot: false },
+            }),
+          ]),
+        ),
+      ],
+      { workflowSnapshotHasStageNodes: false },
+    );
+    expect(r.issues.filter((i) => i.kind === "stageOffSnapshot")).toHaveLength(0);
+    expect(r.issues.some((i) => i.kind === "executionFlowBinding")).toBe(true);
+    expect(r.state).toBe("no");
+    expect(r.note.toLowerCase()).toContain("binding");
+  });
+
   it("multi-task line: all stages on snapshot → counts as ok", () => {
     const r = derivePacketStageReadiness([
       input(

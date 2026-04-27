@@ -68,6 +68,7 @@ describe("buildProposedExecutionFlow", () => {
     expect(r.summary.soldScopeOnlyCount).toBe(0);
     expect(r.stages).toEqual([]);
     expect(r.warnings).toEqual([]);
+    expect(r.suppressPerTaskOffStageBadges).toBe(false);
   });
 
   it("only sold-scope lines: counts but no stages", () => {
@@ -257,6 +258,26 @@ describe("buildProposedExecutionFlow", () => {
     });
     expect(r.summary.manifestLinesWithIssuesCount).toBe(1);
     expect(r.summary.okManifestLineCount).toBe(0);
+  });
+
+  it("workflowSnapshotHasStageNodes false: one binding warning, no per-task stageOffSnapshot", () => {
+    const r = buildProposedExecutionFlow(
+      [
+        line(
+          "li-z",
+          manifestLibrary([
+            task({
+              lineKey: "lk-1",
+              stage: { nodeId: "install", displayLabel: "Install", isOnSnapshot: false },
+            }),
+          ]),
+        ),
+      ],
+      { workflowSnapshotHasStageNodes: false },
+    );
+    expect(r.warnings.some((w) => w.kind === "stageOffSnapshot")).toBe(false);
+    expect(r.warnings.some((w) => w.kind === "executionFlowBinding")).toBe(true);
+    expect(r.suppressPerTaskOffStageBadges).toBe(true);
   });
 
   it("non-canonical (but on-snapshot) stage routes the task into the 'other' bucket and emits a warning", () => {

@@ -120,7 +120,16 @@ export type ProposedExecutionFlowLineWarning =
       lineTitle: string | null;
       nodeId: string;
       taskTitle: string;
+    }
+  | {
+      kind: "executionFlowBinding";
+      /** System / binding state — not a line-authoring defect. */
+      detail: string;
     };
+
+/** User-facing copy when the bound workflow exposes no stage nodes (unbound or empty snapshot). */
+export const EXECUTION_FLOW_BINDING_SYSTEM_MESSAGE =
+  "Execution flow is not bound yet. The system needs to bind this draft to the standard execution stages.";
 
 export type ProposedExecutionFlowSummary = {
   /** Total quoted line items considered (input length). */
@@ -151,6 +160,11 @@ export type ProposedExecutionFlow = {
    */
   stages: ProposedExecutionFlowStage[];
   warnings: ProposedExecutionFlowLineWarning[];
+  /**
+   * When true, do not show per-task OFF-STAGE badges for `!isOnSnapshot` —
+   * the failure mode is missing/empty bound workflow nodes, not bad packet stages.
+   */
+  suppressPerTaskOffStageBadges: boolean;
 };
 
 export type BuildProposedExecutionFlowOptions = {
@@ -161,6 +175,11 @@ export type BuildProposedExecutionFlowOptions = {
    * option — it's diagnostic-only.
    */
   includeEmptyCanonicalStages?: boolean;
+  /**
+   * When false, the pinned workflow produced no stage nodes (unbound quote or empty/malformed snapshot).
+   * Per-task `stageOffSnapshot` warnings are suppressed and a single `executionFlowBinding` warning is added.
+   */
+  workflowSnapshotHasStageNodes?: boolean;
 };
 
 /* ------------------------------------------------------------------ */
@@ -313,6 +332,7 @@ export function buildProposedExecutionFlow(
   options: BuildProposedExecutionFlowOptions = {},
 ): ProposedExecutionFlow {
   const includeEmptyCanonical = options.includeEmptyCanonicalStages === true;
+  const workflowSnapshotHasStageNodes = options.workflowSnapshotHasStageNodes !== false;
 
   // Pre-create the canonical buckets in canonical order so output is stable.
   const canonicalBuckets = new Map<CanonicalExecutionStageKey, ProposedExecutionFlowStage>();
@@ -342,7 +362,10 @@ export function buildProposedExecutionFlow(
       continue;
     }
 
-    const lineWarnings = collectWarningsForLine(line);
+    let lineWarnings = collectWarningsForLine(line);
+    if (!workflowSnapshotHasStageNodes) {
+      lineWarnings = lineWarnings.filter((w) => w.kind !== "stageOffSnapshot");
+    }
     if (lineWarnings.length > 0) {
       warnings.push(...lineWarnings);
       manifestLinesWithIssuesCount += 1;
@@ -382,6 +405,13 @@ export function buildProposedExecutionFlow(
     stages.push(otherBucket);
   }
 
+  if (!workflowSnapshotHasStageNodes) {
+    warnings.unshift({
+      kind: "executionFlowBinding",
+      detail: EXECUTION_FLOW_BINDING_SYSTEM_MESSAGE,
+    });
+  }
+
   return {
     summary: {
       quotedLineCount,
@@ -393,5 +423,6 @@ export function buildProposedExecutionFlow(
     },
     stages,
     warnings,
+    suppressPerTaskOffStageBadges: !workflowSnapshotHasStageNodes,
   };
 }

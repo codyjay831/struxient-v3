@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import { ensureDraftQuoteVersionPinnedToCanonicalForTenant } from "../mutations/ensure-draft-quote-version-canonical-pin";
 import { getQuoteVersionScopeReadModel } from "../reads/quote-version-scope";
 import { runComposeFromReadModel } from "./compose-engine";
 
@@ -60,6 +61,7 @@ export type ComposePreviewResponseDto = {
 export type BuildComposePreviewResult =
   | { ok: false; kind: "not_found" }
   | { ok: false; kind: "not_draft" }
+  | { ok: false; kind: "canonical_ensure_failed"; message: string }
   | { ok: true; data: ComposePreviewResponseDto };
 
 function stalenessOf(
@@ -83,6 +85,17 @@ export async function buildComposePreviewResponse(
     request: ComposePreviewRequestBody;
   },
 ): Promise<BuildComposePreviewResult> {
+  const pin = await ensureDraftQuoteVersionPinnedToCanonicalForTenant(prisma, {
+    tenantId: params.tenantId,
+    quoteVersionId: params.quoteVersionId,
+  });
+  if (!pin.ok) {
+    if (pin.kind === "not_found") {
+      return { ok: false, kind: "not_found" };
+    }
+    return { ok: false, kind: "canonical_ensure_failed", message: pin.message };
+  }
+
   const model = await getQuoteVersionScopeReadModel(prisma, {
     tenantId: params.tenantId,
     quoteVersionId: params.quoteVersionId,

@@ -55,6 +55,18 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
+    if (result.ok === false && result.kind === "canonical_ensure_failed") {
+      return NextResponse.json(
+        {
+          error: {
+            code: "CANONICAL_WORKFLOW_ENSURE_FAILED",
+            message: result.message,
+          },
+        },
+        { status: 500 },
+      );
+    }
+
     if (!result.ok) {
       throw new Error("Unexpected compose preview result");
     }

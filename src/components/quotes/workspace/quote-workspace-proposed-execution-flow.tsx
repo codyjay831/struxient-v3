@@ -69,7 +69,7 @@ export function QuoteWorkspaceProposedExecutionFlow({ flow, isEditableDraft }: P
           {flow.stages.length === 0 ? (
             <EmptyState summary={flow.summary} />
           ) : (
-            <StageList stages={flow.stages} />
+            <StageList stages={flow.stages} suppressPerTaskOffStageBadges={flow.suppressPerTaskOffStageBadges} />
           )}
         </>
       )}
@@ -149,8 +149,8 @@ function WarningsList({
       </ul>
       {isEditableDraft ? (
         <p className="mt-2 text-[11px] text-amber-300/80">
-          Open the line-item editor to attach a task packet or reassign the task to a
-          canonical stage before sending.
+          If a line needs a packet or a stage fix, open the line-item editor. If the note is about execution
+          flow binding, wait for the system to finish binding or contact support.
         </p>
       ) : (
         <p className="mt-2 text-[11px] text-amber-300/80">
@@ -163,6 +163,9 @@ function WarningsList({
 }
 
 function warningCopy(w: ProposedExecutionFlowLineWarning): string {
+  if (w.kind === "executionFlowBinding") {
+    return w.detail;
+  }
   const lineLabel = w.lineTitle ? `"${w.lineTitle}"` : `line ${shortId(w.lineItemId)}`;
   if (w.kind === "missingPacket") {
     return `${lineLabel} has no task packet attached. Field-work lines create crew tasks only when a saved or one-off task packet is attached.`;
@@ -176,7 +179,7 @@ function warningCopy(w: ProposedExecutionFlowLineWarning): string {
     return `${lineLabel} references one-off work that isn't loadable. Re-attach to a visible packet to clear this state.`;
   }
   if (w.kind === "stageOffSnapshot") {
-    return `${lineLabel}: task "${w.taskTitle}" is bound to stage "${w.nodeId}" which isn't on the canonical execution flow. Reassign to a canonical stage.`;
+    return `${lineLabel}: task "${w.taskTitle}" uses stage "${w.nodeId}", which is not available in the bound execution flow. Reassign the task to a stage that exists on the bound flow.`;
   }
   // stageNonCanonical
   return `${lineLabel}: task "${w.taskTitle}" uses a non-canonical stage "${w.nodeId}". The task will still run but won't group with the canonical stages.`;
@@ -216,7 +219,13 @@ function EmptyState({ summary }: { summary: ProposedExecutionFlow["summary"] }) 
 
 /* ------------------------------------------------------------------ */
 
-function StageList({ stages }: { stages: ProposedExecutionFlowStage[] }) {
+function StageList({
+  stages,
+  suppressPerTaskOffStageBadges,
+}: {
+  stages: ProposedExecutionFlowStage[];
+  suppressPerTaskOffStageBadges: boolean;
+}) {
   const [showAll, setShowAll] = useState(false);
   const visible = useMemo(
     () => (showAll ? stages : stages.filter((s) => s.taskCount > 0)),
@@ -246,14 +255,20 @@ function StageList({ stages }: { stages: ProposedExecutionFlowStage[] }) {
       </div>
       <ul className="space-y-2">
         {visible.map((s) => (
-          <StageRow key={s.key} stage={s} />
+          <StageRow key={s.key} stage={s} suppressPerTaskOffStageBadges={suppressPerTaskOffStageBadges} />
         ))}
       </ul>
     </div>
   );
 }
 
-function StageRow({ stage }: { stage: ProposedExecutionFlowStage }) {
+function StageRow({
+  stage,
+  suppressPerTaskOffStageBadges,
+}: {
+  stage: ProposedExecutionFlowStage;
+  suppressPerTaskOffStageBadges: boolean;
+}) {
   const isOther = stage.key === "other";
   const tone = isOther
     ? "border-amber-900/40 bg-amber-950/10"
@@ -278,7 +293,11 @@ function StageRow({ stage }: { stage: ProposedExecutionFlowStage }) {
       ) : (
         <ul className="mt-2 space-y-1.5">
           {stage.tasks.map((t) => (
-            <TaskRow key={`${t.lineItemId}-${t.lineKey}`} task={t} />
+            <TaskRow
+              key={`${t.lineItemId}-${t.lineKey}`}
+              task={t}
+              suppressPerTaskOffStageBadges={suppressPerTaskOffStageBadges}
+            />
           ))}
         </ul>
       )}
@@ -286,12 +305,19 @@ function StageRow({ stage }: { stage: ProposedExecutionFlowStage }) {
   );
 }
 
-function TaskRow({ task }: { task: ProposedExecutionFlowTask }) {
+function TaskRow({
+  task,
+  suppressPerTaskOffStageBadges,
+}: {
+  task: ProposedExecutionFlowTask;
+  suppressPerTaskOffStageBadges: boolean;
+}) {
+  const showOffStage = !task.isOnSnapshot && !suppressPerTaskOffStageBadges;
   return (
     <li className="rounded border border-zinc-800/70 bg-zinc-950/60 px-2 py-1.5">
       <div className="flex items-baseline justify-between gap-2">
         <p className="min-w-0 truncate text-[11px] font-medium text-zinc-100">{task.title}</p>
-        {!task.isOnSnapshot ? (
+        {showOffStage ? (
           <span className="shrink-0 rounded border border-amber-700/40 bg-amber-950/40 px-1 py-px text-[9px] uppercase tracking-wider text-amber-300">
             off-stage
           </span>
