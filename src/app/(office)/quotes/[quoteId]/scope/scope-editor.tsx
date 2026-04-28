@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { QuoteVersionScopeApiDto } from "@/lib/quote-version-scope-dto";
 import type { ScopeProposalGroupWithItems } from "@/lib/quote-scope/quote-scope-grouping";
 import type { ScopePacketSummaryDto } from "@/server/slice1/reads/scope-packet-catalog-reads";
@@ -16,11 +16,29 @@ import {
   buildFieldsFromPacket,
   buildFieldsFromPreset,
 } from "@/lib/quote-line-item-prefill";
-import { formatExecutionModeLabel } from "@/lib/quote-line-item-execution-mode-label";
 import {
   mergeLocalPacketsForPicker,
+  resolveFieldWorkDisplayNameForQuickCreate,
   validateOneOffWorkDisplayNameInput,
 } from "@/lib/quote-line-item-local-packet-quick-create";
+import {
+  SCOPE_LINE_ITEM_MAX_DESCRIPTION,
+  validateScopeLineItemFormFields,
+  type ManifestFieldWorkSetup,
+} from "@/lib/quote-line-item-scope-form-validation";
+
+const MAX_DESCRIPTION = SCOPE_LINE_ITEM_MAX_DESCRIPTION;
+
+const FIELD_WORK_SECTION_ID = "quote-local-field-work";
+
+function scrollFieldWorkSectionIntoView() {
+  window.setTimeout(() => {
+    document.getElementById(FIELD_WORK_SECTION_ID)?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }, 200);
+}
 
 type ProposalGroup = QuoteVersionScopeApiDto["proposalGroups"][number];
 type LineItem = QuoteVersionScopeApiDto["orderedLineItems"][number];
@@ -69,13 +87,15 @@ type Props = {
    * entries collapse to no-preview rendering rather than throw.
    */
   executionPreviewByLineItemId: Record<string, LineItemExecutionPreviewDto> | null;
+  /**
+   * When false (e.g. frozen head), quote-local `#field-work-*` targets are not mounted on this page.
+   */
+  fieldWorkAnchorsActive: boolean;
   canMutate: boolean;
   editableReason: EditableReason;
 };
 
 type ExecutionMode = "SOLD_SCOPE" | "MANIFEST";
-
-type PacketSource = "none" | "library" | "local";
 
 type FormFields = {
   title: string;
@@ -92,23 +112,19 @@ type FormFields = {
   paymentBeforeWork: boolean;
   paymentGateTitleOverride: string;
   /**
-   * Tracks which packet pin the user has chosen for a MANIFEST line.
-   * - `"none"`: no pin selected (always the case for SOLD_SCOPE; transitional
-   *   state for MANIFEST until the user picks).
-   * - `"library"`: `scopePacketRevisionId` is the canonical pin.
-   * - `"local"`: `quoteLocalPacketId` is the canonical pin.
-   *
-   * The server enforces the `MANIFEST_SCOPE_PIN_XOR` invariant; this UI field
-   * only drives form rendering.
+   * How field work is set up for a MANIFEST line. Serializes to XOR pins:
+   * - `useSavedTaskPacket` → `scopePacketRevisionId` only
+   * - `createNewTasks` | `startFromSavedAndCustomize` → `quoteLocalPacketId` only
+   * - `"none"` until the user picks (MANIFEST only).
    */
-  packetSource: PacketSource;
+  manifestFieldWorkSetup: ManifestFieldWorkSetup;
   scopePacketRevisionId: string;
   quoteLocalPacketId: string;
 };
 
 type Banner =
-  | { kind: "success"; title: string; message?: string }
-  | { kind: "error"; title: string; message?: string }
+  | { kind: "success"; title: string; message?: ReactNode }
+  | { kind: "error"; title: string; message?: ReactNode }
   | null;
 
 const blankFields = (group: ProposalGroup | undefined): FormFields => ({
@@ -120,17 +136,17 @@ const blankFields = (group: ProposalGroup | undefined): FormFields => ({
   proposalGroupId: group?.id ?? "",
   paymentBeforeWork: false,
   paymentGateTitleOverride: "",
-  packetSource: "none",
+  manifestFieldWorkSetup: "none",
   scopePacketRevisionId: "",
   quoteLocalPacketId: "",
 });
 
 function deriveInitialFromItem(item: LineItem): FormFields {
   const executionMode: ExecutionMode = item.executionMode === "MANIFEST" ? "MANIFEST" : "SOLD_SCOPE";
-  let packetSource: PacketSource = "none";
+  let manifestFieldWorkSetup: ManifestFieldWorkSetup = "none";
   if (executionMode === "MANIFEST") {
-    if (item.scopePacketRevisionId != null) packetSource = "library";
-    else if (item.quoteLocalPacketId != null) packetSource = "local";
+    if (item.scopePacketRevisionId != null) manifestFieldWorkSetup = "useSavedTaskPacket";
+    else if (item.quoteLocalPacketId != null) manifestFieldWorkSetup = "createNewTasks";
   }
   return {
     title: item.title,
@@ -141,7 +157,7 @@ function deriveInitialFromItem(item: LineItem): FormFields {
     proposalGroupId: item.proposalGroupId,
     paymentBeforeWork: item.paymentBeforeWork,
     paymentGateTitleOverride: item.paymentGateTitleOverride ?? "",
-    packetSource,
+    manifestFieldWorkSetup,
     scopePacketRevisionId: item.scopePacketRevisionId ?? "",
     quoteLocalPacketId: item.quoteLocalPacketId ?? "",
   };
@@ -177,6 +193,7 @@ export function ScopeEditor({
   availableLocalPackets,
   availablePresets = [],
   executionPreviewByLineItemId,
+  fieldWorkAnchorsActive,
   canMutate,
   editableReason,
 }: Props) {
@@ -217,6 +234,9 @@ export function ScopeEditor({
     () => mergeLocalPacketsForPicker(availableLocalPackets, freshlyCreatedLocalPackets),
     [availableLocalPackets, freshlyCreatedLocalPackets],
   );
+
+  const singleDefaultMainGroup =
+    proposalGroups.length === 1 && proposalGroups[0]?.name?.trim() === "Main";
 
   const noGroups = proposalGroups.length === 0;
 
@@ -259,11 +279,12 @@ export function ScopeEditor({
    * Field rules (Triangle Mode Step 1 — UX-only):
    *   - `executionMode` always set to `"MANIFEST"` (library packets always
    *     produce runtime tasks; SOLD_SCOPE is not in the picker).
-   *   - `packetSource` set to `"library"` and `scopePacketRevisionId` set to
+   *   - `manifestFieldWorkSetup` set to `"useSavedTaskPacket"` and `scopePacketRevisionId` set to
    *     the packet's `latestPublishedRevisionId` (server invariant requires
    *     a PUBLISHED revision; the picker filters non-pinnable packets out
    *     before we ever reach here).
-   *   - `quoteLocalPacketId` cleared (XOR rule, mirrored client-side).
+   *   - `quoteLocalPacketId` cleared (XOR rule, mirrored client-side); setup
+   *     becomes `"useSavedTaskPacket"`.
    *   - `quantity` defaults to "1" only if the previously-staged value is
    *     blank (preserves any explicit value the user staged earlier).
    *   - `title` set to the packet display name **only when the existing
@@ -341,6 +362,8 @@ export function ScopeEditor({
         quoteId={quoteId}
         availableLibraryPackets={availableLibraryPackets}
         executionPreviewByLineItemId={executionPreviewByLineItemId}
+        fieldWorkAnchorsActive={fieldWorkAnchorsActive}
+        singleDefaultMainGroup={singleDefaultMainGroup}
       />
     );
   }
@@ -370,7 +393,7 @@ export function ScopeEditor({
     setBusyKey(`create:${group.id}`);
     setBanner(null);
     try {
-      const validation = validateFields(fields);
+      const validation = validateScopeLineItemFormFields(fields);
       if (!validation.ok) {
         setBanner({ kind: "error", title: "Cannot create line item", message: validation.message });
         return;
@@ -419,8 +442,32 @@ export function ScopeEditor({
       }
       setAddingForGroupId(null);
       clearPendingPrefill(group.id);
-      setBanner({ kind: "success", title: "Line item added", message: validation.title });
-      router.refresh();
+      const freshIds = new Set(freshlyCreatedLocalPackets.map((p) => p.id));
+      const showAddTasksLink =
+        fields.executionMode === "MANIFEST" &&
+        validation.quoteLocalPacketId != null &&
+        freshIds.has(validation.quoteLocalPacketId);
+      setBanner({
+        kind: "success",
+        title: showAddTasksLink ? "Line saved" : "Line item added",
+        message: showAddTasksLink ? (
+          <span>
+            Next: add tasks to this field work.{" "}
+            <Link
+              href={`#${FIELD_WORK_SECTION_ID}`}
+              className="font-semibold text-emerald-300 underline underline-offset-2 hover:text-emerald-200"
+            >
+              Add tasks →
+            </Link>
+          </span>
+        ) : (
+          validation.title
+        ),
+      });
+      await router.refresh();
+      if (showAddTasksLink) {
+        scrollFieldWorkSectionIntoView();
+      }
     } finally {
       setBusyKey(null);
     }
@@ -430,7 +477,7 @@ export function ScopeEditor({
     setBusyKey(`update:${item.id}`);
     setBanner(null);
     try {
-      const validation = validateFields(fields);
+      const validation = validateScopeLineItemFormFields(fields);
       if (!validation.ok) {
         setBanner({ kind: "error", title: "Cannot update line item", message: validation.message });
         return;
@@ -471,8 +518,32 @@ export function ScopeEditor({
         return;
       }
       setEditingLineItemId(null);
-      setBanner({ kind: "success", title: "Line item updated", message: validation.title });
-      router.refresh();
+      const freshIds = new Set(freshlyCreatedLocalPackets.map((p) => p.id));
+      const showAddTasksLink =
+        fields.executionMode === "MANIFEST" &&
+        validation.quoteLocalPacketId != null &&
+        freshIds.has(validation.quoteLocalPacketId);
+      setBanner({
+        kind: "success",
+        title: showAddTasksLink ? "Line saved" : "Line item updated",
+        message: showAddTasksLink ? (
+          <span>
+            Next: add tasks to this field work.{" "}
+            <Link
+              href={`#${FIELD_WORK_SECTION_ID}`}
+              className="font-semibold text-emerald-300 underline underline-offset-2 hover:text-emerald-200"
+            >
+              Add tasks →
+            </Link>
+          </span>
+        ) : (
+          validation.title
+        ),
+      });
+      await router.refresh();
+      if (showAddTasksLink) {
+        scrollFieldWorkSectionIntoView();
+      }
     } finally {
       setBusyKey(null);
     }
@@ -489,13 +560,74 @@ export function ScopeEditor({
    *
    * Returns the new packet on success so the caller (the picker's
    * inline form) can immediately set `fields.quoteLocalPacketId` and
-   * `fields.packetSource = "local"`. We deliberately do NOT call
+   * `manifestFieldWorkSetup` becomes a local-packet path. We deliberately do NOT call
    * `router.refresh()` here — that would re-render the page and unmount
    * the in-progress line-item form, defeating the entire bridge UX.
    * Refresh happens for free after the line-item POST/PATCH that
    * follows, and at that point the new packet shows up in the bottom
    * `<QuoteLocalPacketEditor/>` too.
    */
+  async function handleForkFromSavedRevision(
+    scopePacketRevisionId: string,
+    displayNameOverride: string | undefined,
+  ): Promise<{ ok: true; packet: LocalPacketOption } | { ok: false; message: string }> {
+    const trimmedRev = scopePacketRevisionId.trim();
+    if (!trimmedRev) {
+      return { ok: false, message: "Choose a saved task packet to copy from." };
+    }
+    try {
+      const body: { scopePacketRevisionId: string; displayName?: string } = {
+        scopePacketRevisionId: trimmedRev,
+      };
+      const dn = displayNameOverride?.trim();
+      if (dn && dn.length > 0) {
+        body.displayName = dn;
+      }
+      const res = await fetch(
+        `/api/quote-versions/${encodeURIComponent(quoteVersionId)}/local-packets/fork-from-revision`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(body),
+        },
+      );
+      const json = (await res.json().catch(() => ({}))) as {
+        data?: LocalPacketOption;
+        error?: { code?: string; message?: string };
+      };
+      if (!res.ok || !json.data) {
+        const code = json.error?.code ?? "";
+        const msg = json.error?.message ?? `${res.status} ${code || "ERROR"}`;
+        if (code === "SCOPE_PACKET_REVISION_FORK_SOURCE_HAS_NO_ITEMS") {
+          return {
+            ok: false,
+            message:
+              "That saved task packet has no tasks yet — add tasks in the library first, or pick a different packet.",
+          };
+        }
+        if (code === "SCOPE_PACKET_REVISION_FORK_NOT_PUBLISHED") {
+          return {
+            ok: false,
+            message:
+              "Only a published saved task packet can be copied to this quote. Publish the packet in the library, then try again.",
+          };
+        }
+        return { ok: false, message: msg };
+      }
+      const packet = json.data;
+      setFreshlyCreatedLocalPackets((prev) =>
+        prev.some((p) => p.id === packet.id) ? prev : [...prev, packet],
+      );
+      return { ok: true, packet };
+    } catch (e) {
+      return {
+        ok: false,
+        message: e instanceof Error ? e.message : "Network error copying task packet to this quote.",
+      };
+    }
+  }
+
   async function handleCreateOneOffWork(
     displayName: string,
   ): Promise<{ ok: true; packet: LocalPacketOption } | { ok: false; message: string }> {
@@ -531,7 +663,7 @@ export function ScopeEditor({
     } catch (e) {
       return {
         ok: false,
-        message: e instanceof Error ? e.message : "Network error creating one-off work.",
+        message: e instanceof Error ? e.message : "Network error creating field work.",
       };
     }
   }
@@ -570,7 +702,7 @@ export function ScopeEditor({
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-10">
       {banner ? <BannerView banner={banner} onDismiss={() => setBanner(null)} /> : null}
 
       {groupedLineItems.map((group) => {
@@ -581,14 +713,21 @@ export function ScopeEditor({
             key={group.id}
             className="rounded-lg border border-zinc-800 bg-zinc-900/20 overflow-hidden"
           >
-            <header className="flex items-center justify-between border-b border-zinc-800 bg-zinc-900/40 px-4 py-2.5">
+            <header className="flex items-center justify-between border-b border-zinc-800 bg-zinc-900/40 px-4 py-3">
               <div>
-                <h2 className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">
-                  {group.name}
-                </h2>
-                <p className="text-[10px] text-zinc-500 mt-0.5">
-                  {group.items.length} {group.items.length === 1 ? "item" : "items"} · v{versionNumber} draft
-                </p>
+                {singleDefaultMainGroup ? (
+                  <p className="text-xs text-zinc-500">
+                    {group.items.length} {group.items.length === 1 ? "line item" : "line items"} · v{versionNumber}{" "}
+                    draft
+                  </p>
+                ) : (
+                  <>
+                    <h2 className="text-base font-semibold text-zinc-100">{group.name}</h2>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      {group.items.length} {group.items.length === 1 ? "item" : "items"} · v{versionNumber} draft
+                    </p>
+                  </>
+                )}
               </div>
               {!isAddingHere && !isLibraryPickerHere ? (
                 <div className="flex flex-col items-end gap-1">
@@ -600,7 +739,7 @@ export function ScopeEditor({
                         setEditingLineItemId(null);
                       }}
                       className="rounded border border-sky-800/60 bg-sky-950/30 px-2.5 py-1 text-[11px] font-medium text-sky-200 hover:text-sky-100 hover:border-sky-700 transition-colors"
-                      title="Pick a saved line or saved work template to prefill a new line"
+                      title="Pick a saved line or saved task packet to prefill a new line"
                     >
                       Insert saved line
                     </button>
@@ -616,7 +755,7 @@ export function ScopeEditor({
                     </button>
                   </div>
                   <p className="hidden sm:block max-w-[18rem] text-right text-[10px] text-zinc-500 leading-snug">
-                    Write a custom line from scratch, or insert a saved line/work template.
+                    Write a custom line from scratch, or insert a saved line or saved task packet.
                   </p>
                 </div>
               ) : null}
@@ -647,6 +786,7 @@ export function ScopeEditor({
                   pinnableLibraryPackets={pinnableLibraryPackets}
                   availableLocalPackets={mergedLocalPackets}
                   onCreateOneOffWork={handleCreateOneOffWork}
+                  onForkFromSavedRevision={handleForkFromSavedRevision}
                   busy={busyKey === `create:${group.id}`}
                   submitLabel="Create line item"
                   onCancel={() => {
@@ -668,7 +808,7 @@ export function ScopeEditor({
                 {group.items.map((item) => {
                   const isEditing = editingLineItemId === item.id;
                   return (
-                    <li key={item.id} className="px-4 py-3">
+                    <li key={item.id} className="px-4 py-4">
                       {isEditing ? (
                         <LineItemForm
                           key={item.id}
@@ -677,6 +817,7 @@ export function ScopeEditor({
                           pinnableLibraryPackets={pinnableLibraryPackets}
                           availableLocalPackets={mergedLocalPackets}
                           onCreateOneOffWork={handleCreateOneOffWork}
+                          onForkFromSavedRevision={handleForkFromSavedRevision}
                           existingItem={item}
                           busy={busyKey === `update:${item.id}`}
                           submitLabel="Save changes"
@@ -689,6 +830,13 @@ export function ScopeEditor({
                           availableLibraryPackets={availableLibraryPackets}
                           executionPreview={
                             executionPreviewByLineItemId?.[item.id] ?? null
+                          }
+                          fieldWorkAnchorsActive={fieldWorkAnchorsActive}
+                          localTaskCountHint={
+                            item.quoteLocalPacketId
+                              ? mergedLocalPackets.find((p) => p.id === item.quoteLocalPacketId)
+                                  ?.itemCount ?? null
+                              : null
                           }
                           busy={busyKey === `delete:${item.id}`}
                           onEdit={() => {
@@ -716,6 +864,8 @@ function LineItemRow({
   item,
   availableLibraryPackets,
   executionPreview,
+  fieldWorkAnchorsActive,
+  localTaskCountHint,
   busy,
   onEdit,
   onDelete,
@@ -723,48 +873,190 @@ function LineItemRow({
   item: LineItem;
   availableLibraryPackets: LibraryPacketOption[];
   executionPreview: LineItemExecutionPreviewDto | null;
+  fieldWorkAnchorsActive: boolean;
+  localTaskCountHint?: number | null;
   busy: boolean;
   onEdit: () => void;
   onDelete: () => void;
 }) {
   const packetSummary = describeAttachedPacket(item, availableLibraryPackets);
+  const statusChip = lineItemFieldWorkStatusChip(item, executionPreview);
+  const showPacketSummaryLine = shouldShowPacketSummaryUnderTitle(executionPreview);
   return (
-    <div className="space-y-2">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-zinc-100 truncate">{item.title}</p>
-          <p className="mt-1 text-[11px] text-zinc-500">
-            <span className="font-mono">qty {item.quantity}</span> ·{" "}
-            <span>{formatExecutionModeLabel(item.executionMode)}</span>
-            {item.tierCode ? <span className="font-mono"> · tier {item.tierCode}</span> : null}
-            {item.paymentBeforeWork ? " · payment before work" : ""}
-          </p>
-          {packetSummary ? (
-            <p className={`mt-1 text-[11px] ${packetSummary.tone}`}>{packetSummary.label}</p>
-          ) : null}
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={onEdit}
-            disabled={busy}
-            className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] font-medium text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 disabled:opacity-50 transition-colors"
-          >
-            Edit
-          </button>
-          <button
-            type="button"
-            onClick={onDelete}
-            disabled={busy}
-            className="rounded border border-red-900/60 bg-red-950/30 px-2 py-1 text-[11px] font-medium text-red-300 hover:bg-red-900/40 hover:text-red-200 disabled:opacity-50 transition-colors"
-          >
-            {busy ? "Deleting…" : "Delete"}
-          </button>
+    <div className="space-y-3">
+      <div className="rounded-lg border border-zinc-800/70 bg-zinc-950/30 p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="flex flex-wrap items-center gap-2 gap-y-1">
+              <h3 className="text-base font-semibold text-zinc-50 leading-snug truncate">{item.title}</h3>
+              <FieldWorkStatusChip chip={statusChip} />
+            </div>
+            <LineItemScopeMetadata item={item} />
+            <LineItemFieldWorkActions
+              item={item}
+              executionPreview={executionPreview}
+              availableLibraryPackets={availableLibraryPackets}
+              fieldWorkAnchorsActive={fieldWorkAnchorsActive}
+              localTaskCountHint={localTaskCountHint}
+              onSetUpFieldWorkEdit={onEdit}
+            />
+            {showPacketSummaryLine && packetSummary ? (
+              <p className={`text-xs leading-relaxed ${packetSummary.tone}`}>{packetSummary.label}</p>
+            ) : null}
+          </div>
+          <div className="flex items-center gap-2 shrink-0 pt-0.5">
+            <button
+              type="button"
+              onClick={onEdit}
+              disabled={busy}
+              className="rounded border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 disabled:opacity-50 transition-colors"
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              onClick={onDelete}
+              disabled={busy}
+              className="rounded border border-red-900/60 bg-red-950/30 px-2.5 py-1.5 text-xs font-medium text-red-300 hover:bg-red-900/40 hover:text-red-200 disabled:opacity-50 transition-colors"
+            >
+              {busy ? "Deleting…" : "Delete"}
+            </button>
+          </div>
         </div>
       </div>
-      {executionPreview ? <LineItemExecutionPreviewBlock preview={executionPreview} /> : null}
+      {executionPreview ? (
+        <div id={`line-item-${item.id}-task-preview`}>
+          <LineItemExecutionPreviewBlock preview={executionPreview} />
+        </div>
+      ) : null}
     </div>
   );
+}
+
+const lineItemFieldWorkLinkClass =
+  "text-xs font-semibold text-sky-300 hover:text-sky-200 underline underline-offset-2";
+
+function buildSavedPacketRevisionHref(
+  item: LineItem,
+  availableLibraryPackets: LibraryPacketOption[],
+): string | null {
+  if (!item.scopePacketRevisionId) return null;
+  if (item.scopeRevision) {
+    return `/library/packets/${encodeURIComponent(item.scopeRevision.scopePacketId)}/revisions/${encodeURIComponent(item.scopePacketRevisionId)}`;
+  }
+  for (const p of availableLibraryPackets) {
+    if (p.latestPublishedRevisionId === item.scopePacketRevisionId) {
+      return `/library/packets/${encodeURIComponent(p.id)}/revisions/${encodeURIComponent(item.scopePacketRevisionId)}`;
+    }
+  }
+  return null;
+}
+
+function LineItemFieldWorkActions({
+  item,
+  executionPreview,
+  availableLibraryPackets,
+  fieldWorkAnchorsActive,
+  localTaskCountHint,
+  onSetUpFieldWorkEdit,
+}: {
+  item: LineItem;
+  executionPreview: LineItemExecutionPreviewDto | null;
+  availableLibraryPackets: LibraryPacketOption[];
+  fieldWorkAnchorsActive: boolean;
+  localTaskCountHint?: number | null;
+  onSetUpFieldWorkEdit?: () => void;
+}) {
+  if (item.executionMode !== "MANIFEST") return null;
+
+  const savedHref = buildSavedPacketRevisionHref(item, availableLibraryPackets);
+  const kind = executionPreview?.kind;
+
+  if (
+    kind === "manifestNoPacket" ||
+    kind === "manifestLibraryMissing" ||
+    kind === "manifestLocalMissing"
+  ) {
+    return (
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        {fieldWorkAnchorsActive ? (
+          <a className={lineItemFieldWorkLinkClass} href={`#${FIELD_WORK_SECTION_ID}`}>
+            Set up field work
+          </a>
+        ) : onSetUpFieldWorkEdit ? (
+          <button type="button" onClick={onSetUpFieldWorkEdit} className={lineItemFieldWorkLinkClass}>
+            Set up field work
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (kind === "manifestLocal" && item.quoteLocalPacketId && fieldWorkAnchorsActive) {
+    const n = executionPreview.tasks.length;
+    const label = n > 0 ? "Edit tasks" : "Add tasks";
+    return (
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <a className={lineItemFieldWorkLinkClass} href={`#field-work-${item.quoteLocalPacketId}`}>
+          {label}
+        </a>
+      </div>
+    );
+  }
+
+  if (
+    fieldWorkAnchorsActive &&
+    item.quoteLocalPacketId &&
+    !item.scopePacketRevisionId &&
+    executionPreview == null
+  ) {
+    const n = localTaskCountHint ?? 0;
+    const label = n > 0 ? "Edit tasks" : "Add tasks";
+    return (
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <a className={lineItemFieldWorkLinkClass} href={`#field-work-${item.quoteLocalPacketId}`}>
+          {label}
+        </a>
+      </div>
+    );
+  }
+
+  if (kind === "manifestLibrary") {
+    return (
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <a className={lineItemFieldWorkLinkClass} href={`#line-item-${item.id}-task-preview`}>
+          Review tasks
+        </a>
+        {savedHref ? (
+          <Link
+            href={savedHref}
+            className={lineItemFieldWorkLinkClass}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Open saved packet
+          </Link>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (item.scopePacketRevisionId && executionPreview == null) {
+    return savedHref ? (
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <Link
+          href={savedHref}
+          className={lineItemFieldWorkLinkClass}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Open saved packet
+        </Link>
+      </div>
+    ) : null;
+  }
+
+  return null;
 }
 
 function LineItemForm({
@@ -773,6 +1065,7 @@ function LineItemForm({
   pinnableLibraryPackets,
   availableLocalPackets,
   onCreateOneOffWork,
+  onForkFromSavedRevision,
   existingItem,
   busy,
   submitLabel,
@@ -784,15 +1077,19 @@ function LineItemForm({
   pinnableLibraryPackets: LibraryPacketOption[];
   availableLocalPackets: LocalPacketOption[];
   /**
-   * Callback for the picker's "Create one-off work for this quote"
-   * inline action (Triangle Mode UX bridge slice). Wraps a single POST
-   * to the existing quote-local-packet create API. On success the form
-   * sets `quoteLocalPacketId` to the new packet's id and switches the
-   * picker into the local-packet branch so the user lands on a fully
-   * pinned line.
+   * Inline create for a quote-local task packet (same POST as the section
+   * below). On success the form pins the new packet to this line.
    */
   onCreateOneOffWork: (
     displayName: string,
+  ) => Promise<{ ok: true; packet: LocalPacketOption } | { ok: false; message: string }>;
+  /**
+   * Fork a published saved revision into quote-local field work; on success
+   * the form pins the new packet to this line.
+   */
+  onForkFromSavedRevision: (
+    scopePacketRevisionId: string,
+    displayNameOverride: string | undefined,
   ) => Promise<{ ok: true; packet: LocalPacketOption } | { ok: false; message: string }>;
   /** Provided in edit mode so the picker can surface a saved-but-not-latest revision. */
   existingItem?: LineItem;
@@ -802,6 +1099,7 @@ function LineItemForm({
   onCancel: () => void;
 }) {
   const [fields, setFields] = useState<FormFields>(initial);
+  const [localPacketHint, setLocalPacketHint] = useState<string | null>(null);
   const groupName = useMemo(
     () => proposalGroupOptions.find((g) => g.id === fields.proposalGroupId)?.name ?? "(none)",
     [fields.proposalGroupId, proposalGroupOptions],
@@ -812,25 +1110,53 @@ function LineItemForm({
   // pins nothing; flipping back to MANIFEST forces the user to re-pick.
   function setExecutionMode(next: ExecutionMode) {
     if (next === "SOLD_SCOPE") {
+      setLocalPacketHint(null);
       setFields({
         ...fields,
         executionMode: next,
-        packetSource: "none",
+        manifestFieldWorkSetup: "none",
         scopePacketRevisionId: "",
         quoteLocalPacketId: "",
       });
       return;
     }
-    setFields({ ...fields, executionMode: next });
-  }
-
-  function setPacketSource(next: PacketSource) {
+    setLocalPacketHint(null);
     setFields({
       ...fields,
-      packetSource: next,
-      scopePacketRevisionId: next === "library" ? fields.scopePacketRevisionId : "",
-      quoteLocalPacketId: next === "local" ? fields.quoteLocalPacketId : "",
+      executionMode: next,
+      manifestFieldWorkSetup:
+        fields.executionMode === "SOLD_SCOPE" ? "none" : fields.manifestFieldWorkSetup,
     });
+  }
+
+  function setManifestFieldWorkSetup(next: ManifestFieldWorkSetup) {
+    setLocalPacketHint(null);
+    if (next === "useSavedTaskPacket") {
+      setFields({
+        ...fields,
+        manifestFieldWorkSetup: next,
+        quoteLocalPacketId: "",
+      });
+      return;
+    }
+    if (next === "createNewTasks") {
+      setFields({
+        ...fields,
+        manifestFieldWorkSetup: next,
+        scopePacketRevisionId: "",
+      });
+      return;
+    }
+    if (next === "startFromSavedAndCustomize") {
+      setFields({
+        ...fields,
+        manifestFieldWorkSetup: next,
+        scopePacketRevisionId: "",
+        quoteLocalPacketId: "",
+      });
+      return;
+    }
+    setFields({ ...fields, manifestFieldWorkSetup: next });
   }
 
   return (
@@ -843,12 +1169,15 @@ function LineItemForm({
     >
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <label className="block text-xs">
-          <span className="text-zinc-400">Title</span>
+          <span className="text-zinc-400">
+            Title <span className="text-zinc-600 font-normal">(required)</span>
+          </span>
           <input
             type="text"
             value={fields.title}
             onChange={(e) => setFields({ ...fields, title: e.target.value })}
             required
+            maxLength={500}
             disabled={busy}
             className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100 focus:border-sky-600 focus:outline-none disabled:opacity-60"
             placeholder="e.g. Install rooftop unit"
@@ -903,16 +1232,17 @@ function LineItemForm({
         onChange={setExecutionMode}
       />
 
-      <PacketPicker
+      <FieldWorkSetupPicker
         executionMode={fields.executionMode}
-        packetSource={fields.packetSource}
+        manifestFieldWorkSetup={fields.manifestFieldWorkSetup}
         scopePacketRevisionId={fields.scopePacketRevisionId}
         quoteLocalPacketId={fields.quoteLocalPacketId}
         pinnableLibraryPackets={pinnableLibraryPackets}
         availableLocalPackets={availableLocalPackets}
         existingItem={existingItem}
         busy={busy}
-        onSourceChange={setPacketSource}
+        lineTitle={fields.title}
+        onManifestSetupChange={setManifestFieldWorkSetup}
         onLibraryChange={(id) => setFields({ ...fields, scopePacketRevisionId: id })}
         onLocalChange={(id) => setFields({ ...fields, quoteLocalPacketId: id })}
         onCreateOneOffWork={async (displayName) => {
@@ -920,14 +1250,44 @@ function LineItemForm({
           if (result.ok) {
             setFields({
               ...fields,
-              packetSource: "local",
+              manifestFieldWorkSetup: "createNewTasks",
               scopePacketRevisionId: "",
               quoteLocalPacketId: result.packet.id,
             });
+            setLocalPacketHint(
+              "Field work created and attached. Save the line, then add tasks below.",
+            );
+          }
+          return result;
+        }}
+        onForkFromSavedRevision={async (revisionId, displayNameOverride) => {
+          const result = await onForkFromSavedRevision(revisionId, displayNameOverride);
+          if (result.ok) {
+            setFields({
+              ...fields,
+              manifestFieldWorkSetup: "startFromSavedAndCustomize",
+              scopePacketRevisionId: "",
+              quoteLocalPacketId: result.packet.id,
+            });
+            setLocalPacketHint(
+              "Field work copied to this quote and attached. Save the line, then add tasks below.",
+            );
           }
           return result;
         }}
       />
+
+      {localPacketHint ? (
+        <p className="rounded border border-emerald-900/40 bg-emerald-950/15 px-3 py-2 text-[11px] text-emerald-200/95">
+          {localPacketHint}{" "}
+          <Link
+            href={`#${FIELD_WORK_SECTION_ID}`}
+            className="font-semibold text-emerald-300 underline underline-offset-2 hover:text-emerald-200"
+          >
+            Add tasks below →
+          </Link>
+        </p>
+      ) : null}
 
       <label className="flex items-start gap-2 text-xs text-zinc-300">
         <input
@@ -987,16 +1347,8 @@ function LineItemForm({
 }
 
 /**
- * Contractor-friendly replacement for the raw `executionMode` select. Two
- * radio choices wrap the same internal enum values:
- *
- *   - "No — quote-only"            => `executionMode = "SOLD_SCOPE"`
- *   - "Yes — attach a work template" => `executionMode = "MANIFEST"`
- *
- * Both call the existing `setExecutionMode(...)` callback so the form's
- * packet-clearing/preservation logic and the server invariant
- * `MANIFEST_SCOPE_PIN_XOR` continue to be enforced unchanged. The submitted
- * payload still carries the raw enum value.
+ * Quote vs field-work split. `SOLD_SCOPE` / `MANIFEST` are persisted as-is;
+ * packet XOR is enforced separately in {@link FieldWorkSetupPicker}.
  */
 function FieldWorkQuestion({
   executionMode,
@@ -1031,7 +1383,7 @@ function FieldWorkQuestion({
             className="mt-0.5"
           />
           <span className="min-w-0">
-            <span className="block text-xs font-medium text-zinc-100">No — quote-only</span>
+            <span className="block text-xs font-medium text-zinc-100">No — Quote only</span>
             <span className="mt-0.5 block text-[11px] text-zinc-500">
               Appears on the proposal but does not create crew work.
             </span>
@@ -1055,11 +1407,10 @@ function FieldWorkQuestion({
             className="mt-0.5"
           />
           <span className="min-w-0">
-            <span className="block text-xs font-medium text-zinc-100">
-              Yes — attach a work template
-            </span>
+            <span className="block text-xs font-medium text-zinc-100">Yes — Create field work</span>
             <span className="mt-0.5 block text-[11px] text-zinc-500">
-              Creates crew work after approval using a saved work template or one-off work.
+              This line will create crew tasks after approval, using a task packet you set up
+              here.
             </span>
           </span>
         </label>
@@ -1069,62 +1420,58 @@ function FieldWorkQuestion({
 }
 
 /**
- * MANIFEST-only packet picker. Hidden for SOLD_SCOPE (replaced by an
- * informational note). For MANIFEST, the user must pick exactly one source
- * (library revision XOR quote-local packet); the server re-asserts this
- * via `assertManifestScopePinXor`.
- *
- * When editing an existing line whose pinned library revision is no longer
- * the latest published revision (e.g. a newer revision has since been
- * published), we surface a stable "saved revision" option so the user can
- * either keep it or roll forward by selecting the latest.
+ * MANIFEST-only: three-way setup that still serializes to exactly one of
+ * `scopePacketRevisionId` or `quoteLocalPacketId` (server `MANIFEST_SCOPE_PIN_XOR`).
  */
-function PacketPicker({
+function FieldWorkSetupPicker({
   executionMode,
-  packetSource,
+  manifestFieldWorkSetup,
   scopePacketRevisionId,
   quoteLocalPacketId,
   pinnableLibraryPackets,
   availableLocalPackets,
   existingItem,
   busy,
-  onSourceChange,
+  lineTitle,
+  onManifestSetupChange,
   onLibraryChange,
   onLocalChange,
   onCreateOneOffWork,
+  onForkFromSavedRevision,
 }: {
   executionMode: ExecutionMode;
-  packetSource: PacketSource;
+  manifestFieldWorkSetup: ManifestFieldWorkSetup;
   scopePacketRevisionId: string;
   quoteLocalPacketId: string;
   pinnableLibraryPackets: LibraryPacketOption[];
   availableLocalPackets: LocalPacketOption[];
   existingItem?: LineItem;
   busy: boolean;
-  onSourceChange: (next: PacketSource) => void;
+  lineTitle: string;
+  onManifestSetupChange: (next: ManifestFieldWorkSetup) => void;
   onLibraryChange: (next: string) => void;
   onLocalChange: (next: string) => void;
-  /**
-   * Inline "Create one-off work for this quote" callback. The picker
-   * never routes around the existing local-packet API — this just lets
-   * estimators stay in the line-item form instead of scrolling to the
-   * standalone `<QuoteLocalPacketEditor/>` to seed an empty packet.
-   * On success the parent form sets `quoteLocalPacketId` to the new
-   * id and switches `packetSource` to `"local"`.
-   */
   onCreateOneOffWork: (
     displayName: string,
   ) => Promise<{ ok: true; packet: LocalPacketOption } | { ok: false; message: string }>;
+  onForkFromSavedRevision: (
+    scopePacketRevisionId: string,
+    displayNameOverride: string | undefined,
+  ) => Promise<{ ok: true; packet: LocalPacketOption } | { ok: false; message: string }>;
 }) {
-  // Synthetic option: when editing a line whose saved library revision is
-  // not the latest published revision of its parent packet, render an extra
-  // option so the value remains visible/selectable instead of silently
-  // disappearing. Resolves the parent packet by `scopePacketId` (carried in
-  // the read DTO) so we can show its display name even when the revision
-  // itself is not in the available list.
-  //
-  // Computed unconditionally before any early return so hook ordering stays
-  // stable across executionMode toggles.
+  const [customizeForkRevisionId, setCustomizeForkRevisionId] = useState("");
+  const [customizeDisplayName, setCustomizeDisplayName] = useState("");
+  const [forkBusy, setForkBusy] = useState(false);
+  const [forkError, setForkError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (manifestFieldWorkSetup !== "startFromSavedAndCustomize") {
+      setCustomizeForkRevisionId("");
+      setCustomizeDisplayName("");
+      setForkError(null);
+    }
+  }, [manifestFieldWorkSetup]);
+
   const savedNonLatestLibrary = useMemo(() => {
     if (!existingItem) return null;
     if (!existingItem.scopePacketRevisionId) return null;
@@ -1153,49 +1500,119 @@ function PacketPicker({
 
   const hasLibrary = pinnableLibraryPackets.length > 0;
   const hasLocal = availableLocalPackets.length > 0;
+  const libraryPickDisabled = busy || (!hasLibrary && !savedNonLatestLibrary);
+  const customizePickDisabled = busy || (!hasLibrary && !savedNonLatestLibrary);
+
+  async function handleForkClick() {
+    setForkError(null);
+    const rev = customizeForkRevisionId.trim();
+    if (!rev) {
+      setForkError("Choose a saved task packet to copy from.");
+      return;
+    }
+    setForkBusy(true);
+    try {
+      const dn = customizeDisplayName.trim();
+      const result = await onForkFromSavedRevision(rev, dn.length > 0 ? dn : undefined);
+      if (!result.ok) {
+        setForkError(result.message);
+        return;
+      }
+      setCustomizeDisplayName("");
+    } finally {
+      setForkBusy(false);
+    }
+  }
 
   return (
-    <fieldset className="rounded border border-zinc-800 bg-zinc-950/30 p-3 space-y-2">
+    <fieldset className="rounded border border-zinc-800 bg-zinc-950/30 p-3 space-y-3">
       <legend className="px-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
-        Work template (required when this line creates field work)
+        How should we set up the field work?
       </legend>
 
       <p className="text-[10px] leading-relaxed text-zinc-500">
-        <span className="text-zinc-400">Line item</span> = what you&rsquo;re selling.{" "}
-        <span className="text-zinc-400">Saved work template</span> = a reusable set of crew tasks
-        you&rsquo;ve saved before.{" "}
-        <span className="text-zinc-400">One-off work for this quote</span> = crew tasks that only
-        live on this quote (you can promote them into a saved template later).
+        Pick how this line gets its task packet. Saved task packets come from your library; you
+        can also build field work on this quote and attach it here.
       </p>
 
-      <div className="flex flex-wrap gap-3 text-xs text-zinc-300">
-        <label className="inline-flex items-center gap-1.5">
+      <div className="space-y-2">
+        <label
+          className={`flex items-start gap-2 rounded border p-2 cursor-pointer transition-colors ${
+            manifestFieldWorkSetup === "useSavedTaskPacket"
+              ? "border-sky-700/60 bg-sky-950/25"
+              : "border-zinc-800 bg-zinc-950/40 hover:border-zinc-700"
+          } ${libraryPickDisabled ? "opacity-60 cursor-not-allowed" : ""}`}
+        >
           <input
             type="radio"
-            name="packetSource"
-            value="library"
-            checked={packetSource === "library"}
-            onChange={() => onSourceChange("library")}
-            disabled={busy || (!hasLibrary && !savedNonLatestLibrary)}
+            name="fieldWorkSetup"
+            value="useSavedTaskPacket"
+            checked={manifestFieldWorkSetup === "useSavedTaskPacket"}
+            onChange={() => onManifestSetupChange("useSavedTaskPacket")}
+            disabled={libraryPickDisabled}
+            className="mt-0.5"
           />
-          <span className={!hasLibrary && !savedNonLatestLibrary ? "text-zinc-600" : ""}>
-            Use saved work template
+          <span className="min-w-0 text-xs text-zinc-200">
+            <span className="font-medium text-zinc-100">Use a saved task packet</span>
+            <span className="mt-0.5 block text-[11px] text-zinc-500">
+              Pin a published packet from the library. Edits to tasks happen in the library for
+              future quotes; this line keeps the version you pick.
+            </span>
           </span>
         </label>
-        <label className="inline-flex items-center gap-1.5">
+
+        <label
+          className={`flex items-start gap-2 rounded border p-2 cursor-pointer transition-colors ${
+            manifestFieldWorkSetup === "createNewTasks"
+              ? "border-emerald-800/60 bg-emerald-950/20"
+              : "border-zinc-800 bg-zinc-950/40 hover:border-zinc-700"
+          } ${busy ? "opacity-60 cursor-not-allowed" : ""}`}
+        >
           <input
             type="radio"
-            name="packetSource"
-            value="local"
-            checked={packetSource === "local"}
-            onChange={() => onSourceChange("local")}
+            name="fieldWorkSetup"
+            value="createNewTasks"
+            checked={manifestFieldWorkSetup === "createNewTasks"}
+            onChange={() => onManifestSetupChange("createNewTasks")}
             disabled={busy}
+            className="mt-0.5"
           />
-          <span>One-off work for this quote</span>
+          <span className="min-w-0 text-xs text-zinc-200">
+            <span className="font-medium text-zinc-100">Create editable field work for this line</span>
+            <span className="mt-0.5 block text-[11px] text-zinc-500">
+              This creates editable field work on this quote. After saving the line, add the actual
+              tasks below.
+            </span>
+          </span>
+        </label>
+
+        <label
+          className={`flex items-start gap-2 rounded border p-2 cursor-pointer transition-colors ${
+            manifestFieldWorkSetup === "startFromSavedAndCustomize"
+              ? "border-amber-800/50 bg-amber-950/15"
+              : "border-zinc-800 bg-zinc-950/40 hover:border-zinc-700"
+          } ${customizePickDisabled ? "opacity-60 cursor-not-allowed" : ""}`}
+        >
+          <input
+            type="radio"
+            name="fieldWorkSetup"
+            value="startFromSavedAndCustomize"
+            checked={manifestFieldWorkSetup === "startFromSavedAndCustomize"}
+            onChange={() => onManifestSetupChange("startFromSavedAndCustomize")}
+            disabled={customizePickDisabled}
+            className="mt-0.5"
+          />
+          <span className="min-w-0 text-xs text-zinc-200">
+            <span className="font-medium text-zinc-100">Start from a saved task packet and customize</span>
+            <span className="mt-0.5 block text-[11px] text-zinc-500">
+              Copy a published packet into field work on this quote, then edit tasks below. The
+              library packet is not changed.
+            </span>
+          </span>
         </label>
       </div>
 
-      {packetSource === "library" ? (
+      {manifestFieldWorkSetup === "useSavedTaskPacket" ? (
         <div className="space-y-1">
           <select
             value={scopePacketRevisionId}
@@ -1203,7 +1620,7 @@ function PacketPicker({
             disabled={busy}
             className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-100 focus:border-sky-600 focus:outline-none disabled:opacity-60"
           >
-            <option value="">— Choose a saved work template —</option>
+            <option value="">— Choose a saved task packet —</option>
             {savedNonLatestLibrary ? (
               <option value={savedNonLatestLibrary.id}>
                 {savedNonLatestLibrary.parentDisplayName}
@@ -1219,9 +1636,9 @@ function PacketPicker({
               </option>
             ))}
           </select>
-          {!hasLibrary ? (
+          {!hasLibrary && !savedNonLatestLibrary ? (
             <p className="text-[10px] text-amber-400">
-              No saved work templates are available yet. Create one in{" "}
+              No saved task packets are available yet. Create one in{" "}
               <Link
                 href="/library/packets"
                 className="underline underline-offset-2 hover:text-amber-300"
@@ -1232,57 +1649,125 @@ function PacketPicker({
             </p>
           ) : (
             <p className="text-[10px] text-zinc-500">
-              Pins the latest published version of the chosen template. The line keeps that
-              version even if the template is republished later.
+              Pins the published version you select. The line keeps that revision even if the
+              packet is republished later.
             </p>
           )}
         </div>
       ) : null}
 
-      {packetSource === "local" ? (
-        <div className="space-y-2">
+      {manifestFieldWorkSetup === "createNewTasks" ? (
+        <div className="space-y-4">
+          <InlineCreateTaskPacketForLine
+            busy={busy}
+            suggestedDisplayName={lineTitle.trim()}
+            onSubmit={onCreateOneOffWork}
+            primaryAction
+          />
           {hasLocal ? (
-            <>
+            <div className="rounded-md border border-dashed border-zinc-700/70 bg-zinc-950/35 px-3 py-3 space-y-2">
+              <p className="text-xs font-medium text-zinc-400">Use existing field work instead</p>
+              <p className="text-[10px] text-zinc-500 leading-relaxed">
+                Optional — attach field work you already added on this quote, then save the line.
+              </p>
               <select
                 value={quoteLocalPacketId}
                 onChange={(e) => onLocalChange(e.target.value)}
                 disabled={busy}
-                className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-100 focus:border-sky-600 focus:outline-none disabled:opacity-60"
+                className="w-full rounded border border-zinc-700/80 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-300 focus:border-zinc-500 focus:outline-none disabled:opacity-60"
               >
-                <option value="">— Choose one-off work —</option>
+                <option value="">Choose existing field work on this quote…</option>
                 {availableLocalPackets.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.displayName} · {p.itemCount} item{p.itemCount === 1 ? "" : "s"}
+                    {p.displayName} · {p.itemCount} task{p.itemCount === 1 ? "" : "s"}
                   </option>
                 ))}
               </select>
-              <p className="text-[10px] text-zinc-500">
-                One-off work is authored on this quote and travels with it through freeze/send.
-                You can add or edit its tasks in the &ldquo;One-off work for this quote&rdquo;
-                section below the line items, and promote it to a saved template later.
+              <p className="text-[10px] text-zinc-600">
+                Add tasks in Field work on this quote after you save the line.
               </p>
-            </>
+            </div>
           ) : (
-            <p className="text-[10px] text-zinc-500">
-              No one-off work exists on this quote yet. Create one below to attach it to this
-              line — you can add its crew tasks afterwards in the &ldquo;One-off work for this
-              quote&rdquo; section below the line items.
+            <p className="text-xs text-zinc-500 leading-relaxed">
+              No other field work on this quote yet. Create above, then save the line and add tasks
+              in Field work on this quote below.
             </p>
           )}
-          <InlineCreateOneOffWork
-            busy={busy}
-            onSubmit={onCreateOneOffWork}
-            ctaLabel={
-              hasLocal ? "+ Create new one-off work" : "+ Create one-off work for this line"
-            }
-          />
         </div>
       ) : null}
 
-      {packetSource === "none" ? (
+      {manifestFieldWorkSetup === "startFromSavedAndCustomize" ? (
+        <div className="space-y-2 rounded border border-amber-900/30 bg-amber-950/10 p-2">
+          <label className="block text-[10px] text-zinc-400">
+            Saved task packet to copy from
+            <select
+              value={customizeForkRevisionId}
+              onChange={(e) => {
+                setCustomizeForkRevisionId(e.target.value);
+                setForkError(null);
+              }}
+              disabled={busy || forkBusy}
+              className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-100 focus:border-amber-600 focus:outline-none disabled:opacity-60"
+            >
+              <option value="">— Choose a saved task packet —</option>
+              {savedNonLatestLibrary ? (
+                <option value={savedNonLatestLibrary.id}>
+                  {savedNonLatestLibrary.parentDisplayName}
+                  {savedNonLatestLibrary.parentPacketKey
+                    ? ` (${savedNonLatestLibrary.parentPacketKey})`
+                    : ""}{" "}
+                  · older saved version
+                </option>
+              ) : null}
+              {pinnableLibraryPackets.map((p) => (
+                <option key={p.id} value={p.latestPublishedRevisionId ?? ""}>
+                  {p.displayName} ({p.packetKey}) · v{p.latestPublishedRevisionNumber ?? "?"}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-[10px] text-zinc-400">
+            Name on this quote (optional)
+            <input
+              type="text"
+              value={customizeDisplayName}
+              onChange={(e) => {
+                setCustomizeDisplayName(e.target.value);
+                setForkError(null);
+              }}
+              disabled={busy || forkBusy}
+              maxLength={200}
+              placeholder="Defaults to the saved packet name"
+              className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-100 focus:border-amber-600 focus:outline-none disabled:opacity-60"
+            />
+          </label>
+          {forkError ? (
+            <p className="text-[10px] text-amber-400" role="alert">
+              {forkError}
+            </p>
+          ) : (
+            <p className="text-[10px] text-zinc-500">
+              Copies tasks into field work on this quote. Save the line, then edit tasks in Field
+              work on this quote below.
+            </p>
+          )}
+          <div className="flex justify-end">
+            <button
+              type="button"
+              disabled={busy || forkBusy || !customizeForkRevisionId.trim()}
+              onClick={() => void handleForkClick()}
+              className="rounded bg-amber-800/90 px-3 py-1 text-[11px] font-medium text-amber-50 hover:bg-amber-700 disabled:opacity-50"
+            >
+              {forkBusy ? "Copying…" : "Copy to this quote and attach"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {manifestFieldWorkSetup === "none" ? (
         <p className="text-[10px] text-amber-400">
-          Pick a work template above. Field-work lines must use exactly one — either a saved work
-          template or one-off work for this quote. Saves that pin neither will be rejected.
+          Choose one of the field-work options above. Each field-work line must have exactly one
+          task packet before it can be saved.
         </p>
       ) : null}
     </fieldset>
@@ -1290,48 +1775,45 @@ function PacketPicker({
 }
 
 /**
- * Inline "Create one-off work for this quote" form embedded inside the
- * `<PacketPicker/>` (Triangle Mode UX bridge slice). Wraps a single
- * displayName input + Create/Cancel buttons. Calls back into
- * `<ScopeEditor/>` which fetches the existing
- * `POST /api/quote-versions/:id/local-packets` API. The new packet is
- * auto-pinned to the line item by the parent form on success — the
- * estimator never has to scroll to the standalone editor first.
- *
- * State machine:
- *   - "closed": only the CTA button is rendered.
- *   - "open":   input + buttons. The local error message is cleared on
- *               every keystroke; the server's reply is shown verbatim.
- *
- * Validation mirrors the server's `assertDisplayName` (max 200, trimmed
- * non-empty) via `validateOneOffWorkDisplayNameInput`. The server is
- * still authoritative.
+ * Inline create for quote-local field work from the line-item form.
+ * Wraps `POST /api/quote-versions/:id/local-packets`.
+ * Default name is the line title (one click); optional customize disclosure.
  */
-function InlineCreateOneOffWork({
+function InlineCreateTaskPacketForLine({
   busy,
-  ctaLabel,
+  suggestedDisplayName,
   onSubmit,
+  primaryAction = false,
 }: {
   busy: boolean;
-  ctaLabel: string;
+  /** Line item title — used as the default field work display name. */
+  suggestedDisplayName: string;
   onSubmit: (
     displayName: string,
   ) => Promise<{ ok: true; packet: LocalPacketOption } | { ok: false; message: string }>;
+  /** Stronger button styling when this is the main path (create-new field work branch). */
+  primaryAction?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
-  const [displayName, setDisplayName] = useState("");
+  const [showCustomize, setShowCustomize] = useState(false);
+  const [customName, setCustomName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  function close() {
-    setOpen(false);
-    setDisplayName("");
-    setError(null);
+  const lineTitle = suggestedDisplayName.trim();
+  const canCreate = lineTitle.length > 0 && !busy && !submitting;
+
+  function displayNameForCreate(): string {
+    return resolveFieldWorkDisplayNameForQuickCreate({
+      lineTitleTrimmed: lineTitle,
+      customizeOpen: showCustomize,
+      customInputTrimmed: customName.trim(),
+    });
   }
 
-  async function handleClick() {
+  async function handleCreate() {
     setError(null);
-    const validated = validateOneOffWorkDisplayNameInput(displayName);
+    const raw = displayNameForCreate();
+    const validated = validateOneOffWorkDisplayNameInput(raw);
     if (!validated.ok) {
       setError(validated.message);
       return;
@@ -1340,7 +1822,8 @@ function InlineCreateOneOffWork({
     try {
       const result = await onSubmit(validated.trimmed);
       if (result.ok) {
-        close();
+        setShowCustomize(false);
+        setCustomName("");
       } else {
         setError(result.message);
       }
@@ -1349,65 +1832,71 @@ function InlineCreateOneOffWork({
     }
   }
 
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        disabled={busy}
-        className="rounded border border-emerald-800/60 bg-emerald-950/20 px-2 py-1 text-[11px] font-medium text-emerald-200 hover:text-emerald-100 hover:border-emerald-700 disabled:opacity-50 transition-colors"
-      >
-        {ctaLabel}
-      </button>
-    );
-  }
-
-  const disableSubmit = busy || submitting;
+  const createBtnClass = primaryAction
+    ? "rounded border border-emerald-700/70 bg-emerald-950/35 px-3 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-950/50 hover:border-emerald-600 disabled:opacity-50 transition-colors"
+    : "rounded border border-emerald-800/60 bg-emerald-950/20 px-2 py-1 text-[11px] font-medium text-emerald-200 hover:text-emerald-100 hover:border-emerald-700 disabled:opacity-50 transition-colors";
 
   return (
-    <div className="rounded border border-emerald-900/40 bg-emerald-950/10 p-2 space-y-2">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-300/80">
-        New one-off work for this quote
-      </p>
-      <input
-        type="text"
-        value={displayName}
-        onChange={(e) => {
-          setDisplayName(e.target.value);
-          if (error) setError(null);
-        }}
-        disabled={disableSubmit}
-        autoFocus
-        placeholder="e.g. Roof tear-off for this house"
-        maxLength={200}
-        className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-100 focus:border-emerald-600 focus:outline-none disabled:opacity-60"
-      />
-      {error ? (
-        <p className="text-[10px] text-amber-400">{error}</p>
-      ) : (
+    <div className="space-y-2">
+      <button
+        type="button"
+        onClick={() => void handleCreate()}
+        disabled={!canCreate}
+        className={createBtnClass}
+      >
+        {submitting ? "Creating…" : "Create field work for this line"}
+      </button>
+      {lineTitle.length === 0 ? (
+        <p className="text-[10px] text-amber-400/90">Add a line title before creating field work.</p>
+      ) : null}
+      {error ? <p className="text-[10px] text-amber-400" role="alert">{error}</p> : null}
+      {lineTitle.length > 0 ? (
+        <button
+          type="button"
+          onClick={() => {
+            setShowCustomize((v) => {
+              const next = !v;
+              if (next) {
+                setCustomName((c) => (c.trim() !== "" ? c : lineTitle));
+              }
+              setError(null);
+              return next;
+            });
+          }}
+          disabled={busy || submitting}
+          className="block text-left text-[10px] text-zinc-500 hover:text-zinc-300 underline underline-offset-2 disabled:opacity-50"
+        >
+          {showCustomize ? "Hide name options" : "Customize name before creating"}
+        </button>
+      ) : null}
+      {showCustomize && lineTitle.length > 0 ? (
+        <div className="rounded border border-emerald-900/40 bg-emerald-950/10 p-2 space-y-2">
+          <label className="block text-[10px] text-zinc-400">
+            Name for this field work on the quote
+            <input
+              type="text"
+              value={customName}
+              onChange={(e) => {
+                setCustomName(e.target.value);
+                if (error) setError(null);
+              }}
+              disabled={busy || submitting}
+              placeholder={lineTitle}
+              maxLength={200}
+              className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-100 focus:border-emerald-600 focus:outline-none disabled:opacity-60"
+            />
+          </label>
+          <p className="text-[10px] text-zinc-500">
+            Leave blank to use the line title ({`“${lineTitle}”`}). This creates an empty field work
+            group on the quote; save the line, then add tasks in Field work on this quote below.
+          </p>
+        </div>
+      ) : lineTitle.length > 0 ? (
         <p className="text-[10px] text-zinc-500">
-          Creates an empty one-off work pinned to this line. Add its crew tasks afterwards in the
-          &ldquo;One-off work for this quote&rdquo; section below the line items.
+          Uses your line title as the field work name. Save the line, then add tasks in Field work on
+          this quote below.
         </p>
-      )}
-      <div className="flex justify-end gap-2">
-        <button
-          type="button"
-          onClick={close}
-          disabled={disableSubmit}
-          className="rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-400 hover:text-zinc-200 disabled:opacity-50"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={() => void handleClick()}
-          disabled={disableSubmit || displayName.trim() === ""}
-          className="rounded bg-emerald-700/90 px-2 py-0.5 text-[11px] font-medium text-emerald-50 hover:bg-emerald-600 disabled:opacity-50"
-        >
-          {submitting ? "Creating…" : "Create and attach"}
-        </button>
-      </div>
+      ) : null}
     </div>
   );
 }
@@ -1425,7 +1914,9 @@ function BannerView({ banner, onDismiss }: { banner: NonNullable<Banner>; onDism
     >
       <div>
         <p className="font-semibold">{banner.title}</p>
-        {banner.message ? <p className="mt-0.5 opacity-90">{banner.message}</p> : null}
+        {banner.message ? (
+          <div className="mt-0.5 opacity-90 text-[11px] leading-snug">{banner.message}</div>
+        ) : null}
       </div>
       <button
         type="button"
@@ -1446,6 +1937,8 @@ function ReadOnlyView({
   quoteId,
   availableLibraryPackets,
   executionPreviewByLineItemId,
+  fieldWorkAnchorsActive,
+  singleDefaultMainGroup,
 }: {
   groupedLineItems: GroupWithItems[];
   versionNumber: number;
@@ -1453,6 +1946,8 @@ function ReadOnlyView({
   quoteId: string;
   availableLibraryPackets: LibraryPacketOption[];
   executionPreviewByLineItemId: Record<string, LineItemExecutionPreviewDto> | null;
+  fieldWorkAnchorsActive: boolean;
+  singleDefaultMainGroup: boolean;
 }) {
   const reasonMessage =
     editableReason === "missing_capability"
@@ -1478,13 +1973,19 @@ function ReadOnlyView({
           key={group.id}
           className="rounded-lg border border-zinc-800 bg-zinc-900/20 overflow-hidden"
         >
-          <header className="border-b border-zinc-800 bg-zinc-900/40 px-4 py-2.5">
-            <h2 className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">
-              {group.name}
-            </h2>
-            <p className="text-[10px] text-zinc-500 mt-0.5">
-              {group.items.length} {group.items.length === 1 ? "item" : "items"}
-            </p>
+          <header className="border-b border-zinc-800 bg-zinc-900/40 px-4 py-3">
+            {singleDefaultMainGroup ? (
+              <p className="text-xs text-zinc-500">
+                {group.items.length} {group.items.length === 1 ? "line item" : "line items"}
+              </p>
+            ) : (
+              <>
+                <h2 className="text-base font-semibold text-zinc-100">{group.name}</h2>
+                <p className="text-xs text-zinc-500 mt-1">
+                  {group.items.length} {group.items.length === 1 ? "item" : "items"}
+                </p>
+              </>
+            )}
           </header>
           {group.items.length === 0 ? (
             <p className="px-4 py-6 text-xs text-zinc-500 text-center">
@@ -1495,21 +1996,34 @@ function ReadOnlyView({
               {group.items.map((item) => {
                 const packetSummary = describeAttachedPacket(item, availableLibraryPackets);
                 const preview = executionPreviewByLineItemId?.[item.id] ?? null;
+                const statusChip = lineItemFieldWorkStatusChip(item, preview);
+                const showPacketSummaryLine = shouldShowPacketSummaryUnderTitle(preview);
                 return (
-                  <li key={item.id} className="px-4 py-3 space-y-2">
-                    <div>
-                      <p className="text-sm text-zinc-100">{item.title}</p>
-                      <p className="mt-1 text-[11px] text-zinc-500">
-                        <span className="font-mono">qty {item.quantity}</span> ·{" "}
-                        <span>{formatExecutionModeLabel(item.executionMode)}</span>
-                        {item.tierCode ? <span className="font-mono"> · tier {item.tierCode}</span> : null}
-                        {item.paymentBeforeWork ? " · payment before work" : ""}
-                      </p>
-                      {packetSummary ? (
-                        <p className={`mt-1 text-[11px] ${packetSummary.tone}`}>{packetSummary.label}</p>
-                      ) : null}
+                  <li key={item.id} className="px-4 py-4 space-y-3">
+                    <div className="rounded-lg border border-zinc-800/70 bg-zinc-950/30 p-4">
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap items-center gap-2 gap-y-1">
+                          <h3 className="text-base font-semibold text-zinc-50 leading-snug">{item.title}</h3>
+                          <FieldWorkStatusChip chip={statusChip} />
+                        </div>
+                        <LineItemScopeMetadata item={item} />
+                        <LineItemFieldWorkActions
+                          item={item}
+                          executionPreview={preview}
+                          availableLibraryPackets={availableLibraryPackets}
+                          fieldWorkAnchorsActive={fieldWorkAnchorsActive}
+                          localTaskCountHint={null}
+                        />
+                        {showPacketSummaryLine && packetSummary ? (
+                          <p className={`text-xs leading-relaxed ${packetSummary.tone}`}>{packetSummary.label}</p>
+                        ) : null}
+                      </div>
                     </div>
-                    {preview ? <LineItemExecutionPreviewBlock preview={preview} /> : null}
+                    {preview ? (
+                      <div id={`line-item-${item.id}-task-preview`}>
+                        <LineItemExecutionPreviewBlock preview={preview} />
+                      </div>
+                    ) : null}
                   </li>
                 );
               })}
@@ -1522,6 +2036,82 @@ function ReadOnlyView({
 }
 
 /* ---------------- Pure helpers ---------------- */
+
+type FieldWorkStatusChipKind =
+  | { label: "Quote only"; variant: "zinc" }
+  | { label: "Field work attached"; variant: "emerald" }
+  | { label: "Needs field work"; variant: "amber" }
+  | { label: "Field work has no tasks"; variant: "amber" };
+
+function lineItemFieldWorkStatusChip(
+  item: LineItem,
+  preview: LineItemExecutionPreviewDto | null,
+): FieldWorkStatusChipKind {
+  if (item.executionMode !== "MANIFEST") {
+    return { label: "Quote only", variant: "zinc" };
+  }
+  if (preview?.kind === "soldScopeCommercial") {
+    return { label: "Quote only", variant: "zinc" };
+  }
+  if (
+    preview?.kind === "manifestNoPacket" ||
+    preview?.kind === "manifestLibraryMissing" ||
+    preview?.kind === "manifestLocalMissing"
+  ) {
+    return { label: "Needs field work", variant: "amber" };
+  }
+  if (preview?.kind === "manifestLibrary" || preview?.kind === "manifestLocal") {
+    if (preview.tasks.length === 0) {
+      return { label: "Field work has no tasks", variant: "amber" };
+    }
+    return { label: "Field work attached", variant: "emerald" };
+  }
+  if (item.scopePacketRevisionId || item.quoteLocalPacketId) {
+    return { label: "Field work attached", variant: "emerald" };
+  }
+  return { label: "Needs field work", variant: "amber" };
+}
+
+function FieldWorkStatusChip({ chip }: { chip: FieldWorkStatusChipKind }) {
+  const cls =
+    chip.variant === "emerald"
+      ? "border-emerald-800/60 bg-emerald-950/35 text-emerald-200"
+      : chip.variant === "amber"
+        ? "border-amber-800/50 bg-amber-950/30 text-amber-100"
+        : "border-zinc-700 bg-zinc-900/60 text-zinc-300";
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-tight ${cls}`}
+    >
+      {chip.label}
+    </span>
+  );
+}
+
+function LineItemScopeMetadata({ item }: { item: LineItem }) {
+  const modeLabel =
+    item.executionMode === "MANIFEST" ? "Creates field work" : "Quote only";
+  const parts: string[] = [`Qty ${item.quantity}`, modeLabel];
+  if (item.tierCode) parts.push(`Tier ${item.tierCode}`);
+  if (item.paymentBeforeWork) {
+    parts.push(
+      item.paymentGateTitleOverride?.trim()
+        ? `Payment gate: ${item.paymentGateTitleOverride.trim()}`
+        : "Payment before work",
+    );
+  }
+  return <p className="text-xs text-zinc-500 leading-relaxed">{parts.join(" · ")}</p>;
+}
+
+/** When the execution preview already carries packet identity, skip the duplicate summary line. */
+function shouldShowPacketSummaryUnderTitle(preview: LineItemExecutionPreviewDto | null): boolean {
+  if (preview == null) return true;
+  if (preview.kind === "soldScopeCommercial") return false;
+  if (preview.kind === "manifestNoPacket") return false;
+  if (preview.kind === "manifestLibraryMissing" || preview.kind === "manifestLocalMissing") return false;
+  if (preview.kind === "manifestLibrary" || preview.kind === "manifestLocal") return false;
+  return true;
+}
 
 /**
  * Resolves a one-line packet attachment summary for a line item, suitable for
@@ -1542,135 +2132,27 @@ function describeAttachedPacket(
     );
     const isLatest =
       parent != null && parent.latestPublishedRevisionId === item.scopePacketRevisionId;
-    const namePart = parent
-      ? `${parent.displayName} (${parent.packetKey})`
-      : "Saved work template";
+    const namePart = parent ? parent.displayName : "Saved task packet";
     return {
       label: isLatest
-        ? `Saved work template: ${namePart}`
-        : `Saved work template: ${namePart} · older version`,
+        ? `Saved task packet · ${namePart}`
+        : `Saved task packet · ${namePart} (older published version)`,
       tone: isLatest ? "text-sky-300" : "text-amber-400",
     };
   }
   if (item.quoteLocalPacketId && item.quoteLocalPacket) {
     return {
-      label: `One-off work for this quote: ${item.quoteLocalPacket.displayName}`,
+      label: `Field work on this quote · ${item.quoteLocalPacket.displayName}`,
       tone: "text-emerald-300",
     };
   }
   if (item.executionMode === "MANIFEST") {
     return {
       label:
-        "No work template attached — field-work lines need exactly one. Choose a saved work template or one-off work for this quote (saves without one will be rejected).",
+        "No field work attached yet — pick saved field work or create field work on this quote, then save.",
       tone: "text-amber-400",
     };
   }
   return null;
 }
 
-/* ---------------- Validation ---------------- */
-
-type ValidatedFields =
-  | {
-      ok: true;
-      title: string;
-      /**
-       * Trimmed description, or `null` when the user left it blank. The
-       * server stores the column as nullable; mirroring that here means we
-       * never emit empty strings the server would just round-trip back as
-       * `null` on the next read.
-       */
-      description: string | null;
-      quantity: number;
-      unitPriceCents: number | null;
-      paymentBeforeWork: boolean;
-      paymentGateTitleOverride: string | null;
-      scopePacketRevisionId: string | null;
-      quoteLocalPacketId: string | null;
-    }
-  | { ok: false; message: string };
-
-const MAX_GATE_TITLE_OVERRIDE = 120;
-/**
- * Mirror of `MAX_DESCRIPTION` in
- * `src/server/slice1/mutations/quote-line-item-mutations.ts`. Kept in sync
- * by hand — an explicit re-export from the server module would drag a
- * server-only file into the client bundle.
- */
-const MAX_DESCRIPTION = 4000;
-
-function validateFields(fields: FormFields): ValidatedFields {
-  const title = fields.title.trim();
-  if (!title) {
-    return { ok: false, message: "Title is required." };
-  }
-  const descTrimmed = fields.description.trim();
-  if (descTrimmed.length > MAX_DESCRIPTION) {
-    return {
-      ok: false,
-      message: `Description must be at most ${MAX_DESCRIPTION} characters.`,
-    };
-  }
-  const description: string | null = descTrimmed.length > 0 ? descTrimmed : null;
-  const quantity = Number.parseInt(fields.quantity, 10);
-  if (!Number.isFinite(quantity) || !Number.isInteger(quantity) || quantity < 0) {
-    return { ok: false, message: "Quantity must be a non-negative integer." };
-  }
-
-  let unitPriceCents: number | null = null;
-  if (fields.unitPriceCents.trim()) {
-    const parsed = Number.parseInt(fields.unitPriceCents, 10);
-    if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) {
-      return { ok: false, message: "Unit price (cents) must be an integer if provided." };
-    }
-    unitPriceCents = parsed;
-  }
-
-  const paymentBeforeWork = fields.paymentBeforeWork;
-  const ov = fields.paymentGateTitleOverride.trim();
-  if (ov.length > MAX_GATE_TITLE_OVERRIDE) {
-    return { ok: false, message: `Gate title override must be at most ${MAX_GATE_TITLE_OVERRIDE} characters.` };
-  }
-  const paymentGateTitleOverride = paymentBeforeWork ? (ov.length > 0 ? ov : null) : null;
-
-  // Packet-pin validation mirrors `assertManifestScopePinXor` so we surface
-  // the same rule client-side and avoid a server round-trip on obvious
-  // misconfigurations. The server is still authoritative.
-  let scopePacketRevisionId: string | null = null;
-  let quoteLocalPacketId: string | null = null;
-  if (fields.executionMode === "MANIFEST") {
-    if (fields.packetSource === "none") {
-      return {
-        ok: false,
-        message:
-          "Field-work line items must use exactly one work template — either a saved work template or one-off work for this quote. Pick one above.",
-      };
-    }
-    if (fields.packetSource === "library") {
-      const id = fields.scopePacketRevisionId.trim();
-      if (!id) {
-        return { ok: false, message: "Choose a saved work template to attach." };
-      }
-      scopePacketRevisionId = id;
-    } else {
-      const id = fields.quoteLocalPacketId.trim();
-      if (!id) {
-        return { ok: false, message: "Choose one-off work to attach." };
-      }
-      quoteLocalPacketId = id;
-    }
-  }
-  // SOLD_SCOPE: both stay null; the server invariant requires neither.
-
-  return {
-    ok: true,
-    title,
-    description,
-    quantity,
-    unitPriceCents,
-    paymentBeforeWork,
-    paymentGateTitleOverride,
-    scopePacketRevisionId,
-    quoteLocalPacketId,
-  };
-}

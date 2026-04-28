@@ -320,7 +320,7 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
                 <QuoteWorkspacePipelineStep
                   step={3}
                   title="Send Proposal"
-                  hint="Freeze the proposed execution snapshot and send it to the customer."
+                  hint="Lock this draft and send the proposal to the customer."
                   isRecommended={recommendedStep === 3}
                 >
                   <QuoteWorkspaceComposeSendPanel latestDraft={latestDraftWorkspaceTarget} canOfficeMutate={canOfficeMutate} />
@@ -349,7 +349,7 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
                 <QuoteWorkspacePipelineStep
                   step={5}
                   title="Activate Execution"
-                  hint="Instantiate runtime tasks from the frozen execution package."
+                  hint="Create the job’s task list from the signed proposal."
                   isRecommended={recommendedStep === 5}
                 >
                   <QuoteWorkspaceActivateSigned
@@ -383,7 +383,7 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
             <QuoteWorkspaceVersionHistory quoteId={quoteId} versions={ws.versions} canOfficeMutate={canOfficeMutate} />
 
             <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-6">
-               <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500 mb-4">Support & Metadata</h3>
+               <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500 mb-4">Advanced & metadata</h3>
                <div className="space-y-3 text-xs">
                   <div className="flex justify-between">
                      <span className="text-zinc-500">Quote ID</span>

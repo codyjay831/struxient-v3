@@ -85,9 +85,9 @@ export function QuoteWorkspaceLineItemSummary({ quoteId, versionNumber, summary 
           <div className="h-1 w-1 rounded-full bg-zinc-700"></div>
           <span>
             Field work breakdown:{" "}
-            <span className="text-zinc-300">{outcomes.fieldWorkSaved}</span> from saved work templates
+            <span className="text-zinc-300">{outcomes.fieldWorkSaved}</span> from saved task packets
             {" · "}
-            <span className="text-zinc-300">{outcomes.fieldWorkOneOff}</span> one-off
+            <span className="text-zinc-300">{outcomes.fieldWorkOneOff}</span> field work on this quote
           </span>
         </div>
       </div>

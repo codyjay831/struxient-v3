@@ -41,7 +41,7 @@ export function QuoteWorkspaceActions({ quoteId, canOfficeMutate }: Props) {
       setResult({
         kind: "success",
         title: "New version created",
-        message: `Version v${String(body.data?.versionNumber)} is now the head draft. You can continue modifying line items or workflow selection for this new revision.`,
+        message: `Version v${String(body.data?.versionNumber)} is now the head draft. Update scope or field work on this draft, then send again when you are ready.`,
       });
       router.refresh();
     } finally {
@@ -63,7 +63,8 @@ export function QuoteWorkspaceActions({ quoteId, canOfficeMutate }: Props) {
       ) : (
         <div className="space-y-3">
           <p className="text-xs text-zinc-500 leading-relaxed">
-            Start a new draft version to revise the quote. This clones the current version so you can modify line items or workflow selection before sending a new proposal.
+            Start a new draft version to revise the quote. This clones the current version so you can modify line items
+            or field work before sending a new proposal.
           </p>
           <button
             type="button"
@@ -91,7 +92,7 @@ export function QuoteWorkspaceActions({ quoteId, canOfficeMutate }: Props) {
       
       <div className="mt-4 border-t border-zinc-800/40 pt-3">
         <details className="text-[10px] text-zinc-600">
-          <summary className="cursor-pointer font-medium hover:text-zinc-500">Technical details</summary>
+          <summary className="cursor-pointer font-medium hover:text-zinc-500">Advanced (support)</summary>
           <p className="mt-1">
             Calls <code className="text-zinc-500">POST /api/quotes/{quoteId}/versions</code>. Clones server-side state.
           </p>

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { deriveQuoteHeadWorkspaceReadiness, type QuoteHeadReadinessInput } from "./derive-quote-head-workspace-readiness";
+import {
+  deriveQuoteHeadWorkspaceReadiness,
+  type QuoteHeadReadinessInput,
+} from "./derive-quote-head-workspace-readiness";
 
 function base(over: Partial<QuoteHeadReadinessInput> = {}): QuoteHeadReadinessInput {
   return {
@@ -17,6 +20,16 @@ function base(over: Partial<QuoteHeadReadinessInput> = {}): QuoteHeadReadinessIn
   };
 }
 
+function allReadinessStrings(r: Extract<ReturnType<typeof deriveQuoteHeadWorkspaceReadiness>, { kind: "head" }>): string {
+  const parts = [
+    ...r.checklist.flatMap((c) => [c.label, c.note ?? ""]),
+    ...r.likelyNextSteps,
+    ...r.honestyNotes,
+    r.recommendedStepTitle ?? "",
+  ];
+  return parts.join("\n");
+}
+
 describe("deriveQuoteHeadWorkspaceReadiness", () => {
   it("returns no_versions when head is null", () => {
     expect(deriveQuoteHeadWorkspaceReadiness(null)).toEqual({ kind: "no_versions" });
@@ -27,6 +40,7 @@ describe("deriveQuoteHeadWorkspaceReadiness", () => {
     expect(r.kind).toBe("head");
     if (r.kind !== "head") return;
     expect(r.recommendedStepIndex).toBe(1);
+    expect(r.recommendedStepTitle).toBe("Build the quote");
     expect(r.checklist.find((c) => c.id === "scope")?.state).toBe("no");
     expect(
       r.likelyNextSteps.some((s) => s.toLowerCase().includes("line item") || s.toLowerCase().includes("scope")),
@@ -40,18 +54,15 @@ describe("deriveQuoteHeadWorkspaceReadiness", () => {
     expect(r.kind).toBe("head");
     if (r.kind !== "head") return;
     expect(r.recommendedStepIndex).toBe(2);
+    expect(r.recommendedStepTitle).toBe("Review execution flow");
     expect(r.checklist.find((c) => c.id === "scope")?.state).toBe("yes");
     const pin = r.checklist.find((c) => c.id === "pin");
     expect(pin?.state).toBe("no");
-    // Path B: the row is an "execution flow bound" system signal, not a
-    // user-facing "pin a process template" instruction.
-    expect(pin?.label.toLowerCase()).toContain("execution flow");
+    expect(pin?.label.toLowerCase()).toContain("work plan");
     expect(pin?.label.toLowerCase()).not.toContain("process template");
-    // Guidance must NOT mention manual PATCH or template authoring under
-    // normal user-facing copy. It points at internal/admin remediation.
-    expect(r.likelyNextSteps.some((s) => s.toLowerCase().includes("internal"))).toBe(true);
+    expect(r.likelyNextSteps.some((s) => s.toLowerCase().includes("support"))).toBe(true);
     expect(r.likelyNextSteps.every((s) => !s.includes("PATCH"))).toBe(true);
-    expect(r.honestyNotes.some((s) => s.includes("compose-preview"))).toBe(true);
+    expect(r.honestyNotes.some((s) => s.toLowerCase().includes("preview"))).toBe(true);
   });
 
   it("draft with scope and bound flow points at send (step 3) and offers a review prompt", () => {
@@ -61,10 +72,9 @@ describe("deriveQuoteHeadWorkspaceReadiness", () => {
     expect(r.kind).toBe("head");
     if (r.kind !== "head") return;
     expect(r.recommendedStepIndex).toBe(3);
+    expect(r.recommendedStepTitle).toBe("Send proposal");
     expect(r.checklist.find((c) => c.id === "pin")?.state).toBe("yes");
-    expect(r.likelyNextSteps.some((s) => s.toLowerCase().includes("compose preview"))).toBe(true);
-    // Path B: the recommended next step set should cue the operator to
-    // optionally review the proposed execution flow before sending.
+    expect(r.likelyNextSteps.some((s) => s.toLowerCase().includes("preview proposal"))).toBe(true);
     expect(
       r.likelyNextSteps.some((s) => s.toLowerCase().includes("proposed execution flow")),
     ).toBe(true);
@@ -85,13 +95,14 @@ describe("deriveQuoteHeadWorkspaceReadiness", () => {
     expect(r.kind).toBe("head");
     if (r.kind !== "head") return;
     expect(r.recommendedStepIndex).toBe(2);
+    expect(r.recommendedStepTitle).toBe("Review execution flow");
     expect(
       r.likelyNextSteps.some((s) => s.toLowerCase().includes("proposed execution flow")),
     ).toBe(true);
     expect(r.likelyNextSteps.some((s) => s.toLowerCase().includes("line-item"))).toBe(true);
   });
 
-  it("sent suggests sign and reads", () => {
+  it("sent suggests signature-focused steps without API route language", () => {
     const r = deriveQuoteHeadWorkspaceReadiness(
       base({
         status: "SENT",
@@ -104,8 +115,13 @@ describe("deriveQuoteHeadWorkspaceReadiness", () => {
     expect(r.kind).toBe("head");
     if (r.kind !== "head") return;
     expect(r.recommendedStepIndex).toBe(4);
-    expect(r.likelyNextSteps.some((s) => s.includes("/sign"))).toBe(true);
-    expect(r.likelyNextSteps.some((s) => s.includes("freeze") || s.includes("lifecycle"))).toBe(true);
+    expect(r.recommendedStepTitle).toBe("Record signature");
+    const blob = allReadinessStrings(r);
+    expect(blob.toLowerCase()).not.toContain("get ");
+    expect(blob.toLowerCase()).not.toContain("post ");
+    expect(blob.toLowerCase()).not.toContain("/lifecycle");
+    expect(blob.toLowerCase()).not.toContain("/freeze");
+    expect(r.likelyNextSteps.some((s) => s.toLowerCase().includes("portal"))).toBe(true);
   });
 
   it("signed without activation suggests activate", () => {
@@ -122,26 +138,27 @@ describe("deriveQuoteHeadWorkspaceReadiness", () => {
     expect(r.kind).toBe("head");
     if (r.kind !== "head") return;
     expect(r.recommendedStepIndex).toBe(5);
-    expect(r.likelyNextSteps.some((s) => s.includes("/activate"))).toBe(true);
+    expect(r.recommendedStepTitle).toBe("Activate execution");
+    const blob = allReadinessStrings(r);
+    expect(blob.toLowerCase()).not.toContain("post ");
+    expect(blob.toLowerCase()).not.toContain("/activate");
   });
 
-  it("signed with activation mentions runtime", () => {
+  it("signed with activation clears recommended step and mentions execution bridge", () => {
     const r = deriveQuoteHeadWorkspaceReadiness(
       base({ status: "SIGNED", lineItemCount: 2, hasPinnedWorkflow: true, hasFrozenArtifacts: true, hasActivation: true }),
     );
     expect(r.kind).toBe("head");
     if (r.kind !== "head") return;
     expect(r.recommendedStepIndex).toBeNull();
-    expect(r.likelyNextSteps.some((s) => s.toLowerCase().includes("runtime"))).toBe(true);
+    expect(r.recommendedStepTitle).toBeNull();
+    expect(r.likelyNextSteps.some((s) => s.toLowerCase().includes("execution bridge"))).toBe(true);
   });
 
   it("honesty notes teach scope-first canon under Path B (no skeleton/pin language)", () => {
     const r = deriveQuoteHeadWorkspaceReadiness(base({ status: "DRAFT", lineItemCount: 2, hasPinnedWorkflow: true }));
     expect(r.kind).toBe("head");
     if (r.kind !== "head") return;
-    // The new canon copy emphasizes that line items + task packets define
-    // the sold work and that stages organize it. Skeleton/process-template
-    // language is gone from user-facing surfaces under Path B.
     expect(
       r.honestyNotes.some(
         (s) =>
@@ -209,7 +226,7 @@ describe("deriveQuoteHeadWorkspaceReadiness", () => {
         hasPinnedWorkflow: true,
         packetStageReadiness: {
           state: "no",
-          note: "1 of 2 field-work line(s) need attention — 1 line(s) have no work template attached.",
+          note: "1 of 2 field-work line(s) need attention — 1 line(s) have no task packet attached.",
         },
       }),
     );
@@ -221,18 +238,14 @@ describe("deriveQuoteHeadWorkspaceReadiness", () => {
     expect(row?.note?.toLowerCase()).toContain("need attention");
   });
 
-  it("packetStageReadiness n/a: appends a 'packets' row in N/A state (no field-work lines)", () => {
+  it("draft not sent: frozen checklist row is n/a (not bucketed as missing)", () => {
     const r = deriveQuoteHeadWorkspaceReadiness(
-      base({
-        status: "DRAFT",
-        lineItemCount: 1,
-        hasPinnedWorkflow: true,
-        packetStageReadiness: { state: "n/a", note: "No field-work lines on this draft yet." },
-      }),
+      base({ status: "DRAFT", lineItemCount: 1, hasPinnedWorkflow: true, hasFrozenArtifacts: false }),
     );
     expect(r.kind).toBe("head");
     if (r.kind !== "head") return;
-    const row = r.checklist.find((c) => c.id === "packets");
-    expect(row?.state).toBe("n/a");
+    const frozen = r.checklist.find((c) => c.id === "frozen");
+    expect(frozen?.state).toBe("n/a");
+    expect(frozen?.label.toLowerCase()).toContain("not sent");
   });
 });

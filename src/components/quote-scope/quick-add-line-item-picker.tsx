@@ -103,9 +103,9 @@ const RECENT_LIMIT = 3;
 function unusableReasonLabel(reason: PresetUnusableReason): string {
   switch (reason) {
     case "manifest_packet_missing":
-      return "Linked work template was deleted — re-link before using this saved line.";
+      return "Linked task packet was deleted — re-link before using this saved line.";
     case "manifest_no_published_revision":
-      return "Linked work template has no published version yet — publish before using.";
+      return "Linked task packet has no published version yet — publish before using.";
   }
 }
 
@@ -299,15 +299,15 @@ export function QuickAddLineItemPicker({
 
       <div className="space-y-1">
         <p className="text-[9px] font-semibold uppercase tracking-wider text-zinc-500">
-          Saved work templates
+          Saved task packets
         </p>
         {totalPinnable === 0 ? (
           <EmptyState totalAvailable={totalAvailable} />
         ) : packetsForRender.length === 0 ? (
           <p className="px-2 py-3 text-[11px] text-zinc-500">
             {tradeFilterActive
-              ? `No saved work templates found for ${selectedTrade}${query.trim().length > 0 ? ` matching “${query}”` : ""}.`
-              : `No saved work template matches for “${query}”.`}
+              ? `No saved task packets found for ${selectedTrade}${query.trim().length > 0 ? ` matching “${query}”` : ""}.`
+              : `No saved task packet matches for “${query}”.`}
           </p>
         ) : (
           <ul className="max-h-64 overflow-y-auto divide-y divide-zinc-800 rounded border border-zinc-800">
@@ -326,7 +326,7 @@ export function QuickAddLineItemPicker({
                   </div>
                   <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[9px] uppercase tracking-wider text-zinc-500">
                     <span className="rounded border border-zinc-700/60 bg-zinc-900/40 px-1 text-zinc-300 normal-case">
-                      Saved work template
+                      Saved task packet
                     </span>
                     <span
                       className="rounded border border-amber-800/60 bg-amber-950/30 px-1 text-amber-300 normal-case"
@@ -462,14 +462,14 @@ function PresetRow({
               className="rounded border border-zinc-700/60 bg-zinc-900/40 px-1 text-zinc-300 normal-case truncate max-w-[16rem]"
               title={preset.defaultScopePacket.displayName}
             >
-              Work template: {preset.defaultScopePacket.displayName}
+              Task packet: {preset.defaultScopePacket.displayName}
               {preset.defaultScopePacket.latestPublishedRevisionNumber != null
                 ? ` · v${preset.defaultScopePacket.latestPublishedRevisionNumber}`
                 : ""}
             </span>
           ) : preset.defaultExecutionMode === "MANIFEST" ? (
             <span className="rounded border border-amber-800/60 bg-amber-950/30 px-1 text-amber-300 normal-case">
-              Work template missing
+              Task packet missing
             </span>
           ) : null}
           {!usable && reason ? (
@@ -507,7 +507,7 @@ function TradeChipStrip({
   return (
     <ul
       className="flex flex-wrap gap-1"
-      aria-label="Filter saved lines and work templates by trade"
+      aria-label="Filter saved lines and saved task packets by trade"
     >
       {chips.map((chip) => {
         const isSelected = chip === selected;
@@ -524,8 +524,8 @@ function TradeChipStrip({
               className={className}
               title={
                 chip === "All"
-                  ? `Show all saved lines and saved work templates (${count})`
-                  : `Show ${chip} saved lines and saved work templates (${count})`
+                  ? `Show all saved lines and saved task packets (${count})`
+                  : `Show ${chip} saved lines and saved task packets (${count})`
               }
             >
               {chip}
@@ -542,13 +542,13 @@ function EmptyState({ totalAvailable }: { totalAvailable: number }) {
   if (totalAvailable === 0) {
     return (
       <p className="px-2 py-3 text-[11px] text-amber-400">
-        No saved work templates are available yet.
+        No saved task packets are available yet.
       </p>
     );
   }
   return (
     <p className="px-2 py-3 text-[11px] text-amber-400">
-      {totalAvailable} saved work template{totalAvailable === 1 ? "" : "s"} exist, but none have a
+      {totalAvailable} saved task packet{totalAvailable === 1 ? "" : "s"} exist, but none have a
       published version yet. Publish a version in Library → Packets to make it usable.
     </p>
   );

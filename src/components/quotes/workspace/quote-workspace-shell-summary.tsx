@@ -15,6 +15,8 @@ type Props = {
   head: QuoteVersionHistoryItemDto | null;
 };
 
+const isDevQuickJumpEnabled = process.env.NODE_ENV === "development";
+
 /**
  * Office-oriented shell + context strip (server truth from workspace read).
  */
@@ -54,7 +56,7 @@ export function QuoteWorkspaceShellSummary({ quoteId, shell, head }: Props) {
           </p>
           <p className="mt-1 text-2xl font-semibold tracking-tight text-zinc-50">{shell.quote.quoteNumber}</p>
         </div>
-        {head ?
+        {head ? (
           <div className="rounded-md border border-zinc-800/80 bg-zinc-950/80 px-3 py-2 text-right sm:text-left">
             <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">Current version</p>
             <div className="mt-1 flex flex-wrap items-center justify-end gap-2 sm:justify-start">
@@ -62,7 +64,7 @@ export function QuoteWorkspaceShellSummary({ quoteId, shell, head }: Props) {
               <QuoteWorkspaceVersionStatusBadge status={head.status} />
             </div>
           </div>
-        : null}
+        ) : null}
       </div>
 
       <dl className="mt-5 grid gap-4 border-t border-zinc-800/80 pt-5 sm:grid-cols-2">
@@ -78,17 +80,29 @@ export function QuoteWorkspaceShellSummary({ quoteId, shell, head }: Props) {
         </div>
       </dl>
 
-      <div className="mt-6 border-t border-zinc-800/40 pt-4">
-        <InternalQuickJump title="Continue testing" links={quickJumpLinks} />
-      </div>
+      {isDevQuickJumpEnabled ? (
+        <div className="mt-6 border-t border-zinc-800/40 pt-4">
+          <InternalQuickJump title="Dev quick links" links={quickJumpLinks} />
+        </div>
+      ) : null}
 
-      <div className="mt-4 border-t border-zinc-800/10 pt-3">
+      <div className={`${isDevQuickJumpEnabled ? "mt-4" : "mt-6"} border-t border-zinc-800/10 pt-3`}>
         <details className="text-[10px] text-zinc-600">
-          <summary className="cursor-pointer font-medium hover:text-zinc-500">Technical details</summary>
+          <summary className="cursor-pointer font-medium hover:text-zinc-500">Advanced (support)</summary>
           <div className="mt-2 space-y-1.5">
-            <p>Quote ID: <span className="font-mono">{shell.quote.id}</span></p>
-            {head ? <p>Head ID: <span className="font-mono">{head.id}</span></p> : null}
-            {shell.flowGroup.jobId && <p>Job ID: <span className="font-mono">{shell.flowGroup.jobId}</span></p>}
+            <p>
+              Quote ID: <span className="font-mono">{shell.quote.id}</span>
+            </p>
+            {head ? (
+              <p>
+                Version ID: <span className="font-mono">{head.id}</span>
+              </p>
+            ) : null}
+            {shell.flowGroup.jobId && (
+              <p>
+                Job ID: <span className="font-mono">{shell.flowGroup.jobId}</span>
+              </p>
+            )}
             <div className="flex flex-wrap gap-x-3 gap-y-1 pt-1">
               <Link
                 href={`/api/customers/${shell.customer.id}`}
@@ -109,12 +123,12 @@ export function QuoteWorkspaceShellSummary({ quoteId, shell, head }: Props) {
         </details>
       </div>
 
-      {shell.quote.id !== quoteId ?
+      {shell.quote.id !== quoteId ? (
         <p className="mt-4 text-xs text-amber-700/90">
           Route quote id <span className="font-mono">{quoteId}</span> does not match loaded shell id — verify tenant
           data.
         </p>
-      : null}
+      ) : null}
     </section>
   );
 }

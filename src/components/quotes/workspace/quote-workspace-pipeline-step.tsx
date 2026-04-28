@@ -25,7 +25,11 @@ export function QuoteWorkspacePipelineStep({ step, title, hint, isRecommended, c
         </span>
         <div className="min-w-0 pt-0.5">
           <div className="flex items-center gap-2">
-            <h3 className={`text-sm font-semibold ${isRecommended ? "text-sky-300" : "text-zinc-100"}`}>{title}</h3>
+            <h3
+              className={`font-semibold ${isRecommended ? "text-base text-sky-300" : "text-sm text-zinc-100"}`}
+            >
+              {title}
+            </h3>
             {isRecommended && (
               <span className="rounded-full bg-sky-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-sky-400 border border-sky-500/20">
                 Recommended

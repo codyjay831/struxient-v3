@@ -73,7 +73,7 @@ export function InternalActionResult({
           {technicalDetails && (
             <details className="mt-3">
               <summary className="cursor-pointer text-[10px] font-medium opacity-50 hover:opacity-80">
-                Technical details
+                Advanced (support)
               </summary>
               <pre className="mt-2 overflow-x-auto rounded bg-black/40 p-2 font-mono text-[10px] leading-relaxed text-zinc-400 border border-white/5">
                 {technicalDetails}

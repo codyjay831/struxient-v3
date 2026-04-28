@@ -36,10 +36,10 @@ describe("formatQuoteLineItemOutcomeLabel", () => {
   it("maps each outcome to a contractor-friendly label", () => {
     expect(formatQuoteLineItemOutcomeLabel("quote_only")).toBe("Quote-only");
     expect(formatQuoteLineItemOutcomeLabel("field_work_saved")).toBe(
-      "Field work — saved",
+      "Field work — saved task packet",
     );
     expect(formatQuoteLineItemOutcomeLabel("field_work_one_off")).toBe(
-      "Field work — one-off",
+      "Field work — on this quote",
     );
   });
 });

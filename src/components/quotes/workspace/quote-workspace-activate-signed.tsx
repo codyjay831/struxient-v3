@@ -39,7 +39,7 @@ export function QuoteWorkspaceActivateSigned({ activateTarget, canOfficeMutate }
         setResult({
           kind: "error",
           title: "Activation failed",
-          message: body.error?.message ?? "An error occurred while activating the runtime flow.",
+          message: body.error?.message ?? "An error occurred while starting execution for this quote.",
           technicalDetails: `${body.error?.code ?? "ERROR"}: ${res.status}`,
         });
         return;
@@ -47,7 +47,7 @@ export function QuoteWorkspaceActivateSigned({ activateTarget, canOfficeMutate }
       setResult({
         kind: "success",
         title: "Execution created",
-        message: "The runtime flow has been initialized. You can now track progress in the work feed or flow detail.",
+        message: "Execution has been started. You can track progress in the work feed or flow detail.",
       });
       router.refresh();
     } finally {
@@ -60,7 +60,8 @@ export function QuoteWorkspaceActivateSigned({ activateTarget, canOfficeMutate }
       <section className="mb-6 rounded border border-zinc-800 bg-zinc-950/25 p-4 text-sm">
         <h2 className="mb-1 text-sm font-medium text-zinc-200">Activate execution</h2>
         <p className="text-xs text-zinc-500">
-          Execution created. Use the <span className="font-medium text-sky-400">Execution bridge</span> below to test the runtime flow.
+          Execution created. Use the <span className="font-medium text-sky-400">Execution bridge</span> below to open
+          the work feed.
         </p>
       </section>
     );
@@ -70,7 +71,7 @@ export function QuoteWorkspaceActivateSigned({ activateTarget, canOfficeMutate }
     <section className="mb-6 rounded border border-zinc-800 bg-zinc-950/25 p-4 text-sm">
       <h2 className="mb-1 text-sm font-medium text-zinc-200">Activate execution</h2>
       <p className="text-xs text-zinc-500">
-        Start the runtime flow for v{activateTarget.versionNumber}.
+        Start execution for v{activateTarget.versionNumber}.
       </p>
 
       {!canOfficeMutate ? (
@@ -88,8 +89,8 @@ export function QuoteWorkspaceActivateSigned({ activateTarget, canOfficeMutate }
             {busy ? "Activating…" : "Launch execution"}
           </button>
           <p className="mt-2 text-[11px] text-zinc-500 leading-relaxed">
-            Launching will populate the stable node-based runtime structure for this quote. Once
-            activated, the quote will move into the execution phase.
+            Launching creates the job&apos;s task list from the signed proposal. After this, the quote moves into the
+            execution phase.
           </p>
         </div>
       )}
@@ -97,7 +98,7 @@ export function QuoteWorkspaceActivateSigned({ activateTarget, canOfficeMutate }
       <div className="mt-4 border-t border-zinc-800/40 pt-3">
         <details className="text-[10px] text-zinc-600">
           <summary className="cursor-pointer font-medium hover:text-zinc-500">
-            Technical details
+            Advanced (support)
           </summary>
           <div className="mt-2 space-y-2">
             <p>
@@ -120,7 +121,7 @@ export function QuoteWorkspaceActivateSigned({ activateTarget, canOfficeMutate }
               </Link>
             </div>
             <p className="text-zinc-500 italic">
-              Uses frozen snapshots from the send step. Requires prior signature and job shell.
+              Uses the locked proposal from the send step. Requires prior signature and job shell.
             </p>
           </div>
         </details>

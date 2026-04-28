@@ -63,7 +63,10 @@ export function QuoteWorkspaceProposedExecutionFlow({ flow, isEditableDraft }: P
           <SummaryRow summary={flow.summary} />
 
           {flow.warnings.length > 0 ? (
-            <WarningsList warnings={flow.warnings} isEditableDraft={isEditableDraft} />
+            <WarningsList
+              warnings={flow.warnings}
+              isEditableDraft={isEditableDraft}
+            />
           ) : null}
 
           {flow.stages.length === 0 ? (
@@ -137,6 +140,9 @@ function WarningsList({
   warnings: ProposedExecutionFlowLineWarning[];
   isEditableDraft: boolean;
 }) {
+  const advancedKeys = warnings
+    .map((w, i) => warningAdvancedKeyLine(w, i))
+    .filter((s): s is string => s != null);
   return (
     <div className="mt-4 rounded border border-amber-900/40 bg-amber-950/10 p-3">
       <h3 className="text-[11px] font-semibold uppercase tracking-wider text-amber-400/90">
@@ -147,6 +153,18 @@ function WarningsList({
           <li key={`${w.kind}-${i}`}>{warningCopy(w)}</li>
         ))}
       </ul>
+      {advancedKeys.length > 0 ? (
+        <details className="mt-3 text-[10px] text-amber-200/70">
+          <summary className="cursor-pointer font-medium text-amber-300/90 hover:text-amber-200">
+            Advanced (support)
+          </summary>
+          <ul className="mt-2 list-inside list-disc font-mono text-[10px] text-amber-100/60">
+            {advancedKeys.map((line, i) => (
+              <li key={i}>{line}</li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
       {isEditableDraft ? (
         <p className="mt-2 text-[11px] text-amber-300/80">
           If a line needs a packet or a stage fix, open the line-item editor. If the note is about execution
@@ -154,8 +172,7 @@ function WarningsList({
         </p>
       ) : (
         <p className="mt-2 text-[11px] text-amber-300/80">
-          These notes were captured at send time. The frozen plan above is what
-          activation will instantiate.
+          These notes were captured at send time. The locked plan above is what activation will use.
         </p>
       )}
     </div>
@@ -168,7 +185,7 @@ function warningCopy(w: ProposedExecutionFlowLineWarning): string {
   }
   const lineLabel = w.lineTitle ? `"${w.lineTitle}"` : `line ${shortId(w.lineItemId)}`;
   if (w.kind === "missingPacket") {
-    return `${lineLabel} has no task packet attached. Field-work lines create crew tasks only when a saved or one-off task packet is attached.`;
+    return `${lineLabel} has no task packet attached. Field-work lines create crew tasks only when a saved task packet or field work on this quote is attached.`;
   }
   if (w.kind === "missingLibraryRevision") {
     return `${lineLabel} references a saved task packet that isn't loadable (revision ${shortId(
@@ -176,13 +193,22 @@ function warningCopy(w: ProposedExecutionFlowLineWarning): string {
     )}). Re-attach to a visible packet to clear this state.`;
   }
   if (w.kind === "missingLocalPacket") {
-    return `${lineLabel} references one-off work that isn't loadable. Re-attach to a visible packet to clear this state.`;
+    return `${lineLabel} references field work on this quote that isn't loadable. Re-attach to a visible task packet to clear this state.`;
   }
   if (w.kind === "stageOffSnapshot") {
-    return `${lineLabel}: task "${w.taskTitle}" uses stage "${w.nodeId}", which is not available in the bound execution flow. Reassign the task to a stage that exists on the bound flow.`;
+    const stage = w.stageDisplayLabel.trim() || "this phase";
+    return `${lineLabel}: task "${w.taskTitle}" is assigned to “${stage}”, which is not available on the current work plan. Reassign the task to a standard phase that exists on the plan.`;
   }
   // stageNonCanonical
-  return `${lineLabel}: task "${w.taskTitle}" uses a non-canonical stage "${w.nodeId}". The task will still run but won't group with the canonical stages.`;
+  const stage = w.stageDisplayLabel.trim() || "this phase";
+  return `${lineLabel}: task "${w.taskTitle}" uses a non-standard phase (“${stage}”). The task will still run but may not group with the standard job phases.`;
+}
+
+function warningAdvancedKeyLine(w: ProposedExecutionFlowLineWarning, index: number): string | null {
+  if (w.kind === "stageOffSnapshot" || w.kind === "stageNonCanonical") {
+    return `#${index + 1} · ${w.taskTitle} · stage key ${w.nodeId}`;
+  }
+  return null;
 }
 
 function shortId(id: string): string {
@@ -205,7 +231,7 @@ function EmptyState({ summary }: { summary: ProposedExecutionFlow["summary"] }) 
     return (
       <p className="mt-4 text-xs text-zinc-500">
         All quoted lines are quote-only — none of them create crew work. You can still
-        send this proposal; activation will not generate runtime tasks.
+        send this proposal; activation will not create job tasks from these lines.
       </p>
     );
   }

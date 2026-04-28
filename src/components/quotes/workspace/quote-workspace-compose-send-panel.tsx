@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { InternalActionResult } from "@/components/internal/internal-action-result";
+import { composeSendProposalDisabledReason } from "@/lib/workspace/quote-workspace-send-disabled-reason";
 
 /** Mirrors `ComposePreviewResponseDto` fields we surface (avoid importing server-only types). */
 type ComposePreviewData = {
@@ -43,16 +44,15 @@ export function QuoteWorkspaceComposeSendPanel({ latestDraft, canOfficeMutate }:
   const router = useRouter();
   const [composeBusy, setComposeBusy] = useState(false);
   const [sendBusy, setSendBusy] = useState(false);
-  const [result, setResult] = useState<{ kind: "success" | "error"; title: string; message?: string; technicalDetails?: string } | null>(null);
+  const [result, setResult] = useState<{
+    kind: "success" | "error";
+    title: string;
+    message?: string;
+    technicalDetails?: string;
+  } | null>(null);
   /** Token from the last successful compose HTTP response (`data.stalenessToken`); required body field for send. */
   const [stalenessTokenForSend, setStalenessTokenForSend] = useState<string | null | undefined>(undefined);
   const [lastCompose, setLastCompose] = useState<ComposePreviewData | null>(null);
-
-  const resetSendLocalState = useCallback(() => {
-    setStalenessTokenForSend(undefined);
-    setLastCompose(null);
-    setResult(null);
-  }, []);
 
   const runComposePreview = useCallback(async () => {
     if (!latestDraft || !canOfficeMutate) return;
@@ -96,14 +96,17 @@ export function QuoteWorkspaceComposeSendPanel({ latestDraft, canOfficeMutate }:
       }
       setLastCompose(body.data);
       setStalenessTokenForSend(body.data.stalenessToken);
-      
+
       const hasErrors = body.data.errors.length > 0;
+      const errorMessages = body.data.errors.map((e) => e.message).filter(Boolean);
       setResult({
         kind: hasErrors ? "error" : "success",
         title: hasErrors ? "Preview found blocking errors" : "Preview generated",
-        message: hasErrors 
-          ? `There are ${body.data.errors.length} errors that must be fixed before this proposal can be sent.` 
-          : "The proposal composition is valid. You can now send it to the customer.",
+        message: hasErrors
+          ? errorMessages.length > 0
+            ? errorMessages.join(" ")
+            : `There are ${body.data.errors.length} issue(s) that must be fixed before this proposal can be sent.`
+          : "The proposal looks valid. You can send it to the customer.",
       });
     } finally {
       setComposeBusy(false);
@@ -116,7 +119,8 @@ export function QuoteWorkspaceComposeSendPanel({ latestDraft, canOfficeMutate }:
       setResult({
         kind: "error",
         title: "Action blocked",
-        message: "Run compose preview first; send requires a fresh staleness token from the server.",
+        message:
+          "Run Preview proposal first. Sending needs a successful preview so we know this version is up to date.",
       });
       return;
     }
@@ -137,22 +141,26 @@ export function QuoteWorkspaceComposeSendPanel({ latestDraft, canOfficeMutate }:
         error?: { code?: string; message?: string; composeErrors?: { code: string; message: string }[] };
       };
       if (!res.ok) {
-        const extra =
-          body.error?.composeErrors?.length ?
-            ` — ${body.error.composeErrors.map((e) => e.code).join(", ")}`
-          : "";
+        const composeMessages =
+          body.error?.composeErrors?.map((e) => e.message).filter(Boolean) ?? [];
+        const primaryMessage =
+          composeMessages.length > 0
+            ? composeMessages.join(" ")
+            : (body.error?.message ?? "An error occurred while sending the proposal.");
+        const codes = body.error?.composeErrors?.map((e) => e.code).join(", ") ?? body.error?.code ?? "ERROR";
         setResult({
           kind: "error",
           title: "Send failed",
-          message: body.error?.message ?? "An error occurred while sending the proposal.",
-          technicalDetails: `${body.error?.code ?? "ERROR"}: ${res.status}${extra}`,
+          message: primaryMessage,
+          technicalDetails: `${codes}: ${res.status}`,
         });
         return;
       }
       setResult({
         kind: "success",
         title: "Proposal sent",
-        message: "The proposal has been frozen and sent to the customer. This version is now waiting for a formal signature.",
+        message:
+          "The proposal has been locked and sent to the customer. This version is now waiting for a formal signature.",
       });
       setStalenessTokenForSend(undefined);
       setLastCompose(null);
@@ -170,32 +178,15 @@ export function QuoteWorkspaceComposeSendPanel({ latestDraft, canOfficeMutate }:
     !composeBlocking &&
     stalenessTokenForSend !== undefined;
 
-  const summaryLines = useMemo(() => {
-    if (!lastCompose) return null;
-    const { stats, staleness, errors, warnings, stalenessToken } = lastCompose;
-    return (
-      <ul className="mt-2 list-inside list-disc space-y-0.5 text-xs text-zinc-400">
-        <li>
-          Staleness: <span className="text-zinc-300">{staleness}</span> · token for send:{" "}
-          <code className="text-zinc-400">{stalenessToken === null ? "null" : (stalenessToken ?? "—")}</code>
-        </li>
-        <li>
-          Stats: lines {stats.lineItemCount}, plan tasks {stats.planTaskCount}, package tasks{" "}
-          {stats.packageTaskCount}
-        </li>
-        {errors.length > 0 ?
-          <li className="text-amber-600/90">
-            {errors.length} blocking error(s): {errors.map((e) => e.code).join(", ")}
-          </li>
-        : null}
-        {warnings.length > 0 ?
-          <li className="text-zinc-500">
-            {warnings.length} warning(s): {warnings.map((w) => w.code).join(", ")}
-          </li>
-        : null}
-      </ul>
-    );
-  }, [lastCompose]);
+  const sendDisabledReason = useMemo(() => {
+    if (!latestDraft || !canOfficeMutate) return null;
+    return composeSendProposalDisabledReason({
+      hasPinnedWorkflow: latestDraft.hasPinnedWorkflow,
+      hasLastCompose: lastCompose != null,
+      composeBlocking,
+      stalenessTokenForSendDefined: stalenessTokenForSend !== undefined,
+    });
+  }, [latestDraft, canOfficeMutate, lastCompose, composeBlocking, stalenessTokenForSend]);
 
   if (!latestDraft) {
     return (
@@ -212,8 +203,7 @@ export function QuoteWorkspaceComposeSendPanel({ latestDraft, canOfficeMutate }:
     <section className="mb-6 rounded border border-zinc-800 bg-zinc-950/60 p-4 text-sm border-rose-900/20 bg-rose-950/5">
       <h2 className="mb-1 text-sm font-medium text-zinc-200">Prepare & send proposal</h2>
       <p className="text-xs text-zinc-500">
-        Review the proposal composition for v{latestDraft.versionNumber} and send it to the
-        customer.
+        Review the proposal for v{latestDraft.versionNumber} and send it to the customer.
       </p>
 
       {!canOfficeMutate ? (
@@ -223,20 +213,17 @@ export function QuoteWorkspaceComposeSendPanel({ latestDraft, canOfficeMutate }:
       ) : (
         <>
           {!latestDraft.hasPinnedWorkflow ? (
-            // Operator-facing copy: never mention "pin a workflow" — Path B
-            // auto-pins the canonical workflow at quote-version creation, so
-            // an unpinned head means an internal invariant is broken (legacy
-            // data, or the ensure-helper failed silently). Surface the
-            // problem as a system condition; Technical details below shows
-            // the version id for support.
             <p className="mt-2 text-xs text-amber-700/90">
-              <span className="font-medium text-amber-600/90">
-                Execution flow not ready.
-              </span>{" "}
-              The proposed execution snapshot isn&apos;t bound yet. You can still run a preview to
-              check line items, but send will remain disabled until the system rebinds the flow.
+              <span className="font-medium text-amber-600/90">Work plan not ready.</span> The proposed execution flow
+              isn&apos;t attached yet. You can still run Preview proposal to check line items, but send stays disabled
+              until the system finishes attaching the plan.
             </p>
           ) : null}
+
+          <p className="mt-3 text-[11px] text-zinc-400 leading-relaxed">
+            Sending locks this version. The customer will see this scope and work plan, and you will not be able to
+            edit this version after sending.
+          </p>
 
           <div className="mt-4 flex flex-wrap gap-2">
             <button
@@ -251,15 +238,15 @@ export function QuoteWorkspaceComposeSendPanel({ latestDraft, canOfficeMutate }:
               type="button"
               disabled={sendBusy || !sendReady}
               title={
-                !sendReady ?
-                  !latestDraft.hasPinnedWorkflow ?
-                    "Execution flow not ready — system will rebind it shortly."
-                  : !lastCompose ?
-                    "Run preview to verify content."
-                  : composeBlocking ?
-                    "Fix blocking errors before sending."
-                  : "Run preview to obtain latest token."
-                : undefined
+                !sendReady
+                  ? (!latestDraft.hasPinnedWorkflow
+                      ? "Work plan not ready — the system should attach it shortly."
+                      : !lastCompose
+                        ? "Run preview to verify content."
+                        : composeBlocking
+                          ? "Fix blocking errors before sending."
+                          : "Run preview again to refresh.")
+                  : undefined
               }
               onClick={() => void runSend()}
               className="rounded bg-rose-900/80 px-4 py-1.5 text-xs font-medium text-rose-50 hover:bg-rose-800/90 disabled:opacity-40 transition-colors"
@@ -268,11 +255,12 @@ export function QuoteWorkspaceComposeSendPanel({ latestDraft, canOfficeMutate }:
             </button>
           </div>
 
-          <p className="mt-3 text-[11px] text-zinc-500 leading-relaxed">
-            Sending the proposal will <span className="text-zinc-400 font-medium">freeze</span> this
-            version. No further changes can be made to v{latestDraft.versionNumber} after it is
-            sent.
-          </p>
+          {!sendReady && sendDisabledReason ? (
+            <p className="mt-3 text-xs text-amber-200/90 leading-relaxed" role="status">
+              <span className="font-medium text-amber-100/95">Why Send is disabled: </span>
+              {sendDisabledReason}
+            </p>
+          ) : null}
 
           {result && (
             <InternalActionResult
@@ -287,13 +275,10 @@ export function QuoteWorkspaceComposeSendPanel({ latestDraft, canOfficeMutate }:
               }
             />
           )}
-          {summaryLines}
 
           <div className="mt-4 border-t border-zinc-800/40 pt-3">
             <details className="text-[10px] text-zinc-600">
-              <summary className="cursor-pointer font-medium hover:text-zinc-500">
-                Technical details
-              </summary>
+              <summary className="cursor-pointer font-medium hover:text-zinc-500">Advanced (support)</summary>
               <div className="mt-2 space-y-2">
                 <p>
                   Version ID: <span className="font-mono">{latestDraft.quoteVersionId}</span>
@@ -302,18 +287,34 @@ export function QuoteWorkspaceComposeSendPanel({ latestDraft, canOfficeMutate }:
                   <code className="text-zinc-500">POST …/compose-preview</code>
                   <code className="text-zinc-500">POST …/send</code>
                 </div>
-                {lastCompose && (lastCompose.errors.length > 0 || lastCompose.warnings.length > 0) ? (
-                  <div className="mt-2">
-                    <p className="mb-1 text-[9px] uppercase tracking-wider text-zinc-500">
-                      Compose messages
+                {lastCompose ? (
+                  <div className="mt-2 space-y-1 text-[11px] text-zinc-500">
+                    <p>
+                      Preview freshness: <span className="text-zinc-400">{lastCompose.staleness}</span>
                     </p>
-                    <pre className="max-h-40 overflow-auto rounded bg-zinc-900/80 p-2 text-[11px] leading-snug text-zinc-400">
-                      {JSON.stringify(
-                        { errors: lastCompose.errors, warnings: lastCompose.warnings },
-                        null,
-                        2,
-                      )}
-                    </pre>
+                    <p>
+                      Server preview id (for support):{" "}
+                      <code className="break-all text-zinc-400">
+                        {lastCompose.stalenessToken === null ? "none" : (lastCompose.stalenessToken ?? "—")}
+                      </code>
+                    </p>
+                    <p>
+                      Line items: {lastCompose.stats.lineItemCount}, plan tasks: {lastCompose.stats.planTaskCount},
+                      package tasks: {lastCompose.stats.packageTaskCount}, skeleton slots:{" "}
+                      {lastCompose.stats.skeletonSlotCount}, sold slots: {lastCompose.stats.soldSlotCount}
+                    </p>
+                    {lastCompose.errors.length > 0 || lastCompose.warnings.length > 0 ? (
+                      <div className="mt-2">
+                        <p className="mb-1 text-[9px] uppercase tracking-wider text-zinc-500">Compose diagnostics</p>
+                        <pre className="max-h-40 overflow-auto rounded bg-zinc-900/80 p-2 text-[11px] leading-snug text-zinc-400">
+                          {JSON.stringify(
+                            { errors: lastCompose.errors, warnings: lastCompose.warnings },
+                            null,
+                            2,
+                          )}
+                        </pre>
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
               </div>

@@ -167,7 +167,7 @@ export function QuoteWorkspaceExecutionBridge({ data }: Props) {
       <div className="mt-4 border-t border-zinc-800/40 pt-3">
         <details className="text-[10px] text-zinc-600">
           <summary className="cursor-pointer font-medium hover:text-zinc-500">
-            Technical details
+            Advanced (support)
           </summary>
           <div className="mt-2 space-y-2">
             <p>

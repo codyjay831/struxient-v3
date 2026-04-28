@@ -1,9 +1,9 @@
 /**
- * Pure helpers for the "Create one-off work for this quote" inline action
+ * Pure helpers for the inline "create task packet on this quote" action
  * inside the quote line-item form (Triangle Mode — UX bridge slice).
  *
  * Background: prior to this slice, an estimator who wanted to attach
- * one-off (quote-local) work to a line item had to scroll past the line
+ * quote-local field work to a line item had to scroll past the line
  * item editor, find the standalone `<QuoteLocalPacketEditor/>`, create a
  * packet there, then come back up and pick it from the dropdown. The
  * inline action lets them stay in the line-item form and trigger the
@@ -38,7 +38,7 @@ export type ValidatedOneOffWorkDisplayName =
 
 /**
  * Validate the displayName an estimator typed into the inline
- * "Create one-off work for this quote" form. Returns the trimmed value
+ * Inline create-task-packet form. Returns the trimmed value
  * when valid, otherwise a contractor-friendly error message suitable for
  * surfacing inline next to the input.
  *
@@ -51,6 +51,22 @@ export type ValidatedOneOffWorkDisplayName =
  * beyond `.trim()` — display names are free-form text the estimator
  * will see again on this same screen.
  */
+/**
+ * Display name for inline quick-create: uses the line title unless the user
+ * opened customize and entered a non-empty override.
+ */
+export function resolveFieldWorkDisplayNameForQuickCreate(params: {
+  lineTitleTrimmed: string;
+  customizeOpen: boolean;
+  customInputTrimmed: string;
+}): string {
+  if (params.lineTitleTrimmed.length === 0) return "";
+  if (!params.customizeOpen) return params.lineTitleTrimmed;
+  return params.customInputTrimmed.length > 0
+    ? params.customInputTrimmed
+    : params.lineTitleTrimmed;
+}
+
 export function validateOneOffWorkDisplayNameInput(
   raw: string,
 ): ValidatedOneOffWorkDisplayName {
@@ -59,7 +75,7 @@ export function validateOneOffWorkDisplayNameInput(
     return {
       ok: false,
       message:
-        "Give this one-off work a short name (e.g. 'Roof tear-off for this house').",
+        "Give this field work a short name (e.g. 'Roof tear-off for this house').",
     };
   }
   if (trimmed.length > MAX_ONE_OFF_WORK_DISPLAY_NAME) {

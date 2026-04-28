@@ -1,6 +1,6 @@
-import {
-  buildExecutionPreviewSummary,
-  type LineItemExecutionPreviewDto,
+import type {
+  ExecutionPreviewTaskRow,
+  LineItemExecutionPreviewDto,
 } from "@/lib/quote-line-item-execution-preview";
 
 /**
@@ -12,20 +12,10 @@ import {
  * compose engine. The same data is what `runComposeFromReadModel` would
  * later iterate over (compose remains the source of truth at send/freeze).
  *
- * Five rendered shapes (one per `LineItemExecutionPreviewDto.kind`):
- *  - `soldScopeCommercial`: zinc note, commercial-only.
- *  - `manifestNoPacket`: amber warning matching the picker validator.
- *  - `manifestLibraryMissing` / `manifestLocalMissing`: red diagnostic.
- *  - `manifestLibrary` / `manifestLocal`: header (packet name + revision badge
- *    when library) + a compact list of tasks with stage label and
- *    requirement-kind tags. Empty packets render the header with a "0 tasks"
- *    note so the empty state is explicit, not silent.
- *
  * Pure presentational component (no React hooks). Lives in `components/`
  * without a `"use client"` marker so both the editable scope editor (a
  * client component) and the read-only office frozen-version scope page (a
- * server component) can mount it identically — visibility/readiness slice
- * parity, no UX divergence between live and frozen views.
+ * server component) can mount it identically.
  */
 export function LineItemExecutionPreviewBlock({
   preview,
@@ -34,153 +24,196 @@ export function LineItemExecutionPreviewBlock({
 }) {
   if (preview.kind === "soldScopeCommercial") {
     return (
-      <div className="rounded border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-[11px] text-zinc-400">
-        Quote-only line. Won&rsquo;t create any crew work unless a work template is attached.
+      <div className="rounded-lg border border-zinc-800/80 bg-zinc-950/35 px-4 py-3 text-sm leading-relaxed text-zinc-400">
+        Quote-only line. Won&rsquo;t create crew work unless a task packet is attached.
       </div>
     );
   }
   if (preview.kind === "manifestNoPacket") {
     return (
-      <div className="rounded border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-300">
-        No work template attached. Field-work lines create crew tasks only when a saved work
-        template or one-off work for this quote is attached.
+      <div className="rounded-lg border border-amber-900/45 bg-amber-950/25 px-4 py-3 text-sm leading-relaxed text-amber-200">
+        No field work attached yet. Attach saved field work or create field work on this quote,
+        then save the line.
       </div>
     );
   }
   if (preview.kind === "manifestLibraryMissing") {
     return (
-      <div className="rounded border border-red-900/50 bg-red-950/20 px-3 py-2 text-[11px] text-red-300 space-y-1">
-        <p className="font-medium">Saved work template version isn&rsquo;t loaded</p>
-        <p className="font-mono opacity-90">revisionId: {preview.scopePacketRevisionId}</p>
-        <p className="opacity-80">
-          The template may have been archived or moved out of this tenant. Re-attach the line to a
-          visible template to clear this state.
+      <div className="rounded-lg border border-red-900/45 bg-red-950/25 px-4 py-3 text-sm text-red-200 space-y-2">
+        <p className="font-semibold text-red-100">Saved task packet isn&rsquo;t available</p>
+        <p className="text-xs text-red-200/90 leading-relaxed">
+          The packet may have been archived or moved. Re-attach this line to a visible saved task
+          packet.
         </p>
+        <details className="text-xs text-red-300/80">
+          <summary className="cursor-pointer hover:text-red-200 select-none">Technical details</summary>
+          <p className="mt-1 font-mono text-[11px] opacity-90 break-all">
+            revisionId: {preview.scopePacketRevisionId}
+          </p>
+        </details>
       </div>
     );
   }
   if (preview.kind === "manifestLocalMissing") {
     return (
-      <div className="rounded border border-red-900/50 bg-red-950/20 px-3 py-2 text-[11px] text-red-300 space-y-1">
-        <p className="font-medium">One-off work for this quote isn&rsquo;t loaded</p>
-        <p className="font-mono opacity-90">quoteLocalPacketId: {preview.quoteLocalPacketId}</p>
-        <p className="opacity-80">
-          It may have been deleted from this quote. Re-attach the line to a visible template to
-          clear this state.
+      <div className="rounded-lg border border-red-900/45 bg-red-950/25 px-4 py-3 text-sm text-red-200 space-y-2">
+        <p className="font-semibold text-red-100">Field work on this quote isn&rsquo;t available</p>
+        <p className="text-xs text-red-200/90 leading-relaxed">
+          It may have been removed from this quote. Re-attach field work or a saved task packet.
         </p>
+        <details className="text-xs text-red-300/80">
+          <summary className="cursor-pointer hover:text-red-200 select-none">Technical details</summary>
+          <p className="mt-1 font-mono text-[11px] opacity-90 break-all">
+            quoteLocalPacketId: {preview.quoteLocalPacketId}
+          </p>
+        </details>
       </div>
     );
   }
-  // manifestLibrary | manifestLocal
+
   const headerTitle = preview.packetName;
   const taskCount = preview.tasks.length;
-  // Subtitle uses display-only labels; the technical packetKey / revision id
-  // remain on the library shape so reviewers can still cross-reference the
-  // catalog row if needed.
-  const headerSubtitle =
-    preview.kind === "manifestLibrary"
-      ? `Saved work template · ${preview.packetKey} · v${preview.revisionNumber} ${preview.revisionStatus}${preview.revisionIsLatest ? "" : " · older version"}`
-      : "One-off work for this quote";
   const headerTone =
     preview.kind === "manifestLibrary"
       ? preview.revisionIsLatest
-        ? "border-sky-900/50 bg-sky-950/20"
-        : "border-amber-900/50 bg-amber-950/20"
-      : "border-emerald-900/50 bg-emerald-950/20";
+        ? "border-sky-900/40 bg-sky-950/20"
+        : "border-amber-900/40 bg-amber-950/20"
+      : "border-emerald-900/40 bg-emerald-950/20";
+
+  const librarySummary =
+    preview.kind === "manifestLibrary"
+      ? `${formatRevisionStatus(preview.revisionStatus)} · version ${preview.revisionNumber}${
+          preview.revisionIsLatest ? "" : " · not the latest published version"
+        }`
+      : "Editable on this quote";
+
   return (
-    <div className={`rounded border ${headerTone} px-3 py-2 space-y-2`}>
-      <div className="flex items-baseline justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[11px] font-semibold text-zinc-100 truncate">{headerTitle}</p>
-          <p className="mt-0.5 text-[10px] text-zinc-400 font-mono truncate">{headerSubtitle}</p>
+    <div className={`rounded-lg border ${headerTone} px-4 py-3 space-y-3`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1 space-y-1">
+          <p className="text-base font-semibold text-zinc-50 leading-snug truncate">{headerTitle}</p>
+          <p className="text-xs text-zinc-500 leading-relaxed">
+            {preview.kind === "manifestLibrary" ? "Saved task packet" : "Field work on this quote"} ·{" "}
+            {librarySummary}
+          </p>
+          {preview.kind === "manifestLibrary" ? (
+            <details className="text-xs text-zinc-600">
+              <summary className="cursor-pointer hover:text-zinc-400 select-none">Catalog reference</summary>
+              <div className="mt-1 space-y-0.5 font-mono text-[11px] text-zinc-500 break-all">
+                <p>packetKey: {preview.packetKey}</p>
+                <p>revisionId: {preview.revisionId}</p>
+              </div>
+            </details>
+          ) : null}
         </div>
-        <p className="text-[10px] uppercase tracking-wider text-zinc-400 shrink-0">
+        <p className="text-xs font-medium text-zinc-500 shrink-0 tabular-nums">
           {taskCount} {taskCount === 1 ? "task" : "tasks"}
         </p>
       </div>
       {taskCount === 0 ? (
-        <p className="text-[10px] text-zinc-500 italic">
-          This template has no work yet — no crew tasks will be created for this line.
+        <p className="text-sm text-amber-200/95 leading-relaxed">
+          {preview.kind === "manifestLocal"
+            ? "No tasks yet. Add tasks in Field work on this quote below."
+            : "No tasks in this packet yet — no crew tasks will be created for this line."}
         </p>
       ) : (
-        <>
-          <p className="text-[11px] text-zinc-300">
-            {buildExecutionPreviewSummary(preview.tasks)}
-          </p>
-          <ul className="space-y-1.5">
-            {preview.tasks.map((t) => (
-              <ExecutionPreviewTaskItem key={t.lineKey} task={t} />
-            ))}
-          </ul>
-        </>
+        <ul className="space-y-3 list-none p-0 m-0">
+          {renderPreviewTasksWithStageGroups(preview.tasks)}
+        </ul>
       )}
     </div>
   );
 }
 
+function formatRevisionStatus(status: string): string {
+  if (status === "PUBLISHED") return "Published";
+  if (status === "DRAFT") return "Draft";
+  if (status === "SUPERSEDED") return "Superseded";
+  return status;
+}
+
+function sortPreviewTasksForDisplay(tasks: ExecutionPreviewTaskRow[]): ExecutionPreviewTaskRow[] {
+  return [...tasks].sort((a, b) => {
+    const byStage = a.stage.displayLabel.localeCompare(b.stage.displayLabel);
+    if (byStage !== 0) return byStage;
+    if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+    return a.title.localeCompare(b.title);
+  });
+}
+
+function renderPreviewTasksWithStageGroups(tasks: ExecutionPreviewTaskRow[]) {
+  const sorted = sortPreviewTasksForDisplay(tasks);
+  const groups: { stageLabel: string; tasks: ExecutionPreviewTaskRow[] }[] = [];
+  for (const t of sorted) {
+    const label = t.stage.displayLabel;
+    const last = groups[groups.length - 1];
+    if (last && last.stageLabel === label) {
+      last.tasks.push(t);
+    } else {
+      groups.push({ stageLabel: label, tasks: [t] });
+    }
+  }
+  return groups.map((g, idx) => (
+    <li key={`${idx}-${g.stageLabel}`} className="list-none">
+      <p className="text-xs font-semibold text-zinc-500">{g.stageLabel}</p>
+      <ul className="mt-1.5 space-y-0.5 list-none p-0 m-0">
+        {g.tasks.map((task) => (
+          <ExecutionPreviewTaskItem key={task.lineKey} task={task} stageGrouped />
+        ))}
+      </ul>
+    </li>
+  ));
+}
+
 function ExecutionPreviewTaskItem({
   task,
+  stageGrouped = false,
 }: {
-  // We intentionally accept the array element type structurally so the
-  // helper module's union doesn't have to expose the per-task shape twice.
-  task: Extract<
-    LineItemExecutionPreviewDto,
-    { kind: "manifestLibrary" | "manifestLocal" }
-  >["tasks"][number];
+  task: ExecutionPreviewTaskRow;
+  /** When true, stage is shown in the section heading — only show tier / off-template warnings here. */
+  stageGrouped?: boolean;
 }) {
-  const sourceBadgeTone =
-    task.sourceKind === "taskDefinition"
-      ? "border-sky-800/60 bg-sky-950/40 text-sky-300"
-      : "border-zinc-700 bg-zinc-900 text-zinc-300";
-  const sourceBadgeLabel =
-    task.sourceKind === "taskDefinition"
-      ? `TaskDef${task.taskDefinitionRef ? ` · ${task.taskDefinitionRef.taskKey}` : ""}`
-      : "Embedded";
-  return (
-    <li className="rounded bg-zinc-950/60 border border-zinc-800/80 px-2 py-1.5">
-      <div className="flex items-baseline justify-between gap-2">
-        <p className="text-[11px] font-medium text-zinc-100 truncate min-w-0">{task.title}</p>
-        <span
-          className={`text-[9px] uppercase tracking-wider rounded border px-1 py-0.5 shrink-0 ${sourceBadgeTone}`}
-        >
-          {sourceBadgeLabel}
-        </span>
-      </div>
-      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-zinc-400">
-        <span className="inline-flex items-baseline gap-1">
-          <span className="opacity-70">Stage:</span>
-          <span className={task.stage.isOnSnapshot ? "text-zinc-200" : "text-amber-300"}>
-            {task.stage.displayLabel}
-          </span>
-          <span className="font-mono opacity-60">({task.stage.nodeId})</span>
-          {!task.stage.isOnSnapshot ? (
-            <span className="text-amber-300 opacity-90">
-              · stage isn&rsquo;t in this process template
+  const meta =
+    stageGrouped && task.stage.isOnSnapshot && !task.tierCode ? null : (
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500">
+        {stageGrouped ? (
+          !task.stage.isOnSnapshot ? (
+            <span className="text-amber-300 font-medium">
+              Not in this process template
+              <span className="font-normal text-amber-200/80"> · {task.stage.displayLabel}</span>
             </span>
-          ) : null}
-        </span>
-        {task.tierCode ? (
-          <span className="inline-flex items-baseline gap-1">
-            <span className="opacity-70">Tier:</span>
-            <span className="font-mono">{task.tierCode}</span>
-          </span>
-        ) : null}
+          ) : task.tierCode ? (
+            <span>Tier {task.tierCode}</span>
+          ) : null
+        ) : (
+          <>
+            <span className={task.stage.isOnSnapshot ? "text-zinc-400" : "text-amber-300 font-medium"}>
+              {task.stage.displayLabel}
+              {!task.stage.isOnSnapshot ? (
+                <span className="font-normal"> · not in this process template</span>
+              ) : null}
+            </span>
+            {task.tierCode ? <span>Tier {task.tierCode}</span> : null}
+          </>
+        )}
       </div>
+    );
+  return (
+    <li className="rounded-md border border-zinc-800/70 bg-zinc-950/50 px-3 py-2">
+      <p className="text-sm font-semibold text-zinc-50 leading-snug truncate">{task.title}</p>
+      {meta}
       {task.requirementKinds.length > 0 ? (
-        <div className="mt-1 flex flex-wrap items-center gap-1">
-          <span className="text-[9px] uppercase tracking-wider text-zinc-500">requires:</span>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {task.requirementKinds.map((k) => (
             <span
               key={k}
-              className="rounded border border-zinc-700 bg-zinc-900/80 px-1 py-px text-[9px] text-zinc-300"
+              className="rounded border border-amber-900/40 bg-amber-950/25 px-1.5 py-0.5 text-[10px] font-medium text-amber-200"
             >
               {k}
             </span>
           ))}
         </div>
-      ) : (
-        <p className="mt-1 text-[9px] text-zinc-600 italic">no authored completion requirements</p>
-      )}
+      ) : null}
     </li>
   );
 }

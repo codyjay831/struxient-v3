@@ -12,13 +12,27 @@
  * Implementation notes:
  *   - The canonical execution-stages workflow is auto-pinned at quote-version
  *     creation (`ensureCanonicalWorkflowVersionInTransaction`). The
- *     "execution flow bound" check below should pass for any quote created
+ *     "work plan attached" check below should pass for any quote created
  *     after the Path B rollout; an unbound head signals legacy data or an
  *     internal failure rather than user authoring work.
  *   - User-facing copy here MUST NOT mention "pin a process template",
  *     "node skeleton", "workflow skeleton", or `targetNodeKey`. Those are
  *     internal implementation details under Path B.
  */
+
+/** 1-indexed step numbers matching the office workspace pipeline UI. */
+export const WORKSPACE_PIPELINE_STEP_TITLES: Record<number, string> = {
+  1: "Build the quote",
+  2: "Review execution flow",
+  3: "Send proposal",
+  4: "Record signature",
+  5: "Activate execution",
+};
+
+export function workspaceRecommendedStepTitle(stepIndex: number | null): string | null {
+  if (stepIndex == null) return null;
+  return WORKSPACE_PIPELINE_STEP_TITLES[stepIndex] ?? null;
+}
 
 /** Subset of `QuoteVersionHistoryItemDto` (+ derived line item count) — keep in sync manually. */
 export type QuoteHeadReadinessInput = {
@@ -67,6 +81,8 @@ export type QuoteHeadWorkspaceReadiness =
       checklist: ReadinessChecklistItem[];
       likelyNextSteps: string[];
       recommendedStepIndex: number | null; // 1-indexed to match UI steps
+      /** Plain-language title for `recommendedStepIndex` (office workspace). */
+      recommendedStepTitle: string | null;
       honestyNotes: string[];
     };
 
@@ -85,9 +101,8 @@ function checklistItem(
  * Recommendation order under Path B: scope authoring is the primary user
  * step, then the operator reviews the proposed execution flow generated
  * from line items + task packets, then send/sign/activate. The execution-
- * stages workflow is auto-pinned at creation, so the "execution flow
- * bound" check below is normally a system-level signal rather than user
- * authoring guidance.
+ * stages plan is auto-attached at creation, so the "work plan attached" check
+ * below is normally a system-level signal rather than user authoring work.
  *
  * Send "readiness" for drafts is intentionally partial — compose errors /
  * empty plan are only knowable via compose-preview + send-time compose.
@@ -110,50 +125,68 @@ export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput 
           ? `${String(head.lineItemCount)} line item(s) on this draft. Line items and their task packets define the sold work.`
           : "No line items yet — add line items in step 1 before reviewing the execution flow or sending."
         : hasScope
-          ? "Frozen scope from this version is what activation will instantiate."
+          ? "Line items on this version are what activation uses after sign-off."
           : "Unusual for sent/signed — no line items recorded on this version.",
     ),
     checklistItem(
       "pin",
-      "Execution flow bound",
+      "Work plan attached to this draft",
       head.hasPinnedWorkflow ? "yes" : "no",
       status === "DRAFT"
         ? head.hasPinnedWorkflow
-          ? "The proposed execution flow is bound to this draft. Review it in step 2 before sending."
-          : "Internal: execution flow not bound. New quotes auto-bind on creation; an unbound head signals legacy data — contact support or use the admin override."
+          ? "The proposed execution flow is attached. Review it in step 2 before sending."
+          : "This draft is not attached to a standard work plan. New quotes attach automatically; if this persists, contact support and use Advanced on this card for the version id."
         : status === "SENT" || status === "SIGNED" || status === "DECLINED"
           ? head.hasPinnedWorkflow
-            ? "Expected after a normal send — the frozen snapshot is bound to the execution flow version."
-            : "Unusual for sent/signed — verify data or history."
+            ? "Expected after send — the locked proposal stays tied to the same work plan version."
+            : "Unusual for sent/signed — contact support if this looks wrong."
           : undefined,
     ),
-    checklistItem(
-      "frozen",
-      "Frozen plan/package snapshot recorded",
-      head.hasFrozenArtifacts ? "yes" : "no",
-      status === "DRAFT"
-        ? "Usually false while still draft; send records hashes."
-        : "After send, expect yes; use freeze read for detail.",
-    ),
+    ...(status === "DRAFT"
+      ? [
+          head.hasFrozenArtifacts
+            ? checklistItem(
+                "frozen",
+                "Proposal locked on file",
+                "yes",
+                "This draft already has a locked proposal record (unusual before sending). Contact support if unsure.",
+              )
+            : checklistItem(
+                "frozen",
+                "Not sent yet",
+                "n/a",
+                "Sending locks the customer-visible proposal and work plan.",
+              ),
+        ]
+      : [
+          checklistItem(
+            "frozen",
+            "Proposal sent and locked",
+            head.hasFrozenArtifacts ? "yes" : "no",
+            head.hasFrozenArtifacts
+              ? "After send, the customer-visible proposal and work plan stay locked for audit and sign-off."
+              : "Unusual for a sent or signed revision — contact support.",
+          ),
+        ]),
     checklistItem(
       "activation",
-      "Activation row exists",
+      "Activation recorded",
       head.hasActivation ? "yes" : "no",
       status === "DRAFT" || status === "SENT"
-        ? "Activation follows sign in the normal pipeline (not expected on draft/sent-only)."
+        ? "Activation comes after signature in the normal path (not expected on draft or sent-only)."
         : status === "DECLINED"
           ? "Customer declined this revision on the portal — not eligible for activation."
           : status === "SIGNED"
           ? head.hasActivation
-            ? "Post-activate — use lifecycle + runtime reads as appropriate."
-            : "Signed but not activated — POST activate when prerequisites are met."
+            ? "Execution has been started for this revision."
+            : "Signed but not started — use Activate execution when prerequisites are met."
           : undefined,
     ),
     checklistItem(
       "groups",
       "Proposal groups on this version",
       head.proposalGroupCount > 0 ? "yes" : "no",
-      `${String(head.proposalGroupCount)} group(s) — structural hint only; does not prove compose will pass.`,
+      `${String(head.proposalGroupCount)} group(s) — structural hint only; run Preview proposal in the Send step to validate.`,
     ),
   ];
 
@@ -175,27 +208,25 @@ export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput 
   const likelyNextSteps: string[] = [];
   let recommendedStepIndex: number | null = null;
   const honestyNotes: string[] = [
-    "This summary uses workspace/history fields only. It does not embed scope, lifecycle, or freeze JSON.",
-    "Line items and their task packets define the sold work. Stages organize the work; task packets define the actual tasks, order, blockers, and proof requirements.",
+    "This card summarizes fields from your workspace history. It is not a substitute for a full commercial or legal review.",
+    "Line items define what you sell; task packets define the crew work after approval. Stages group that work in the proposed execution flow.",
   ];
 
   if (status === "DRAFT") {
     honestyNotes.push(
-      "Whether send will succeed is not fully knowable here: send re-runs compose server-side; run compose-preview for validation and staleness token.",
+      "Send can still be blocked by proposal preview errors. Use Preview proposal in the Send step before sending.",
     );
 
     if (!hasScope) {
       recommendedStepIndex = 1; // Build the quote
       likelyNextSteps.push(
-        "Add line items to this draft — line items are the primary scope authoring object. Field-work lines also need a task packet attached.",
+        "Add line items to this draft — line items are the primary scope object. Field-work lines also need a task packet attached.",
       );
-      likelyNextSteps.push(
-        "Then review the proposed execution flow (step 2) before sending.",
-      );
+      likelyNextSteps.push("Then review the proposed execution flow (step 2) before sending.");
     } else if (!head.hasPinnedWorkflow) {
       recommendedStepIndex = 2; // Review proposed execution flow (system-bind issue surfaces here)
       likelyNextSteps.push(
-        "Internal: this draft is not bound to an execution flow version. New quotes auto-bind on creation, so this row indicates legacy data or an internal failure. Contact support or use the admin override in technical details.",
+        "This draft is not attached to a standard work plan. New quotes attach automatically; if this persists, contact support.",
       );
     } else if (head.packetStageReadiness != null && head.packetStageReadiness.state === "no") {
       // Scope authored and flow bound, but the per-line execution preview
@@ -208,43 +239,49 @@ export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput 
         "Review the proposed execution flow (step 2) — one or more field-work lines need attention before sending.",
       );
       likelyNextSteps.push(
-        "Open the line-item editor to attach a task packet or move tasks back to a canonical stage.",
+        "Open the line-item editor to attach a task packet or move tasks to a standard phase.",
       );
     } else {
       // Happy path under Path B: scope is authored, the canonical execution
-      // flow is auto-pinned, and there are no per-line warnings. The
+      // plan is auto-attached, and there are no per-line warnings. The
       // operator can review step 2 if they want and then send (step 3).
       recommendedStepIndex = 3;
       likelyNextSteps.push(
-        "Review the proposed execution flow (step 2) if you want to verify stages and tasks before sending.",
+        "Review the proposed execution flow (step 2) if you want to verify phases and tasks before sending.",
       );
       likelyNextSteps.push(
-        "When ready: run compose preview, then send (freeze) using the compose staleness token — see step 3.",
+        "When ready: run Preview proposal, then Send proposal in step 3.",
       );
     }
   } else if (status === "SENT") {
     recommendedStepIndex = 4; // Record signature
-    likelyNextSteps.push("Inspect artifacts: GET …/freeze and …/lifecycle for this version.");
-    likelyNextSteps.push("Next lifecycle move: POST …/sign when business rules allow (body/actor requirements unchanged).");
+    likelyNextSteps.push(
+      "Share the customer portal link (step 4), then record the signature when the customer has approved.",
+    );
+    likelyNextSteps.push("If you use in-office sign-off instead, use Record customer signature when allowed.");
   } else if (status === "SIGNED") {
     if (!head.hasActivation) {
       recommendedStepIndex = 5; // Activate execution
-      likelyNextSteps.push("Inspect: GET …/lifecycle, …/freeze as needed.");
-      likelyNextSteps.push("If eligible: POST …/activate (separate prerequisites — see route docs).");
+      likelyNextSteps.push("When prerequisites are met, use Activate execution (step 5) to create the job task list.");
+      likelyNextSteps.push("If something blocks activation, check the message on the Activate panel or contact support.");
     } else {
       recommendedStepIndex = null; // Done
-      likelyNextSteps.push("Activation exists: follow runtime / flow-group execution reads (not shown in this workspace slice).");
+      likelyNextSteps.push(
+        "Execution is already active for this revision. Use Execution bridge on this page to open the work feed or related tools.",
+      );
     }
   } else if (status === "DECLINED") {
     recommendedStepIndex = null;
     honestyNotes.push(
-      "This revision was declined by the customer on the portal. Frozen payloads are retained for audit; it is not signable.",
+      "This revision was declined by the customer on the portal. Locked records are kept for audit; it is not signable.",
     );
-    likelyNextSteps.push("Review decline reason in version history or the signature step panel, then prepare a new draft if appropriate.");
+    likelyNextSteps.push(
+      "Review the decline reason in revision history or the signature panel, then create a new draft if you need a revised proposal.",
+    );
   } else if (status === "VOID") {
     recommendedStepIndex = null;
-    honestyNotes.push("This revision was voided (withdrawn). Frozen payloads are retained for audit; it is not signable.");
-    likelyNextSteps.push("Use version history: create or open a non-void draft to continue commercial work.");
+    honestyNotes.push("This revision was voided (withdrawn). Locked records are kept for audit; it is not signable.");
+    likelyNextSteps.push("Use revision history: create or open a non-void draft to continue commercial work.");
   } else if (status === "SUPERSEDED") {
     recommendedStepIndex = null;
     honestyNotes.push(
@@ -252,7 +289,7 @@ export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput 
     );
     likelyNextSteps.push("Open the newest SENT or draft row in revision history for current work.");
   } else {
-    likelyNextSteps.push("Unknown status — treat lifecycle reads as source of truth.");
+    likelyNextSteps.push("This status is unexpected here — contact support or check revision history.");
   }
 
   return {
@@ -263,6 +300,7 @@ export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput 
     checklist,
     likelyNextSteps,
     recommendedStepIndex,
+    recommendedStepTitle: workspaceRecommendedStepTitle(recommendedStepIndex),
     honestyNotes,
   };
 }

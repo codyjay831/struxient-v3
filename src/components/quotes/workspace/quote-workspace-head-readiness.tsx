@@ -26,6 +26,55 @@ function toReadinessInput(
   };
 }
 
+function readinessCardTitle(status: string, hasActivation: boolean): { title: string; subtitle: string } {
+  if (status === "DRAFT") {
+    return {
+      title: "Get this quote ready to send",
+      subtitle: "Fix anything marked needs attention before you send this quote.",
+    };
+  }
+  if (status === "SENT") {
+    return {
+      title: "Waiting on the customer",
+      subtitle: "Track portal delivery and record the signature when the customer approves.",
+    };
+  }
+  if (status === "SIGNED") {
+    if (hasActivation) {
+      return {
+        title: "Execution is active",
+        subtitle: "This revision has been started. Use Execution bridge for the work feed and related tools.",
+      };
+    }
+    return {
+      title: "Ready to start work",
+      subtitle: "The customer has signed. Activate execution when prerequisites are met.",
+    };
+  }
+  if (status === "DECLINED") {
+    return {
+      title: "Customer declined",
+      subtitle: "This revision is not signable. Review the decline reason and open a new draft if you need a revised proposal.",
+    };
+  }
+  if (status === "VOID") {
+    return {
+      title: "Revision withdrawn",
+      subtitle: "Office voided this revision. Use revision history to open or create a draft to continue.",
+    };
+  }
+  if (status === "SUPERSEDED") {
+    return {
+      title: "Older revision",
+      subtitle: "A newer version was sent. Open the newest SENT or draft row for current work.",
+    };
+  }
+  return {
+    title: "Quote status",
+    subtitle: "Review the checklist and recommended path for this revision.",
+  };
+}
+
 type Props = {
   head: QuoteVersionHistoryItemDto | null;
   /** Count of line items on the head version (drives the "scope authored" check). */
@@ -55,7 +104,7 @@ export function QuoteWorkspaceHeadReadiness({
   if (r.kind === "no_versions") {
     return (
       <section className="mb-6 rounded-lg border border-dashed border-zinc-800 bg-zinc-950/30 p-6 text-sm">
-        <h2 className="text-base font-semibold text-zinc-200">Before you can send</h2>
+        <h2 className="text-base font-semibold text-zinc-200">Get this quote ready to send</h2>
         <p className="mt-2 text-zinc-500">No versions have been created for this quote yet.</p>
       </section>
     );
@@ -65,26 +114,29 @@ export function QuoteWorkspaceHeadReadiness({
   const satisfied = r.checklist.filter((c) => c.state === "yes");
   const missing = r.checklist.filter((c) => c.state === "no");
   const na = r.checklist.filter((c) => c.state === "n/a");
+  const hasActivation = head?.hasActivation ?? false;
+  const { title: cardTitle, subtitle: cardSubtitle } = readinessCardTitle(r.status, hasActivation);
+  const nextLabel =
+    r.recommendedStepTitle != null && r.recommendedStepIndex != null
+      ? `Next: ${r.recommendedStepTitle}`
+      : null;
 
   return (
     <section className="mb-10 rounded-xl border border-zinc-800 bg-zinc-900/20 p-6 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-800 pb-4">
         <div>
-          <h2 className="text-lg font-semibold text-zinc-100">Before you can send</h2>
-          <p className="mt-1 text-xs text-zinc-400">
-            Fix anything marked needs attention before sending this quote.
-          </p>
+          <h2 className="text-lg font-semibold text-zinc-100">{cardTitle}</h2>
+          <p className="mt-1 text-xs text-zinc-400">{cardSubtitle}</p>
           <p className="mt-2 text-[11px] text-zinc-500">
-            Latest revision (v{r.versionNumber}) · <span className="text-zinc-400 font-medium uppercase tracking-wider">{r.status}</span>
+            Latest revision (v{r.versionNumber}) ·{" "}
+            <span className="text-zinc-400 font-medium uppercase tracking-wider">{r.status}</span>
           </p>
         </div>
-        {r.recommendedStepIndex && (
+        {nextLabel ? (
           <div className="rounded-full bg-sky-500/10 px-3 py-1 border border-sky-500/20">
-            <span className="text-[11px] font-bold uppercase tracking-widest text-sky-400">
-              Next Step: {r.recommendedStepIndex}
-            </span>
+            <span className="text-[11px] font-bold uppercase tracking-widest text-sky-400">{nextLabel}</span>
           </div>
-        )}
+        ) : null}
       </div>
 
       <div className="mt-6 grid gap-8 sm:grid-cols-2">
@@ -105,7 +157,7 @@ export function QuoteWorkspaceHeadReadiness({
                 </ul>
               </div>
             )}
-            
+
             {satisfied.length > 0 && (
               <div>
                 <h4 className="text-[10px] font-bold uppercase tracking-tight text-emerald-500/80 mb-2">
@@ -146,24 +198,28 @@ export function QuoteWorkspaceHeadReadiness({
                 </li>
               ))}
             </ol>
-            {r.recommendedStepIndex && (
+            {r.recommendedStepIndex && r.recommendedStepTitle ? (
               <div className="mt-4 pt-4 border-t border-zinc-800">
-                <p className="text-[10px] text-zinc-500 italic">
-                  Scroll down to Section {r.recommendedStepIndex} to proceed.
+                <p className="text-[10px] text-zinc-500">
+                  Go to{" "}
+                  <a href={`#step-${r.recommendedStepIndex}`} className="text-sky-400/90 hover:underline font-medium">
+                    step {r.recommendedStepIndex}: {r.recommendedStepTitle}
+                  </a>
+                  .
                 </p>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       </div>
 
       <div className="mt-8 pt-4 border-t border-zinc-800">
         <details className="text-[10px] text-zinc-600">
-          <summary className="cursor-pointer font-medium hover:text-zinc-500">Technical details & honesty notes</summary>
+          <summary className="cursor-pointer font-medium hover:text-zinc-500">Advanced (support)</summary>
           <div className="mt-4 space-y-3">
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1.5">Constraints</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1.5">Notes</p>
                 <ul className="list-disc list-inside space-y-1 text-[11px] text-zinc-500">
                   {r.honestyNotes.map((s, i) => (
                     <li key={i}>{s}</li>
@@ -175,10 +231,13 @@ export function QuoteWorkspaceHeadReadiness({
                 <div className="flex flex-wrap gap-x-4 gap-y-2 font-mono text-[11px]">
                   <span className="text-zinc-500">ID: {vid}</span>
                   <Link href={`/dev/quote-scope/${vid}`} className="text-sky-500/90 hover:text-sky-400">
-                    Open scope
+                    Open scope (dev)
                   </Link>
-                  <Link href={`/api/quote-versions/${vid}/lifecycle`} className="text-zinc-500 hover:text-zinc-400 underline decoration-zinc-800">
-                    Lifecycle API
+                  <Link
+                    href={`/api/quote-versions/${vid}/lifecycle`}
+                    className="text-zinc-500 hover:text-zinc-400 underline decoration-zinc-800"
+                  >
+                    Lifecycle (JSON)
                   </Link>
                 </div>
               </div>
@@ -193,7 +252,7 @@ export function QuoteWorkspaceHeadReadiness({
 function ReadinessItem({ item }: { item: ReadinessChecklistItem }) {
   const isSatisfied = item.state === "yes";
   const isMissing = item.state === "no";
-  
+
   return (
     <li className="flex gap-2.5">
       <div className="mt-0.5">
@@ -212,13 +271,13 @@ function ReadinessItem({ item }: { item: ReadinessChecklistItem }) {
         )}
       </div>
       <div>
-        <p className={`text-xs font-medium ${isSatisfied ? "text-zinc-300" : isMissing ? "text-zinc-100" : "text-zinc-500"}`}>
+        <p
+          className={`text-xs font-medium ${isSatisfied ? "text-zinc-300" : isMissing ? "text-zinc-100" : "text-zinc-500"}`}
+        >
           {item.label}
         </p>
         {item.note && (
-          <p className="text-[10px] text-zinc-500 leading-snug mt-0.5 max-w-sm">
-            {item.note}
-          </p>
+          <p className="text-[10px] text-zinc-500 leading-snug mt-0.5 max-w-sm">{item.note}</p>
         )}
       </div>
     </li>

@@ -99,7 +99,7 @@ describe("buildFieldsFromPreset (MANIFEST)", () => {
       unitPriceCents: "124900",
       paymentBeforeWork: true,
       paymentGateTitleOverride: "Pay before install",
-      packetSource: "library",
+      manifestFieldWorkSetup: "useSavedTaskPacket",
       scopePacketRevisionId: SAMPLE_PUBLISHED_REVISION_ID,
       quoteLocalPacketId: "",
     });
@@ -225,7 +225,7 @@ describe("buildFieldsFromPreset (SOLD_SCOPE)", () => {
       unitPriceCents: "25000",
       paymentBeforeWork: false,
       paymentGateTitleOverride: "",
-      packetSource: "none",
+      manifestFieldWorkSetup: "none",
       scopePacketRevisionId: "",
       quoteLocalPacketId: "",
     });
@@ -247,7 +247,7 @@ describe("buildFieldsFromPreset (SOLD_SCOPE)", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.fields.executionMode).toBe("SOLD_SCOPE");
-    expect(result.fields.packetSource).toBe("none");
+    expect(result.fields.manifestFieldWorkSetup).toBe("none");
     expect(result.fields.scopePacketRevisionId).toBe("");
     expect(result.fields.quoteLocalPacketId).toBe("");
   });
@@ -277,7 +277,7 @@ describe("buildFieldsFromPacket", () => {
       unitPriceCents: "",
       paymentBeforeWork: false,
       paymentGateTitleOverride: "",
-      packetSource: "library",
+      manifestFieldWorkSetup: "useSavedTaskPacket",
       scopePacketRevisionId: "rev-xyz",
       quoteLocalPacketId: "",
     });
@@ -292,7 +292,7 @@ describe("buildFieldsFromPacket", () => {
       unitPriceCents: "",
       paymentBeforeWork: false,
       paymentGateTitleOverride: "",
-      packetSource: "none",
+      manifestFieldWorkSetup: "none",
       scopePacketRevisionId: "",
       quoteLocalPacketId: "",
     };
@@ -314,7 +314,7 @@ describe("buildFieldsFromPacket", () => {
       unitPriceCents: "",
       paymentBeforeWork: false,
       paymentGateTitleOverride: "",
-      packetSource: "none",
+      manifestFieldWorkSetup: "none",
       scopePacketRevisionId: "",
       quoteLocalPacketId: "",
     };
@@ -336,7 +336,7 @@ describe("buildFieldsFromPacket", () => {
       unitPriceCents: "9999",
       paymentBeforeWork: true,
       paymentGateTitleOverride: "Custom gate",
-      packetSource: "none",
+      manifestFieldWorkSetup: "none",
       scopePacketRevisionId: "",
       quoteLocalPacketId: "",
     };

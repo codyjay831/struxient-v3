@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   mergeLocalPacketsForPicker,
+  resolveFieldWorkDisplayNameForQuickCreate,
   validateOneOffWorkDisplayNameInput,
   type LocalPacketForPicker,
 } from "./quote-line-item-local-packet-quick-create";
@@ -50,6 +51,48 @@ describe("validateOneOffWorkDisplayNameInput", () => {
     const padded = "x".repeat(200) + "   ";
     const r = validateOneOffWorkDisplayNameInput(padded);
     expect(r.ok).toBe(true);
+  });
+});
+
+describe("resolveFieldWorkDisplayNameForQuickCreate", () => {
+  it("uses line title when customize is closed", () => {
+    expect(
+      resolveFieldWorkDisplayNameForQuickCreate({
+        lineTitleTrimmed: "Roof tear-off",
+        customizeOpen: false,
+        customInputTrimmed: "Ignored",
+      }),
+    ).toBe("Roof tear-off");
+  });
+
+  it("uses custom override when customize is open and custom is non-empty", () => {
+    expect(
+      resolveFieldWorkDisplayNameForQuickCreate({
+        lineTitleTrimmed: "Roof tear-off",
+        customizeOpen: true,
+        customInputTrimmed: "Custom name",
+      }),
+    ).toBe("Custom name");
+  });
+
+  it("falls back to line title when customize is open but custom is empty", () => {
+    expect(
+      resolveFieldWorkDisplayNameForQuickCreate({
+        lineTitleTrimmed: "Roof tear-off",
+        customizeOpen: true,
+        customInputTrimmed: "",
+      }),
+    ).toBe("Roof tear-off");
+  });
+
+  it("returns empty when line title is empty", () => {
+    expect(
+      resolveFieldWorkDisplayNameForQuickCreate({
+        lineTitleTrimmed: "",
+        customizeOpen: false,
+        customInputTrimmed: "x",
+      }),
+    ).toBe("");
   });
 });
 

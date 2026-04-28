@@ -31,7 +31,17 @@ function parsePatchBody(body: unknown): { ok: true; value: QuoteLineItemPatch } 
         response: NextResponse.json({ error: { code: "INVALID_FIELD", message: "title must be a string" } }, { status: 400 }),
       };
     }
-    patch.title = o.title;
+    const titleTrimmed = o.title.trim();
+    if (titleTrimmed.length === 0) {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { error: { code: "INVALID_FIELD", message: "Line title is required (non-empty after trim)." } },
+          { status: 400 },
+        ),
+      };
+    }
+    patch.title = titleTrimmed;
   }
   if ("description" in o) {
     if (o.description !== null && typeof o.description !== "string") {

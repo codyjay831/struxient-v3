@@ -58,6 +58,16 @@ function parseCreateBody(body: unknown): { ok: true; value: CreateLineBodyFields
       response: NextResponse.json({ error: { code: "INVALID_FIELD", message: "title must be a string" } }, { status: 400 }),
     };
   }
+  const titleTrimmed = title.trim();
+  if (titleTrimmed.length === 0) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: { code: "INVALID_FIELD", message: "Line title is required (non-empty after trim)." } },
+        { status: 400 },
+      ),
+    };
+  }
 
   const quantity = o.quantity;
   if (typeof quantity !== "number" || !Number.isInteger(quantity)) {
@@ -153,7 +163,7 @@ function parseCreateBody(body: unknown): { ok: true; value: CreateLineBodyFields
       proposalGroupId: proposalGroupId.trim(),
       sortOrder,
       executionMode: executionMode as QuoteLineItemExecutionMode,
-      title,
+      title: titleTrimmed,
       description: description === undefined ? null : (description as string | null),
       quantity,
       tierCode: tierCode === undefined ? null : (tierCode as string | null),

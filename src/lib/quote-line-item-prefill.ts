@@ -32,10 +32,10 @@
  *   - `unitPriceCents`: preset value wins; `null` falls back to `""`.
  *   - `paymentBeforeWork` / `paymentGateTitleOverride`: preset values win,
  *                       fall back to `false` / `""` respectively.
- *   - MANIFEST       : `packetSource = "library"`, `scopePacketRevisionId =
- *                       packet.latestPublishedRevisionId`,
+ *   - MANIFEST       : `manifestFieldWorkSetup = "useSavedTaskPacket"`,
+ *                       `scopePacketRevisionId = packet.latestPublishedRevisionId`,
  *                       `quoteLocalPacketId = ""`.
- *   - SOLD_SCOPE     : `packetSource = "none"`, both packet ids cleared.
+ *   - SOLD_SCOPE     : `manifestFieldWorkSetup = "none"`, both packet ids cleared.
  *
  * Canon refs:
  *   - docs/canon/04-quote-line-item-canon.md  (commercial/execution split)
@@ -44,9 +44,9 @@
 
 import type { LineItemPresetSummaryDto } from "@/server/slice1/reads/line-item-preset-reads";
 import type { ScopePacketSummaryDto } from "@/server/slice1/reads/scope-packet-catalog-reads";
+import type { ManifestFieldWorkSetup } from "@/lib/quote-line-item-scope-form-validation";
 
 export type PrefillExecutionMode = "SOLD_SCOPE" | "MANIFEST";
-export type PrefillPacketSource = "none" | "library" | "local";
 
 /**
  * Subset of the scope editor's `FormFields` that the prefill helpers
@@ -63,7 +63,7 @@ export type PrefilledFields = {
   unitPriceCents: string;
   paymentBeforeWork: boolean;
   paymentGateTitleOverride: string;
-  packetSource: PrefillPacketSource;
+  manifestFieldWorkSetup: ManifestFieldWorkSetup;
   scopePacketRevisionId: string;
   quoteLocalPacketId: string;
 };
@@ -133,7 +133,7 @@ function unitPriceFromPreset(value: number | null | undefined): string {
  * packet ids are always cleared regardless of `defaultScopePacket`.
  *
  * The returned `fields` are otherwise identical between modes; the only
- * differences are `executionMode`, `packetSource`, and the two packet ids.
+ * differences are `executionMode`, `manifestFieldWorkSetup`, and the two packet ids.
  */
 export function buildFieldsFromPreset(
   preset: LineItemPresetSummaryDto & {
@@ -174,7 +174,7 @@ export function buildFieldsFromPreset(
         unitPriceCents,
         paymentBeforeWork,
         paymentGateTitleOverride,
-        packetSource: "library",
+        manifestFieldWorkSetup: "useSavedTaskPacket",
         scopePacketRevisionId: packet.latestPublishedRevisionId,
         quoteLocalPacketId: "",
       },
@@ -191,7 +191,7 @@ export function buildFieldsFromPreset(
       unitPriceCents,
       paymentBeforeWork,
       paymentGateTitleOverride,
-      packetSource: "none",
+      manifestFieldWorkSetup: "none",
       scopePacketRevisionId: "",
       quoteLocalPacketId: "",
     },
@@ -234,7 +234,7 @@ export function buildFieldsFromPacket(
       unitPriceCents: staged?.unitPriceCents ?? "",
       paymentBeforeWork: staged?.paymentBeforeWork ?? false,
       paymentGateTitleOverride: staged?.paymentGateTitleOverride ?? "",
-      packetSource: "library",
+      manifestFieldWorkSetup: "useSavedTaskPacket",
       scopePacketRevisionId: packet.latestPublishedRevisionId,
       quoteLocalPacketId: "",
     },

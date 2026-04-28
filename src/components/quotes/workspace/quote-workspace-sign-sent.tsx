@@ -464,9 +464,9 @@ export function QuoteWorkspaceSignSent({
         <div className="mt-3 rounded border border-sky-900/40 bg-sky-950/20 px-3 py-2 text-xs text-sky-100/90">
           <p className="font-medium text-sky-200/95">Customer portal (review + accept)</p>
           <p className="mt-1 text-sky-100/70">
-            Share this read-only link with your customer. Portal acceptance is stored as{" "}
-            <span className="font-mono text-[10px]">CUSTOMER_PORTAL_ACCEPTED</span>. Delivery uses the same comms
-            abstraction as flow/project shares (provider may be mock in dev).
+            Share this read-only link with your customer. When they accept on the portal, we record that as{" "}
+            <span className="text-sky-100/90">accepted on the customer portal</span>. Delivery uses your configured
+            communications provider (may be a mock in local development).
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             <button
@@ -605,7 +605,8 @@ export function QuoteWorkspaceSignSent({
         </div>
       ) : (
         <p className="mt-3 text-[11px] text-zinc-500">
-          No portal link on file for this sent version (re-send after upgrade, or open lifecycle JSON to confirm).
+          No portal link on file for this sent version. Contact support if the customer should have a link, or check
+          Advanced (support) on this panel.
         </p>
       )}
 
@@ -632,10 +633,14 @@ export function QuoteWorkspaceSignSent({
 
       <div className="mt-4 border-t border-zinc-800/40 pt-3">
         <details className="text-[10px] text-zinc-600">
-          <summary className="cursor-pointer font-medium hover:text-zinc-500">Technical details</summary>
+          <summary className="cursor-pointer font-medium hover:text-zinc-500">Advanced (support)</summary>
           <div className="mt-2 space-y-2">
             <p>
               Target: v{signTarget.versionNumber} · <span className="font-mono">{signTarget.quoteVersionId}</span>
+            </p>
+            <p className="text-zinc-500">
+              Internal event code for portal acceptance:{" "}
+              <span className="font-mono text-zinc-400">CUSTOMER_PORTAL_ACCEPTED</span>
             </p>
             <div className="flex flex-wrap gap-x-3 gap-y-1 font-mono">
               <code className="text-zinc-500">POST …/sign</code>

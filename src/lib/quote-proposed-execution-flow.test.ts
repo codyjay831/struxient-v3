@@ -254,6 +254,7 @@ describe("buildProposedExecutionFlow", () => {
       lineItemId: "li-z",
       lineTitle: null,
       nodeId: "legacy-node",
+      stageDisplayLabel: "Legacy Node",
       taskTitle: "Stranded task",
     });
     expect(r.summary.manifestLinesWithIssuesCount).toBe(1);
@@ -300,6 +301,7 @@ describe("buildProposedExecutionFlow", () => {
       lineItemId: "li-other",
       lineTitle: null,
       nodeId: "custom-stage",
+      stageDisplayLabel: "Custom Stage",
       taskTitle: "Custom step",
     });
   });

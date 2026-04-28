@@ -1,8 +1,9 @@
 import Link from "next/link";
-import type {
-  QuoteVersionCompareToPriorDto,
-  QuoteVersionHistoryItemDto,
-} from "@/server/slice1/reads/quote-version-history-reads";
+import type { QuoteVersionHistoryItemDto } from "@/server/slice1/reads/quote-version-history-reads";
+import {
+  quoteVersionCompareToPriorPlain,
+  quoteVersionCompareToPriorTechnical,
+} from "@/lib/workspace/quote-version-compare-copy";
 import { QuoteWorkspaceVersionStatusBadge } from "./quote-workspace-version-status-badge";
 import { QuoteVersionVoidControl } from "./quote-version-void-control";
 
@@ -14,29 +15,6 @@ type Props = {
 
 function shortId(id: string): string {
   return `${id.slice(0, 8)}…`;
-}
-
-function signedDelta(n: number): string {
-  if (n === 0) return "0";
-  return n > 0 ? `+${String(n)}` : String(n);
-}
-
-/** One-line office summary vs the immediately older revision; not a line-item diff. */
-function compareToPriorSummary(c: QuoteVersionCompareToPriorDto): string {
-  const parts: string[] = [
-    `vs v${String(c.priorVersionNumber)}: lines ${signedDelta(c.lineItemCountDelta)}, groups ${signedDelta(
-      c.proposalGroupCountDelta,
-    )}`,
-  ];
-  if (c.frozenPlanAndPackageIdentical === true) {
-    parts.push("send-time plan+package hashes match");
-  } else if (c.frozenPlanAndPackageIdentical === false) {
-    parts.push("send-time plan/package hashes differ");
-  } else {
-    parts.push("freeze hash compare n/a");
-  }
-  parts.push(c.pinnedWorkflowVersionIdMatch ? "same template pin" : "template pin changed");
-  return parts.join(" · ");
 }
 
 /**
@@ -57,8 +35,8 @@ export function QuoteWorkspaceVersionHistory({ quoteId, versions, canOfficeMutat
       <p className="mb-4 text-xs text-zinc-500 italic">
         Full record of commercial revisions. <span className="font-medium text-zinc-400">Superseded</span> means a
         newer version was sent; <span className="font-medium text-zinc-400">Void</span> means office withdrew the
-        revision (snapshots retained). Line counts plus &ldquo;vs prior&rdquo; are high-level hints only — not a scope
-        line diff.
+        revision (locked records kept for audit). Line counts plus &ldquo;vs prior&rdquo; are high-level hints only —
+        not a scope line diff.
       </p>
 
       <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/40">
@@ -68,10 +46,10 @@ export function QuoteWorkspaceVersionHistory({ quoteId, versions, canOfficeMutat
               <th className="px-3 py-2">Revision</th>
               <th className="px-3 py-2">Status</th>
               <th className="hidden px-3 py-2 sm:table-cell">Lines</th>
-              <th className="hidden px-3 py-2 lg:table-cell">vs prior rev</th>
+              <th className="hidden px-3 py-2 lg:table-cell">vs prior (summary)</th>
               <th className="hidden px-3 py-2 md:table-cell">Context</th>
               <th className="px-3 py-2 text-center">Actions</th>
-              <th className="px-3 py-2 text-right">Reference</th>
+              <th className="px-3 py-2 text-right">Support</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-800/90">
@@ -122,16 +100,28 @@ export function QuoteWorkspaceVersionHistory({ quoteId, versions, canOfficeMutat
                   </td>
                   <td className="hidden max-w-[20rem] px-3 py-3 text-[10px] leading-snug text-zinc-500 lg:table-cell">
                     {v.compareToPrior ? (
-                      <span className="text-zinc-400">{compareToPriorSummary(v.compareToPrior)}</span>
+                      <span className="text-zinc-400">{quoteVersionCompareToPriorPlain(v.compareToPrior)}</span>
                     ) : (
                       <span className="text-zinc-600">Oldest revision — no prior row.</span>
                     )}
                   </td>
                   <td className="hidden max-w-[12rem] px-3 py-3 text-[11px] text-zinc-500 md:table-cell">
                     <div className="flex flex-wrap gap-1.5">
-                      {v.hasPinnedWorkflow && <span className="rounded border border-zinc-800 bg-zinc-900 px-1 py-0.5 text-[10px] text-zinc-400">Workflow</span>}
-                      {v.hasFrozenArtifacts && <span className="rounded border border-zinc-800 bg-zinc-900 px-1 py-0.5 text-[10px] text-zinc-400">Frozen</span>}
-                      {v.hasActivation && <span className="rounded border border-emerald-900/20 bg-emerald-950/20 px-1 py-0.5 text-[10px] font-medium uppercase tracking-tight text-emerald-400/90">Active</span>}
+                      {v.hasPinnedWorkflow && (
+                        <span className="rounded border border-zinc-800 bg-zinc-900 px-1 py-0.5 text-[10px] text-zinc-400">
+                          Work plan
+                        </span>
+                      )}
+                      {v.hasFrozenArtifacts && (
+                        <span className="rounded border border-zinc-800 bg-zinc-900 px-1 py-0.5 text-[10px] text-zinc-400">
+                          Locked proposal
+                        </span>
+                      )}
+                      {v.hasActivation && (
+                        <span className="rounded border border-emerald-900/20 bg-emerald-950/20 px-1 py-0.5 text-[10px] font-medium uppercase tracking-tight text-emerald-400/90">
+                          Active
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td className="px-3 py-3 text-center align-top">
@@ -158,10 +148,15 @@ export function QuoteWorkspaceVersionHistory({ quoteId, versions, canOfficeMutat
                   <td className="px-3 py-3 text-right relative align-top">
                     <details className="inline-block text-left">
                       <summary className="cursor-pointer select-none text-[10px] text-zinc-600 hover:text-zinc-500 group-hover:text-zinc-400 transition-colors">
-                        Technical
+                        Advanced
                       </summary>
-                      <ul className="absolute right-0 z-10 mt-1 min-w-[180px] space-y-1 rounded border border-zinc-800 bg-zinc-950/95 p-2 text-left font-mono text-[10px] text-zinc-500 shadow-xl shadow-black/40">
+                      <ul className="absolute right-0 z-10 mt-1 min-w-[200px] space-y-1 rounded border border-zinc-800 bg-zinc-950/95 p-2 text-left font-mono text-[10px] text-zinc-500 shadow-xl shadow-black/40">
                         <li className="mb-1 break-all border-b border-zinc-800 pb-1 text-zinc-400">ID: {v.id}</li>
+                        {v.compareToPrior ? (
+                          <li className="border-b border-zinc-800 pb-2 text-[9px] leading-snug text-zinc-500">
+                            {quoteVersionCompareToPriorTechnical(v.compareToPrior)}
+                          </li>
+                        ) : null}
                         <li>
                           <Link href={`/api/quote-versions/${v.id}/lifecycle`} className="text-sky-500/90 underline decoration-sky-900/40 hover:text-sky-400">
                             Lifecycle JSON

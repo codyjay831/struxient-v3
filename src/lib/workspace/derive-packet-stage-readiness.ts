@@ -128,17 +128,17 @@ function formatNote(args: {
   const fragments: string[] = [];
   if (args.noPacketCount > 0) {
     fragments.push(
-      `${String(args.noPacketCount)} field-work line(s) have no work template attached`,
+      `${String(args.noPacketCount)} field-work line(s) have no task packet attached`,
     );
   }
   if (args.missingLibraryCount > 0) {
     fragments.push(
-      `${String(args.missingLibraryCount)} reference a saved work template that isn't loadable`,
+      `${String(args.missingLibraryCount)} reference a saved task packet that isn't loadable`,
     );
   }
   if (args.missingLocalCount > 0) {
     fragments.push(
-      `${String(args.missingLocalCount)} reference one-off work that isn't loadable`,
+      `${String(args.missingLocalCount)} reference field work on this quote that isn't loadable`,
     );
   }
   if (args.stageOffSnapshotCount > 0) {

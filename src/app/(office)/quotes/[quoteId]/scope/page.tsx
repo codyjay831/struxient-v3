@@ -23,6 +23,20 @@ import { ScopeEditor } from "./scope-editor";
 
 type PageProps = { params: Promise<{ quoteId: string }> };
 
+/** For “Used by” labels on field work cards — presentation-only, no schema change. */
+function buildLineItemTitlesByLocalPacketId(
+  items: ReturnType<typeof toQuoteVersionScopeApiDto>["orderedLineItems"],
+): Record<string, string[]> {
+  const acc = new Map<string, string[]>();
+  for (const line of items) {
+    if (!line.quoteLocalPacketId) continue;
+    const list = acc.get(line.quoteLocalPacketId) ?? [];
+    list.push(line.title);
+    acc.set(line.quoteLocalPacketId, list);
+  }
+  return Object.fromEntries(acc);
+}
+
 export const dynamic = "force-dynamic";
 
 /**
@@ -109,6 +123,7 @@ export default async function OfficeQuoteScopePage({ params }: PageProps) {
   }
 
   const dto = toQuoteVersionScopeApiDto(scopeModel);
+  const lineItemTitlesByLocalPacketId = buildLineItemTitlesByLocalPacketId(dto.orderedLineItems);
   const isLatest = ws.latestQuoteVersionId === head.id;
   const versionContext = deriveScopeVersionContext({
     status: dto.quoteVersion.status,
@@ -228,6 +243,7 @@ export default async function OfficeQuoteScopePage({ params }: PageProps) {
         availableLocalPackets={localPackets}
         availablePresets={presets}
         executionPreviewByLineItemId={executionPreview?.previewsByLineItemId ?? null}
+        fieldWorkAnchorsActive={isEditableHead}
         canMutate={canOfficeMutate && isEditableHead}
         editableReason={
           !canOfficeMutate
@@ -253,13 +269,14 @@ export default async function OfficeQuoteScopePage({ params }: PageProps) {
             the page level so we don't even fetch packets when not needed.
       */}
       {isEditableHead ? (
-        <section className="mt-12 space-y-4">
+        <section className="mt-14 pt-10 border-t border-zinc-800/80 space-y-6">
           <QuoteLocalPacketEditor
             quoteVersionId={dto.quoteVersion.id}
             isDraft={true}
             canOfficeMutate={canOfficeMutate}
             initialPackets={localPackets}
             pinnedWorkflowVersionId={dto.quoteVersion.pinnedWorkflowVersionId}
+            lineItemTitlesByLocalPacketId={lineItemTitlesByLocalPacketId}
             availableSavedPackets={libraryPackets.map((p) => ({
               id: p.id,
               packetKey: p.packetKey,

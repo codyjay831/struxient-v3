@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import type { QuoteLocalPacketDto, QuoteLocalPacketItemDto } from "@/server/slice1/reads/quote-local-packet-reads";
 import {
   TaskDefinitionPicker,
@@ -9,6 +9,18 @@ import {
 } from "@/components/quote-scope/task-definition-picker";
 import { TargetNodePicker } from "@/components/quote-scope/target-node-picker";
 import { humanizeCanonicalExecutionStageKey } from "@/lib/canonical-execution-stages";
+import { lineKeyFromTaskName } from "@/lib/line-key-from-task-name";
+import {
+  draftToBody,
+  emptyDraft,
+  finalizeEmbeddedDraftForSubmit,
+  itemToDraft,
+  lineKeysForPacketCollision,
+  readCompletionRequirementCount,
+  readEmbeddedInstructions,
+  readEmbeddedTitle,
+  type NewItemDraft,
+} from "@/lib/quote-local-packet-item-authoring";
 import { formatQuoteLocalPacketPromotionStatusLabel } from "@/lib/quote-local-packet-promotion-status-label";
 
 /**
@@ -46,6 +58,11 @@ type Props = {
    * is hidden entirely (the existing promote-to-NEW path stays available).
    */
   availableSavedPackets?: SavedPacketOption[];
+  /**
+   * Line titles that pin each local packet (from scope line items). Presentation-only;
+   * derived on the scope page without changing packet read APIs.
+   */
+  lineItemTitlesByLocalPacketId?: Record<string, string[]>;
 };
 
 type ApiErrorBody = { error?: { code?: string; message?: string } };
@@ -68,17 +85,51 @@ export function QuoteLocalPacketEditor({
   initialPackets,
   pinnedWorkflowVersionId,
   availableSavedPackets,
+  lineItemTitlesByLocalPacketId,
 }: Props) {
   const router = useRouter();
   const [packets, setPackets] = useState<QuoteLocalPacketDto[]>(initialPackets);
   const [busy, setBusy] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
+  /** Brief ring highlight when URL hash targets `#field-work-{packetId}`. */
+  const [hashHighlightPacketId, setHashHighlightPacketId] = useState<string | null>(null);
 
   // Inline new-packet form
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
 
   const editable = isDraft && canOfficeMutate;
+
+  useEffect(() => {
+    let highlightTimer: ReturnType<typeof setTimeout> | undefined;
+    const applyHash = () => {
+      if (highlightTimer) clearTimeout(highlightTimer);
+      const raw = window.location.hash.replace(/^#/, "");
+      if (!raw.startsWith("field-work-")) {
+        setHashHighlightPacketId(null);
+        return;
+      }
+      const packetId = raw.slice("field-work-".length);
+      if (!packets.some((p) => p.id === packetId)) {
+        setHashHighlightPacketId(null);
+        return;
+      }
+      setHashHighlightPacketId(packetId);
+      requestAnimationFrame(() => {
+        document.getElementById(`field-work-${packetId}`)?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      });
+      highlightTimer = setTimeout(() => setHashHighlightPacketId(null), 2400);
+    };
+    applyHash();
+    window.addEventListener("hashchange", applyHash);
+    return () => {
+      window.removeEventListener("hashchange", applyHash);
+      if (highlightTimer) clearTimeout(highlightTimer);
+    };
+  }, [packets]);
 
   function refresh() {
     router.refresh();
@@ -140,7 +191,7 @@ export function QuoteLocalPacketEditor({
 
   async function handleDeletePacket(packetId: string) {
     if (!editable) return;
-    if (!window.confirm("Delete this one-off work? All its tasks will be removed too.")) return;
+    if (!window.confirm("Delete this field work? All tasks inside it will be removed too.")) return;
     setBusy(true);
     setGlobalError(null);
     try {
@@ -347,23 +398,21 @@ export function QuoteLocalPacketEditor({
   }
 
   return (
-    <section className="space-y-6">
-      <div className="flex items-baseline justify-between border-b border-zinc-800 pb-2">
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
-          One-off work for this quote
-        </h2>
-        <span className="text-[10px] uppercase font-medium text-zinc-500">
-          {packets.length} {packets.length === 1 ? "Item" : "Items"}
+    <section id="quote-local-field-work" className="space-y-8">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-zinc-800/90 pb-3">
+        <h2 className="text-lg font-semibold tracking-tight text-zinc-100">Field work on this quote</h2>
+        <span className="text-xs font-normal text-zinc-500 normal-case">
+          {packets.length} field work groups
         </span>
       </div>
 
       {!isDraft ? (
         <p className="rounded border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-300/90">
-          This quote version is no longer a draft. One-off work can&rsquo;t be edited here.
+          This quote version is no longer a draft. Field work on this quote can&rsquo;t be edited here.
         </p>
       ) : !canOfficeMutate ? (
         <p className="rounded border border-zinc-800 bg-zinc-900/40 px-3 py-2 text-[11px] text-zinc-400">
-          Sign in as an office user with <code className="text-zinc-300">office_mutate</code> to add or edit one-off work.
+          Sign in as an office user with <code className="text-zinc-300">office_mutate</code> to add or edit field work on this quote.
         </p>
       ) : null}
 
@@ -374,11 +423,12 @@ export function QuoteLocalPacketEditor({
       ) : null}
 
       {packets.length === 0 ? (
-        <p className="rounded border border-dashed border-zinc-800 bg-zinc-950/30 px-3 py-3 text-[11px] text-zinc-500">
-          No one-off work on this quote yet. Add some below to author crew tasks for this quote without changing the saved templates.
+        <p className="rounded-lg border border-dashed border-zinc-700/80 bg-zinc-950/40 px-4 py-4 text-sm leading-relaxed text-zinc-400">
+          No field work on this quote yet. Add field work below to plan crew tasks without changing
+          saved task packets in the library.
         </p>
       ) : (
-        <ul className="space-y-4">
+        <ul className="space-y-5">
           {packets.map((packet) => (
             <PacketRow
               key={packet.id}
@@ -386,6 +436,8 @@ export function QuoteLocalPacketEditor({
               editable={editable}
               busy={busy}
               pinnedWorkflowVersionId={pinnedWorkflowVersionId}
+              hashHighlighted={hashHighlightPacketId === packet.id}
+              lineItemTitlesForPacket={lineItemTitlesByLocalPacketId?.[packet.id]}
               onUpdatePacket={(patch) => handleUpdatePacket(packet.id, patch)}
               onDeletePacket={() => handleDeletePacket(packet.id)}
               onCreateItem={(draft) => handleCreateItem(packet.id, draft)}
@@ -404,10 +456,8 @@ export function QuoteLocalPacketEditor({
       )}
 
       {editable ? (
-        <div className="rounded border border-zinc-800 bg-zinc-900/40 p-3 space-y-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-            New one-off work
-          </p>
+        <div className="rounded-lg border border-zinc-800/60 bg-zinc-950/30 p-3 space-y-2">
+          <p className="text-xs font-medium text-zinc-400">New editable field work</p>
           <input
             type="text"
             placeholder="Display name"
@@ -431,7 +481,7 @@ export function QuoteLocalPacketEditor({
               onClick={() => void handleCreatePacket()}
               className="rounded bg-emerald-800/90 px-3 py-1 text-[11px] font-medium text-emerald-50 hover:bg-emerald-700 disabled:opacity-50"
             >
-              {busy ? "Working…" : "Create one-off work"}
+              {busy ? "Working…" : "Create task packet"}
             </button>
           </div>
         </div>
@@ -457,6 +507,10 @@ type PacketRowProps = {
   editable: boolean;
   busy: boolean;
   pinnedWorkflowVersionId: string | null;
+  /** True briefly when navigated via `#field-work-{packet.id}`. */
+  hashHighlighted?: boolean;
+  /** Line item titles that pin this packet (optional; from scope page). */
+  lineItemTitlesForPacket?: string[];
   onUpdatePacket: (patch: { displayName?: string; description?: string | null }) => void;
   onDeletePacket: () => void;
   onCreateItem: (draft: NewItemDraft) => Promise<boolean | undefined>;
@@ -482,6 +536,8 @@ function PacketRow({
   editable,
   busy,
   pinnedWorkflowVersionId,
+  hashHighlighted = false,
+  lineItemTitlesForPacket,
   onUpdatePacket,
   onDeletePacket,
   onCreateItem,
@@ -494,7 +550,7 @@ function PacketRow({
   const [editingHeader, setEditingHeader] = useState(false);
   const [headerName, setHeaderName] = useState(packet.displayName);
   const [headerDescription, setHeaderDescription] = useState(packet.description ?? "");
-  const [showAddItem, setShowAddItem] = useState(false);
+  const [addTaskMode, setAddTaskMode] = useState<"none" | "embedded" | "library">("none");
   const [showPromote, setShowPromote] = useState(false);
   const [showPromoteExisting, setShowPromoteExisting] = useState(false);
   const pinned = packet.pinnedByLineItemCount > 0;
@@ -506,8 +562,23 @@ function PacketRow({
   const isPromoted =
     packet.promotionStatus === "COMPLETED" && packet.promotedScopePacketId !== null;
 
+  const titles = lineItemTitlesForPacket?.filter((t) => t.trim().length > 0) ?? [];
+  const usedByLabel =
+    pinned && titles.length > 0
+      ? titles.length === 1
+        ? `Used by: ${titles[0]}`
+        : `Used by: ${titles.join(" · ")}`
+      : pinned
+        ? `Used by ${packet.pinnedByLineItemCount} line item${packet.pinnedByLineItemCount === 1 ? "" : "s"}`
+        : null;
+
   return (
-    <li className="rounded border border-zinc-800 bg-zinc-950/40 p-3">
+    <li
+      id={`field-work-${packet.id}`}
+      className={`rounded-lg border border-zinc-800/80 bg-zinc-950/30 p-4 shadow-sm shadow-black/10 transition-shadow duration-300 ${
+        hashHighlighted ? "ring-2 ring-sky-500/70 ring-offset-2 ring-offset-zinc-950" : ""
+      }`}
+    >
       <header className="flex flex-wrap items-start justify-between gap-2 border-b border-zinc-800 pb-2 mb-3">
         <div className="min-w-0 flex-1">
           {editingHeader ? (
@@ -557,42 +628,49 @@ function PacketRow({
             </div>
           ) : (
             <>
-              <p className="text-sm font-medium text-zinc-100">{packet.displayName}</p>
+              <p className="text-base font-semibold text-zinc-50 leading-snug">{packet.displayName}</p>
               {packet.description ? (
-                <p className="text-[11px] text-zinc-500 mt-0.5">{packet.description}</p>
+                <p className="text-xs text-zinc-500 mt-1 leading-relaxed">{packet.description}</p>
               ) : null}
-              <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-zinc-500">
-                <span className="rounded bg-zinc-900 px-1.5 py-0.5 font-mono">{packet.id}</span>
-                <span className="rounded border border-zinc-700/60 bg-zinc-900/40 px-1.5 py-0.5">
-                  origin: {packet.originType}
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+                <span className="font-medium text-zinc-400">
+                  {packet.itemCount} {packet.itemCount === 1 ? "task" : "tasks"}
                 </span>
-                <span className="rounded border border-zinc-700/60 bg-zinc-900/40 px-1.5 py-0.5">
-                  items: {packet.itemCount}
-                </span>
-                {pinned ? (
-                  <span className="rounded border border-amber-800/60 bg-amber-950/30 px-1.5 py-0.5 text-amber-400">
-                    pinned by {packet.pinnedByLineItemCount} line item(s)
+                {usedByLabel ? (
+                  <span className="rounded-md border border-zinc-700/80 bg-zinc-900/60 px-2 py-0.5 text-zinc-400">
+                    {usedByLabel}
                   </span>
                 ) : null}
-                <span
-                  className={`rounded border px-1.5 py-0.5 ${
-                    isPromoted
-                      ? "border-emerald-800/60 bg-emerald-950/30 text-emerald-300"
-                      : "border-zinc-700/60 bg-zinc-900/40 text-zinc-400"
-                  }`}
-                  title="Save-to-library status for this one-off work"
-                >
-                  {formatQuoteLocalPacketPromotionStatusLabel(packet.promotionStatus)}
-                </span>
-                {isPromoted && packet.promotedScopePacketId ? (
-                  <a
-                    href={`/library/packets/${encodeURIComponent(packet.promotedScopePacketId)}`}
-                    className="rounded border border-emerald-800/60 bg-emerald-950/30 px-1.5 py-0.5 text-emerald-300 hover:text-emerald-200"
-                  >
-                    open promoted packet ↗
-                  </a>
-                ) : null}
               </div>
+              <details className="mt-3 text-xs text-zinc-600">
+                <summary className="cursor-pointer text-zinc-600 hover:text-zinc-400 select-none">
+                  Technical details
+                </summary>
+                <div className="mt-1 flex flex-wrap gap-2 font-mono text-zinc-500">
+                  <span className="rounded bg-zinc-900 px-1.5 py-0.5">{packet.id}</span>
+                  <span className="rounded border border-zinc-700/60 bg-zinc-900/40 px-1.5 py-0.5">
+                    origin: {packet.originType}
+                  </span>
+                  <span
+                    className={`rounded border px-1.5 py-0.5 ${
+                      isPromoted
+                        ? "border-emerald-800/60 bg-emerald-950/30 text-emerald-300"
+                        : "border-zinc-700/60 bg-zinc-900/40 text-zinc-400"
+                    }`}
+                    title="Save-to-library status for this field work"
+                  >
+                    {formatQuoteLocalPacketPromotionStatusLabel(packet.promotionStatus)}
+                  </span>
+                  {isPromoted && packet.promotedScopePacketId ? (
+                    <a
+                      href={`/library/packets/${encodeURIComponent(packet.promotedScopePacketId)}`}
+                      className="rounded border border-emerald-800/60 bg-emerald-950/30 px-1.5 py-0.5 text-emerald-300 hover:text-emerald-200"
+                    >
+                      Open promoted packet ↗
+                    </a>
+                  ) : null}
+                </div>
+              </details>
             </>
           )}
         </div>
@@ -612,7 +690,7 @@ function PacketRow({
               title={
                 pinned
                   ? "Detach pinning line items first."
-                  : "Delete this one-off work and all its tasks."
+                  : "Delete this task packet and all its tasks."
               }
               className="rounded border border-red-900/60 px-2 py-0.5 text-[10px] text-red-400 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
             >
@@ -629,6 +707,9 @@ function PacketRow({
         pinnedWorkflowVersionId={pinnedWorkflowVersionId}
         onUpdateItem={onUpdateItem}
         onDeleteItem={onDeleteItem}
+        onAddFirstTask={() => setAddTaskMode("embedded")}
+        onAddFirstFromLibrary={() => setAddTaskMode("library")}
+        suppressEmptyAddButtons={addTaskMode !== "none"}
       />
 
       {canPromote ? (
@@ -661,7 +742,7 @@ function PacketRow({
                 type="button"
                 onClick={() => setShowPromote(true)}
                 className="rounded border border-violet-800/60 bg-violet-950/20 px-2 py-0.5 text-[11px] text-violet-300 hover:text-violet-200"
-                title="Save this one-off work as a brand-new reusable saved template (creates a new library packet with its first DRAFT revision)."
+                title="Save this task packet as a brand-new reusable saved task packet in the library (creates a new packet with its first DRAFT revision)."
               >
                 ↑ Save as new template (DRAFT revision)
               </button>
@@ -670,7 +751,7 @@ function PacketRow({
                   type="button"
                   onClick={() => setShowPromoteExisting(true)}
                   className="rounded border border-violet-800/60 bg-violet-950/20 px-2 py-0.5 text-[11px] text-violet-300 hover:text-violet-200"
-                  title="Add this one-off work to an existing saved template as the next editable draft revision."
+                  title="Add this task packet to an existing saved task packet as the next editable draft revision."
                 >
                   ↗ Add to existing saved template
                 </button>
@@ -681,9 +762,11 @@ function PacketRow({
       ) : null}
 
       {editable ? (
-        <div className="mt-3">
-          {showAddItem ? (
-            <NewItemForm
+        <div className="mt-3 space-y-2">
+          {addTaskMode === "embedded" ? (
+            <EmbeddedTaskAuthoringForm
+              key={`emb-${packet.id}`}
+              variant="create"
               busy={busy}
               pinnedWorkflowVersionId={pinnedWorkflowVersionId}
               defaultSortOrder={
@@ -691,21 +774,51 @@ function PacketRow({
                   ? Math.max(...packet.items.map((i) => i.sortOrder)) + 1
                   : 0
               }
-              onCancel={() => setShowAddItem(false)}
+              existingLineKeys={packet.items.map((i) => i.lineKey)}
+              onCancel={() => setAddTaskMode("none")}
+              submitLabel="Add task"
               onSubmit={async (draft) => {
                 const ok = await onCreateItem(draft);
-                if (ok) setShowAddItem(false);
+                if (ok) setAddTaskMode("none");
               }}
             />
-          ) : (
-            <button
-              type="button"
-              onClick={() => setShowAddItem(true)}
-              className="rounded border border-emerald-800/60 bg-emerald-950/30 px-2 py-0.5 text-[11px] text-emerald-300 hover:text-emerald-200"
-            >
-              + Add item
-            </button>
-          )}
+          ) : null}
+          {addTaskMode === "library" ? (
+            <LibraryTaskCreateForm
+              key={`lib-${packet.id}`}
+              busy={busy}
+              pinnedWorkflowVersionId={pinnedWorkflowVersionId}
+              defaultSortOrder={
+                packet.items.length > 0
+                  ? Math.max(...packet.items.map((i) => i.sortOrder)) + 1
+                  : 0
+              }
+              existingLineKeys={packet.items.map((i) => i.lineKey)}
+              onCancel={() => setAddTaskMode("none")}
+              onSubmit={async (draft) => {
+                const ok = await onCreateItem(draft);
+                if (ok) setAddTaskMode("none");
+              }}
+            />
+          ) : null}
+          {addTaskMode === "none" && packet.items.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setAddTaskMode("embedded")}
+                className="rounded border border-emerald-800/60 bg-emerald-950/30 px-2 py-0.5 text-[11px] text-emerald-300 hover:text-emerald-200"
+              >
+                Add task
+              </button>
+              <button
+                type="button"
+                onClick={() => setAddTaskMode("library")}
+                className="rounded border border-zinc-700 bg-zinc-900/50 px-2 py-0.5 text-[11px] text-zinc-400 hover:text-zinc-200"
+              >
+                Add from task library
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </li>
@@ -724,6 +837,9 @@ type ItemsTableProps = {
     patch: Partial<ReturnType<typeof draftToBody>>,
   ) => Promise<boolean | undefined>;
   onDeleteItem: (itemId: string) => void;
+  onAddFirstTask: () => void;
+  onAddFirstFromLibrary: () => void;
+  suppressEmptyAddButtons?: boolean;
 };
 
 function ItemsTable({
@@ -733,27 +849,48 @@ function ItemsTable({
   pinnedWorkflowVersionId,
   onUpdateItem,
   onDeleteItem,
+  onAddFirstTask,
+  onAddFirstFromLibrary,
+  suppressEmptyAddButtons,
 }: ItemsTableProps) {
   if (items.length === 0) {
     return (
-      <p className="rounded border border-dashed border-zinc-800 bg-zinc-950/30 px-3 py-2 text-[11px] text-zinc-500">
-        No items on this packet yet.
-      </p>
+      <div className="rounded-lg border border-amber-900/35 bg-amber-950/20 px-4 py-4 space-y-2">
+        <p className="text-sm font-semibold text-amber-100">No tasks yet.</p>
+        <p className="text-sm text-amber-200/90 leading-relaxed">
+          Add the first task for this field work.
+        </p>
+        {editable && !suppressEmptyAddButtons ? (
+          <div className="flex flex-wrap gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onAddFirstTask}
+              className="rounded-md bg-emerald-700 px-3 py-2 text-sm font-semibold text-emerald-50 hover:bg-emerald-600 shadow-sm"
+            >
+              Add first task
+            </button>
+            <button
+              type="button"
+              onClick={onAddFirstFromLibrary}
+              className="rounded border border-zinc-700 bg-zinc-900/50 px-2 py-1 text-[11px] text-zinc-400 hover:text-zinc-200"
+            >
+              Add from task library
+            </button>
+          </div>
+        ) : null}
+      </div>
     );
   }
 
   return (
-    <div className="overflow-x-auto rounded border border-zinc-800">
-      <table className="w-full text-left text-[11px] text-zinc-300">
-        <thead className="bg-zinc-900/60 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+    <div className="overflow-x-auto rounded-lg border border-zinc-800/80">
+      <table className="w-full text-left text-sm text-zinc-300">
+        <thead className="bg-zinc-900/70 text-xs font-semibold text-zinc-500 normal-case">
           <tr>
-            <th className="px-2 py-1.5">Order</th>
-            <th className="px-2 py-1.5">Line key</th>
-            <th className="px-2 py-1.5">Kind</th>
-            <th className="px-2 py-1.5">Title / source</th>
-            <th className="px-2 py-1.5">Stage</th>
-            <th className="px-2 py-1.5">Tier</th>
-            {editable ? <th className="px-2 py-1.5 text-right">Actions</th> : null}
+            <th className="px-3 py-2.5">Task</th>
+            <th className="px-3 py-2.5">Stage</th>
+            <th className="px-3 py-2.5">Notes</th>
+            {editable ? <th className="px-3 py-2.5 text-right">Actions</th> : null}
           </tr>
         </thead>
         <tbody className="divide-y divide-zinc-800">
@@ -761,6 +898,7 @@ function ItemsTable({
             <ItemRow
               key={item.id}
               item={item}
+              allItems={items}
               editable={editable}
               busy={busy}
               pinnedWorkflowVersionId={pinnedWorkflowVersionId}
@@ -776,6 +914,7 @@ function ItemsTable({
 
 function ItemRow({
   item,
+  allItems,
   editable,
   busy,
   pinnedWorkflowVersionId,
@@ -783,6 +922,7 @@ function ItemRow({
   onDeleteItem,
 }: {
   item: QuoteLocalPacketItemDto;
+  allItems: QuoteLocalPacketItemDto[];
   editable: boolean;
   busy: boolean;
   pinnedWorkflowVersionId: string | null;
@@ -793,85 +933,96 @@ function ItemRow({
   onDeleteItem: (itemId: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState<NewItemDraft>(itemToDraft(item));
 
   if (editing) {
     return (
       <tr>
-        <td colSpan={editable ? 7 : 6} className="px-2 py-2">
-          <ItemForm
-            draft={draft}
-            busy={busy}
-            onChange={setDraft}
-            pinnedWorkflowVersionId={pinnedWorkflowVersionId}
-            initialTaskDefinitionId={item.taskDefinitionId}
-            initialTaskDefinitionSummary={item.taskDefinition}
-            actions={
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={async () => {
-                    const ok = await onUpdateItem(item.id, draftToBody(draft));
-                    if (ok) setEditing(false);
-                  }}
-                  className="rounded bg-sky-800/90 px-2 py-0.5 text-[11px] text-sky-50 hover:bg-sky-700 disabled:opacity-50"
-                >
-                  Save item
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditing(false);
-                    setDraft(itemToDraft(item));
-                  }}
-                  className="rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-400 hover:text-zinc-200"
-                >
-                  Cancel
-                </button>
-              </div>
-            }
-          />
+        <td colSpan={editable ? 4 : 3} className="px-2 py-2 align-top">
+          {item.lineKind === "LIBRARY" ? (
+            <LibraryItemEditor
+              item={item}
+              busy={busy}
+              collisionKeys={lineKeysForPacketCollision(allItems, item.id)}
+              pinnedWorkflowVersionId={pinnedWorkflowVersionId}
+              onCancel={() => setEditing(false)}
+              onSave={async (draft) => {
+                const ok = await onUpdateItem(item.id, draftToBody(draft));
+                if (ok) setEditing(false);
+              }}
+            />
+          ) : (
+            <EmbeddedTaskAuthoringForm
+              variant="edit"
+              initialDraft={itemToDraft(item)}
+              defaultSortOrder={item.sortOrder}
+              existingLineKeys={lineKeysForPacketCollision(allItems, item.id)}
+              busy={busy}
+              pinnedWorkflowVersionId={pinnedWorkflowVersionId}
+              onCancel={() => setEditing(false)}
+              submitLabel="Save task"
+              onSubmit={async (draft) => {
+                const ok = await onUpdateItem(item.id, draftToBody(draft));
+                if (ok) setEditing(false);
+              }}
+            />
+          )}
         </td>
       </tr>
     );
   }
 
-  const summary = item.lineKind === "LIBRARY"
-    ? item.taskDefinition
-      ? `${item.taskDefinition.displayName} (${item.taskDefinition.taskKey})`
-      : `taskDefinitionId: ${item.taskDefinitionId ?? "—"}`
-    : readEmbeddedTitle(item.embeddedPayloadJson) ?? item.lineKey;
+  const embeddedTitle = readEmbeddedTitle(item.embeddedPayloadJson);
+  const embeddedInstructions = readEmbeddedInstructions(item.embeddedPayloadJson);
+  const reqCount = readCompletionRequirementCount(item.embeddedPayloadJson);
+
+  const taskLabel =
+    item.lineKind === "LIBRARY"
+      ? item.taskDefinition?.displayName ?? "Saved task definition"
+      : embeddedTitle && embeddedTitle.trim() !== ""
+        ? embeddedTitle
+        : "Untitled task";
+
+  const notesPreview =
+    item.lineKind === "LIBRARY"
+      ? "Linked from your task library"
+      : embeddedInstructions && embeddedInstructions.trim() !== ""
+        ? embeddedInstructions.length > 120
+          ? `${embeddedInstructions.slice(0, 120)}…`
+          : embeddedInstructions
+        : "—";
 
   return (
-    <tr className="hover:bg-zinc-800/40">
-      <td className="px-2 py-1.5 font-mono text-zinc-400">{item.sortOrder}</td>
-      <td className="px-2 py-1.5 font-mono text-zinc-300">{item.lineKey}</td>
-      <td className="px-2 py-1.5">
-        <span
-          className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${
-            item.lineKind === "LIBRARY"
-              ? "border border-sky-800/60 bg-sky-950/30 text-sky-400"
-              : "border border-zinc-700/60 bg-zinc-800/30 text-zinc-400"
-          }`}
-        >
-          {item.lineKind}
-        </span>
+    <tr className="hover:bg-zinc-800/30">
+      <td className="px-3 py-2.5 align-top">
+        {item.lineKind === "LIBRARY" ? (
+          <div>
+            <p className="text-[10px] font-medium uppercase tracking-wide text-sky-400/90">
+              Saved task definition
+            </p>
+            <p className="text-sm font-semibold text-zinc-50 leading-snug">{taskLabel}</p>
+            {item.taskDefinition?.status && item.taskDefinition.status !== "PUBLISHED" ? (
+              <p className="text-[10px] text-amber-400 mt-0.5">Status: {item.taskDefinition.status}</p>
+            ) : null}
+          </div>
+        ) : (
+          <div>
+            <p className="text-sm font-semibold text-zinc-50 leading-snug">{taskLabel}</p>
+            {reqCount > 0 ? (
+              <span className="mt-1 inline-block rounded border border-amber-900/50 bg-amber-950/30 px-1.5 py-0.5 text-[9px] font-medium text-amber-200">
+                Proof / checklist ({reqCount})
+              </span>
+            ) : null}
+          </div>
+        )}
       </td>
-      <td className="px-2 py-1.5">
-        <p className="text-zinc-200">{summary}</p>
-        {item.lineKind === "LIBRARY" && item.taskDefinition?.status !== "PUBLISHED" && item.taskDefinition ? (
-          <p className="text-[10px] text-amber-400 mt-0.5">
-            TaskDefinition status: {item.taskDefinition.status}
-          </p>
-        ) : null}
-      </td>
-      <td className="px-2 py-1.5 font-mono text-zinc-400">
+      <td className="px-3 py-2.5 text-sm text-zinc-300 align-top">
         {humanizeCanonicalExecutionStageKey(item.targetNodeKey)}
       </td>
-      <td className="px-2 py-1.5 font-mono text-zinc-400">{item.tierCode ?? "—"}</td>
+      <td className="px-3 py-2.5 text-xs text-zinc-500 align-top whitespace-pre-wrap break-words max-w-[260px] leading-relaxed">
+        {notesPreview}
+      </td>
       {editable ? (
-        <td className="px-2 py-1.5 text-right">
+        <td className="px-3 py-2.5 text-right align-top">
           <div className="inline-flex gap-1">
             <button
               type="button"
@@ -895,179 +1046,69 @@ function ItemRow({
   );
 }
 
-/* ─────────────────────── Item draft / form ─────────────────────── */
-
-type NewItemDraft = {
-  lineKey: string;
-  sortOrder: number;
-  tierCode: string;
-  lineKind: "EMBEDDED" | "LIBRARY";
-  embeddedTitle: string;
-  embeddedTaskKind: string;
-  embeddedInstructions: string;
-  taskDefinitionId: string;
-  targetNodeKey: string;
-};
-
-function emptyDraft(sortOrder = 0): NewItemDraft {
-  return {
-    lineKey: "",
-    sortOrder,
-    tierCode: "",
-    lineKind: "EMBEDDED",
-    embeddedTitle: "",
-    embeddedTaskKind: "",
-    embeddedInstructions: "",
-    taskDefinitionId: "",
-    targetNodeKey: "",
-  };
-}
-
-function itemToDraft(item: QuoteLocalPacketItemDto): NewItemDraft {
-  const embedded = (item.embeddedPayloadJson ?? null) as Record<string, unknown> | null;
-  return {
-    lineKey: item.lineKey,
-    sortOrder: item.sortOrder,
-    tierCode: item.tierCode ?? "",
-    lineKind: item.lineKind,
-    embeddedTitle: typeof embedded?.title === "string" ? (embedded.title as string) : "",
-    embeddedTaskKind: typeof embedded?.taskKind === "string" ? (embedded.taskKind as string) : "",
-    embeddedInstructions:
-      typeof embedded?.instructions === "string" ? (embedded.instructions as string) : "",
-    taskDefinitionId: item.taskDefinitionId ?? "",
-    targetNodeKey: item.targetNodeKey,
-  };
-}
-
-function draftToBody(draft: NewItemDraft) {
-  const embedded =
-    draft.lineKind === "EMBEDDED"
-      ? buildEmbeddedPayload(draft)
-      : null;
-  return {
-    lineKey: draft.lineKey.trim(),
-    sortOrder: draft.sortOrder,
-    tierCode: draft.tierCode.trim() === "" ? null : draft.tierCode,
-    lineKind: draft.lineKind,
-    embeddedPayloadJson: embedded,
-    taskDefinitionId:
-      draft.lineKind === "LIBRARY" ? draft.taskDefinitionId.trim() || null : null,
-    targetNodeKey: draft.targetNodeKey.trim(),
-  };
-}
-
-function buildEmbeddedPayload(draft: NewItemDraft): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  if (draft.embeddedTitle.trim() !== "") out.title = draft.embeddedTitle.trim();
-  if (draft.embeddedTaskKind.trim() !== "") out.taskKind = draft.embeddedTaskKind.trim();
-  if (draft.embeddedInstructions.trim() !== "") out.instructions = draft.embeddedInstructions.trim();
-  return out;
-}
-
-function readEmbeddedTitle(payload: unknown): string | null {
-  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) return null;
-  const t = (payload as Record<string, unknown>).title;
-  return typeof t === "string" ? t : null;
-}
-
-function NewItemForm({
+function EmbeddedTaskAuthoringForm({
+  variant,
+  initialDraft,
   defaultSortOrder,
+  existingLineKeys,
   busy,
   pinnedWorkflowVersionId,
   onCancel,
   onSubmit,
+  submitLabel,
 }: {
+  variant: "create" | "edit";
+  initialDraft?: NewItemDraft;
   defaultSortOrder: number;
+  existingLineKeys: string[];
   busy: boolean;
   pinnedWorkflowVersionId: string | null;
   onCancel: () => void;
   onSubmit: (draft: NewItemDraft) => void | Promise<void>;
+  submitLabel: string;
 }) {
-  const [draft, setDraft] = useState<NewItemDraft>(() => emptyDraft(defaultSortOrder));
-  const valid = useMemo(
-    () => draft.lineKey.trim() !== "" && draft.targetNodeKey.trim() !== "",
-    [draft.lineKey, draft.targetNodeKey],
+  const uid = useId();
+  const [draft, setDraft] = useState<NewItemDraft>(() =>
+    variant === "edit" && initialDraft
+      ? { ...initialDraft, lineKind: "EMBEDDED" }
+      : { ...emptyDraft(defaultSortOrder), lineKind: "EMBEDDED" },
   );
 
-  return (
-    <div className="rounded border border-emerald-900/40 bg-emerald-950/10 p-3">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-300/80 mb-2">
-        New item
-      </p>
-      <ItemForm
-        draft={draft}
-        busy={busy}
-        onChange={setDraft}
-        pinnedWorkflowVersionId={pinnedWorkflowVersionId}
-        actions={
-          <div className="flex gap-2">
-            <button
-              type="button"
-              disabled={busy || !valid}
-              onClick={() => void onSubmit(draft)}
-              className="rounded bg-emerald-800/90 px-2 py-0.5 text-[11px] font-medium text-emerald-50 hover:bg-emerald-700 disabled:opacity-50"
-            >
-              Add item
-            </button>
-            <button
-              type="button"
-              onClick={onCancel}
-              className="rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-400 hover:text-zinc-200"
-            >
-              Cancel
-            </button>
-          </div>
-        }
-      />
-    </div>
-  );
-}
-
-function ItemForm({
-  draft,
-  busy,
-  onChange,
-  actions,
-  pinnedWorkflowVersionId,
-  initialTaskDefinitionId,
-  initialTaskDefinitionSummary,
-}: {
-  draft: NewItemDraft;
-  busy: boolean;
-  onChange: (next: NewItemDraft) => void;
-  actions: React.ReactNode;
-  pinnedWorkflowVersionId: string | null;
-  initialTaskDefinitionId?: string | null;
-  initialTaskDefinitionSummary?: SelectedTaskDefinitionSummary | null;
-}) {
   function set<K extends keyof NewItemDraft>(key: K, value: NewItemDraft[K]) {
-    onChange({ ...draft, [key]: value });
+    setDraft((d) => ({ ...d, [key]: value }));
   }
+
+  const canSubmit = useMemo(
+    () => draft.embeddedTitle.trim() !== "" && draft.targetNodeKey.trim() !== "",
+    [draft.embeddedTitle, draft.targetNodeKey],
+  );
+
+  function submit() {
+    const finalized = finalizeEmbeddedDraftForSubmit(draft, existingLineKeys);
+    void onSubmit(finalized);
+  }
+
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
-      <label className="space-y-1">
-        <span className="block text-zinc-500">Line key</span>
-        <input
-          type="text"
-          value={draft.lineKey}
-          onChange={(e) => set("lineKey", e.target.value)}
-          disabled={busy}
-          placeholder="e.g. inspect-1"
-          className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-zinc-200"
-        />
-      </label>
-      <label className="space-y-1">
-        <span className="block text-zinc-500">Sort order</span>
-        <input
-          type="number"
-          value={draft.sortOrder}
-          onChange={(e) => set("sortOrder", Number.parseInt(e.target.value || "0", 10))}
-          disabled={busy}
-          className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-zinc-200"
-        />
-      </label>
+    <div className="rounded border border-emerald-900/40 bg-emerald-950/10 p-3 space-y-3 text-[11px]">
+      {variant === "create" ? (
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-300/80">New task</p>
+      ) : null}
       <div className="space-y-1">
-        <span className="block text-zinc-500">Stage</span>
+        <label className="block text-zinc-400" htmlFor={`${uid}-task-name`}>
+          Task name
+        </label>
+        <input
+          id={`${uid}-task-name`}
+          type="text"
+          value={draft.embeddedTitle}
+          onChange={(e) => set("embeddedTitle", e.target.value)}
+          disabled={busy}
+          placeholder="e.g. Roof tear-off"
+          className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-200"
+        />
+      </div>
+      <div className="space-y-1">
+        <span className="block text-zinc-400">Stage</span>
         <TargetNodePicker
           workflowVersionIdForNodeKeys={pinnedWorkflowVersionId}
           value={draft.targetNodeKey}
@@ -1076,57 +1117,59 @@ function ItemForm({
           copyVariant="quoteScopeStage"
         />
       </div>
-      <label className="space-y-1">
-        <span className="block text-zinc-500">Tier (optional)</span>
-        <input
-          type="text"
-          value={draft.tierCode}
-          onChange={(e) => set("tierCode", e.target.value)}
+      <div className="space-y-1">
+        <label className="block text-zinc-400" htmlFor={`${uid}-instr`}>
+          Instructions / notes
+        </label>
+        <textarea
+          id={`${uid}-instr`}
+          rows={3}
+          value={draft.embeddedInstructions}
+          onChange={(e) => set("embeddedInstructions", e.target.value)}
           disabled={busy}
-          placeholder="GOOD / BETTER / BEST / blank = all"
-          className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-zinc-200"
+          className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-200"
         />
-      </label>
-      <label className="space-y-1 sm:col-span-2">
-        <span className="block text-zinc-500">Line kind</span>
-        <div className="flex gap-3">
-          <label className="inline-flex items-center gap-1">
-            <input
-              type="radio"
-              name={`kind-${draft.lineKey}`}
-              checked={draft.lineKind === "EMBEDDED"}
-              onChange={() => set("lineKind", "EMBEDDED")}
-              disabled={busy}
-            />
-            <span>Embedded (inline meaning)</span>
-          </label>
-          <label className="inline-flex items-center gap-1">
-            <input
-              type="radio"
-              name={`kind-${draft.lineKey}`}
-              checked={draft.lineKind === "LIBRARY"}
-              onChange={() => set("lineKind", "LIBRARY")}
-              disabled={busy}
-            />
-            <span>Library (TaskDefinition reference)</span>
-          </label>
-        </div>
-      </label>
+      </div>
 
-      {draft.lineKind === "EMBEDDED" ? (
-        <>
+      <details className="rounded border border-zinc-800 bg-zinc-950/40 px-2 py-1">
+        <summary className="cursor-pointer text-zinc-500 hover:text-zinc-300 select-none text-[10px] font-medium uppercase tracking-wide">
+          Advanced options
+        </summary>
+        <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-zinc-800/80">
           <label className="space-y-1 sm:col-span-2">
-            <span className="block text-zinc-500">Embedded title</span>
+            <span className="block text-zinc-500">Internal key (optional override)</span>
             <input
               type="text"
-              value={draft.embeddedTitle}
-              onChange={(e) => set("embeddedTitle", e.target.value)}
+              value={draft.lineKey}
+              onChange={(e) => set("lineKey", e.target.value)}
               disabled={busy}
-              className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-200"
+              placeholder="Leave blank to auto-generate from task name"
+              className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-zinc-200"
             />
           </label>
           <label className="space-y-1">
-            <span className="block text-zinc-500">Embedded task kind (optional)</span>
+            <span className="block text-zinc-500">Manual order</span>
+            <input
+              type="number"
+              value={draft.sortOrder}
+              onChange={(e) => set("sortOrder", Number.parseInt(e.target.value || "0", 10))}
+              disabled={busy}
+              className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-zinc-200"
+            />
+          </label>
+          <label className="space-y-1">
+            <span className="block text-zinc-500">Tier (optional)</span>
+            <input
+              type="text"
+              value={draft.tierCode}
+              onChange={(e) => set("tierCode", e.target.value)}
+              disabled={busy}
+              placeholder="Blank = all tiers"
+              className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-zinc-200"
+            />
+          </label>
+          <label className="space-y-1 sm:col-span-2">
+            <span className="block text-zinc-500">Task kind (optional)</span>
             <input
               type="text"
               value={draft.embeddedTaskKind}
@@ -1136,31 +1179,308 @@ function ItemForm({
               className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-200"
             />
           </label>
+        </div>
+      </details>
+
+      <div className="flex flex-wrap justify-end gap-2 pt-1">
+        <button
+          type="button"
+          disabled={busy || !canSubmit}
+          onClick={() => submit()}
+          className="rounded bg-emerald-800/90 px-2 py-0.5 text-[11px] font-medium text-emerald-50 hover:bg-emerald-700 disabled:opacity-50"
+        >
+          {submitLabel}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-400 hover:text-zinc-200"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function LibraryTaskCreateForm({
+  busy,
+  pinnedWorkflowVersionId,
+  defaultSortOrder,
+  existingLineKeys,
+  onCancel,
+  onSubmit,
+}: {
+  busy: boolean;
+  pinnedWorkflowVersionId: string | null;
+  defaultSortOrder: number;
+  existingLineKeys: string[];
+  onCancel: () => void;
+  onSubmit: (draft: NewItemDraft) => void | Promise<void>;
+}) {
+  const uid = useId();
+  const [draft, setDraft] = useState<NewItemDraft>(() => ({
+    ...emptyDraft(defaultSortOrder),
+    lineKind: "LIBRARY",
+  }));
+  const [libSummary, setLibSummary] = useState<SelectedTaskDefinitionSummary | null>(null);
+
+  function set<K extends keyof NewItemDraft>(key: K, value: NewItemDraft[K]) {
+    setDraft((d) => ({ ...d, [key]: value }));
+  }
+
+  const canSubmit =
+    draft.targetNodeKey.trim() !== "" && draft.taskDefinitionId.trim() !== "";
+
+  function submit() {
+    const keySet = new Set(existingLineKeys.filter(Boolean));
+    let lk = draft.lineKey.trim();
+    if (lk.length === 0) {
+      lk = lineKeyFromTaskName(
+        libSummary?.displayName?.trim() && libSummary.displayName.trim().length > 0
+          ? libSummary.displayName
+          : "task",
+        keySet,
+      );
+    }
+    const next: NewItemDraft = {
+      ...draft,
+      lineKind: "LIBRARY",
+      lineKey: lk,
+      embeddedTitle: "",
+      embeddedTaskKind: "",
+      embeddedInstructions: "",
+    };
+    void onSubmit(next);
+  }
+
+  return (
+    <div className="rounded border border-sky-900/40 bg-sky-950/10 p-3 space-y-3 text-[11px]">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-sky-300/80">
+        Add from task library
+      </p>
+      <div className="space-y-1">
+        <span className="block text-zinc-400">Saved task definition</span>
+        <TaskDefinitionPicker
+          initialSelectedId={null}
+          initialSelectedSummary={null}
+          value={draft.taskDefinitionId.trim() === "" ? null : draft.taskDefinitionId}
+          disabled={busy}
+          onChange={({ id, summary }) => {
+            set("taskDefinitionId", id ?? "");
+            setLibSummary(summary);
+          }}
+        />
+      </div>
+      <div className="space-y-1">
+        <span className="block text-zinc-400">Stage</span>
+        <TargetNodePicker
+          workflowVersionIdForNodeKeys={pinnedWorkflowVersionId}
+          value={draft.targetNodeKey}
+          disabled={busy}
+          onChange={(next) => set("targetNodeKey", next)}
+          copyVariant="quoteScopeStage"
+        />
+      </div>
+
+      <details className="rounded border border-zinc-800 bg-zinc-950/40 px-2 py-1">
+        <summary className="cursor-pointer text-zinc-500 hover:text-zinc-300 select-none text-[10px] font-medium uppercase tracking-wide">
+          Advanced options
+        </summary>
+        <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-zinc-800/80">
           <label className="space-y-1 sm:col-span-2">
-            <span className="block text-zinc-500">Embedded instructions (optional)</span>
-            <textarea
-              rows={2}
-              value={draft.embeddedInstructions}
-              onChange={(e) => set("embeddedInstructions", e.target.value)}
+            <span className="block text-zinc-500">Internal key (optional override)</span>
+            <input
+              id={`${uid}-lib-key`}
+              type="text"
+              value={draft.lineKey}
+              onChange={(e) => set("lineKey", e.target.value)}
               disabled={busy}
-              className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-200"
+              placeholder="Leave blank to auto-generate from definition name"
+              className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-zinc-200"
             />
           </label>
-        </>
-      ) : (
-        <div className="space-y-1 sm:col-span-2">
-          <span className="block text-zinc-500">TaskDefinition (library link)</span>
-          <TaskDefinitionPicker
-            initialSelectedId={initialTaskDefinitionId ?? null}
-            initialSelectedSummary={initialTaskDefinitionSummary ?? null}
-            value={draft.taskDefinitionId.trim() === "" ? null : draft.taskDefinitionId}
-            disabled={busy}
-            onChange={({ id }) => set("taskDefinitionId", id ?? "")}
-          />
+          <label className="space-y-1">
+            <span className="block text-zinc-500">Manual order</span>
+            <input
+              type="number"
+              value={draft.sortOrder}
+              onChange={(e) => set("sortOrder", Number.parseInt(e.target.value || "0", 10))}
+              disabled={busy}
+              className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-zinc-200"
+            />
+          </label>
+          <label className="space-y-1">
+            <span className="block text-zinc-500">Tier (optional)</span>
+            <input
+              type="text"
+              value={draft.tierCode}
+              onChange={(e) => set("tierCode", e.target.value)}
+              disabled={busy}
+              placeholder="Blank = all tiers"
+              className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-zinc-200"
+            />
+          </label>
         </div>
-      )}
+      </details>
 
-      <div className="sm:col-span-2 flex justify-end mt-1">{actions}</div>
+      <div className="flex flex-wrap justify-end gap-2 pt-1">
+        <button
+          type="button"
+          disabled={busy || !canSubmit}
+          onClick={() => submit()}
+          className="rounded bg-sky-800/90 px-2 py-0.5 text-[11px] font-medium text-sky-50 hover:bg-sky-700 disabled:opacity-50"
+        >
+          Add task from library
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-400 hover:text-zinc-200"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function LibraryItemEditor({
+  item,
+  busy,
+  collisionKeys,
+  pinnedWorkflowVersionId,
+  onCancel,
+  onSave,
+}: {
+  item: QuoteLocalPacketItemDto;
+  busy: boolean;
+  collisionKeys: string[];
+  pinnedWorkflowVersionId: string | null;
+  onCancel: () => void;
+  onSave: (draft: NewItemDraft) => void | Promise<void>;
+}) {
+  const [draft, setDraft] = useState<NewItemDraft>(() => itemToDraft(item));
+  const [definitionLabel, setDefinitionLabel] = useState(
+    () => item.taskDefinition?.displayName ?? "",
+  );
+
+  function set<K extends keyof NewItemDraft>(key: K, value: NewItemDraft[K]) {
+    setDraft((d) => ({ ...d, [key]: value }));
+  }
+
+  const canSave =
+    draft.lineKind === "LIBRARY" &&
+    draft.targetNodeKey.trim() !== "" &&
+    draft.taskDefinitionId.trim() !== "";
+
+  function save() {
+    const manual = draft.lineKey.trim();
+    const definitionChanged = draft.taskDefinitionId !== item.taskDefinitionId;
+    const resolvedKey =
+      manual.length > 0
+        ? manual
+        : definitionChanged
+          ? lineKeyFromTaskName(definitionLabel.trim() || "task", new Set(collisionKeys))
+          : item.lineKey;
+    void onSave({
+      ...draft,
+      lineKind: "LIBRARY",
+      lineKey: resolvedKey,
+      embeddedTitle: "",
+      embeddedTaskKind: "",
+      embeddedInstructions: "",
+    });
+  }
+
+  return (
+    <div className="rounded border border-sky-900/40 bg-sky-950/10 p-3 space-y-3 text-[11px]">
+      <div>
+        <p className="text-[10px] font-medium uppercase tracking-wide text-sky-400/90">Saved task definition</p>
+        <p className="text-sm text-zinc-100 mt-0.5">
+          {definitionLabel.trim() !== "" ? definitionLabel : "Unknown definition"}
+        </p>
+      </div>
+      <div className="space-y-1">
+        <span className="block text-zinc-400">Stage</span>
+        <TargetNodePicker
+          workflowVersionIdForNodeKeys={pinnedWorkflowVersionId}
+          value={draft.targetNodeKey}
+          disabled={busy}
+          onChange={(next) => set("targetNodeKey", next)}
+          copyVariant="quoteScopeStage"
+        />
+      </div>
+
+      <details className="rounded border border-zinc-800 bg-zinc-950/40 px-2 py-1">
+        <summary className="cursor-pointer text-zinc-500 hover:text-zinc-300 select-none text-[10px] font-medium uppercase tracking-wide">
+          Advanced options
+        </summary>
+        <div className="mt-2 space-y-2 pt-1 border-t border-zinc-800/80">
+          <div className="space-y-1">
+            <span className="block text-zinc-500">Change linked definition</span>
+            <TaskDefinitionPicker
+              initialSelectedId={item.taskDefinitionId}
+              initialSelectedSummary={item.taskDefinition}
+              value={draft.taskDefinitionId.trim() === "" ? null : draft.taskDefinitionId}
+              disabled={busy}
+              onChange={({ id, summary }) => {
+                set("taskDefinitionId", id ?? "");
+                if (summary?.displayName) setDefinitionLabel(summary.displayName);
+              }}
+            />
+          </div>
+          <label className="space-y-1 block">
+            <span className="block text-zinc-500">Internal key (optional override)</span>
+            <input
+              type="text"
+              value={draft.lineKey}
+              onChange={(e) => set("lineKey", e.target.value)}
+              disabled={busy}
+              className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-zinc-200"
+            />
+          </label>
+          <label className="space-y-1 block">
+            <span className="block text-zinc-500">Manual order</span>
+            <input
+              type="number"
+              value={draft.sortOrder}
+              onChange={(e) => set("sortOrder", Number.parseInt(e.target.value || "0", 10))}
+              disabled={busy}
+              className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-zinc-200"
+            />
+          </label>
+          <label className="space-y-1 block">
+            <span className="block text-zinc-500">Tier (optional)</span>
+            <input
+              type="text"
+              value={draft.tierCode}
+              onChange={(e) => set("tierCode", e.target.value)}
+              disabled={busy}
+              placeholder="Blank = all tiers"
+              className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-zinc-200"
+            />
+          </label>
+        </div>
+      </details>
+
+      <div className="flex flex-wrap justify-end gap-2 pt-1">
+        <button
+          type="button"
+          disabled={busy || !canSave}
+          onClick={() => save()}
+          className="rounded bg-sky-800/90 px-2 py-0.5 text-[11px] font-medium text-sky-50 hover:bg-sky-700 disabled:opacity-50"
+        >
+          Save task
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-400 hover:text-zinc-200"
+        >
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }
@@ -1168,7 +1488,7 @@ function ItemForm({
 /* ───────────────────────── Promote form ───────────────────────── */
 
 const PROMOTE_HELP_TEXT =
-  "This creates a new saved template in your library with a first draft revision and copies every item as a template task line. The action is irreversible — once saved, the source one-off work is locked and the new template exists permanently. Office admins can publish, edit, or supersede the template later from the library.";
+  "This creates a new saved task packet in your library with a first draft revision and copies every item as a template task line. The action is irreversible — once saved, the source task packet on this quote is locked and the new packet exists permanently. Office admins can publish, edit, or supersede it later from the library.";
 
 function PromoteForm({
   busy,
@@ -1244,7 +1564,7 @@ function PromoteForm({
         />
         <span>
           I understand this is irreversible: a new saved template will be created in the library
-          and this one-off work will be locked.
+          and this task packet on the quote will be locked.
         </span>
       </label>
       {localError ? (
@@ -1289,7 +1609,7 @@ function PromoteForm({
 /* ─────────────── Promote into existing saved template ─────────────── */
 
 const PROMOTE_INTO_EXISTING_HELP_TEXT =
-  "This creates a new editable DRAFT revision on the saved template you pick, containing the items from this one-off work. The published revision is NOT changed — you'll review and publish the new draft from the office library. The source one-off work is locked once promoted.";
+  "This creates a new editable DRAFT revision on the saved task packet you pick, containing the items from this quote task packet. The published revision is NOT changed — you'll review and publish the new draft from the office library. The source task packet on this quote is locked once promoted.";
 
 function PromoteIntoExistingForm({
   busy,
@@ -1397,7 +1717,7 @@ function PromoteIntoExistingForm({
         />
         <span>
           I understand a new editable draft revision will be created on the
-          selected saved template, and this one-off work will be locked.
+          selected saved task packet, and this quote task packet will be locked.
         </span>
       </label>
       {localError ? (

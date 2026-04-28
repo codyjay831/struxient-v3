@@ -361,7 +361,7 @@ export function LineItemPresetForm(props: LineItemPresetFormProps) {
                 {formatExecutionModeLabel("MANIFEST")}
               </span>
               <span className="block text-[11px] text-zinc-500 mt-0.5">
-                Uses a saved work template to create crew tasks after the quote is approved.
+                Uses a saved task packet to create crew tasks after the quote is approved.
               </span>
             </span>
           </label>
@@ -389,7 +389,7 @@ export function LineItemPresetForm(props: LineItemPresetFormProps) {
         {fields.defaultExecutionMode === "MANIFEST" ? (
           <div>
             <label className="block text-xs">
-              <span className="font-medium text-zinc-400">Saved work template</span>
+              <span className="font-medium text-zinc-400">Saved task packet</span>
               <select
                 required
                 value={fields.defaultScopePacketId}
@@ -397,7 +397,7 @@ export function LineItemPresetForm(props: LineItemPresetFormProps) {
                 disabled={busy || packetOptions.length === 0}
                 className="mt-1 w-full rounded border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 disabled:opacity-50"
               >
-                <option value="">— Pick a saved work template —</option>
+                <option value="">— Pick a saved task packet —</option>
                 {packetOptions.map((p) => {
                   const ver =
                     p.latestPublishedRevisionNumber == null
@@ -413,7 +413,7 @@ export function LineItemPresetForm(props: LineItemPresetFormProps) {
             </label>
             {packetOptions.length === 0 ? (
               <p className="mt-2 text-[11px] text-rose-400/90">
-                No saved work templates are available yet. Create one first under
+                No saved task packets are available yet. Create one first under
                 <Link href="/library/packets/new" className="ml-1 underline hover:text-rose-300">
                   Library &rarr; Packets
                 </Link>
@@ -421,7 +421,7 @@ export function LineItemPresetForm(props: LineItemPresetFormProps) {
               </p>
             ) : selectedPacket && selectedPacket.latestPublishedRevisionId == null ? (
               <p className="mt-2 rounded border border-amber-800/60 bg-amber-950/30 px-3 py-2 text-[11px] text-amber-300">
-                Saved line can be saved, but it can&rsquo;t be used until the work template has a
+                Saved line can be saved, but it can&rsquo;t be used until the task packet has a
                 published version.
               </p>
             ) : selectedPacket ? (

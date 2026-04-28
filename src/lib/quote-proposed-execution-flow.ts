@@ -111,14 +111,19 @@ export type ProposedExecutionFlowLineWarning =
       kind: "stageOffSnapshot";
       lineItemId: string;
       lineTitle: string | null;
+      /** Raw stage key — show only under Advanced / support UI. */
       nodeId: string;
+      /** Human-readable stage label from the execution preview. */
+      stageDisplayLabel: string;
       taskTitle: string;
     }
   | {
       kind: "stageNonCanonical";
       lineItemId: string;
       lineTitle: string | null;
+      /** Raw stage key — show only under Advanced / support UI. */
       nodeId: string;
+      stageDisplayLabel: string;
       taskTitle: string;
     }
   | {
@@ -296,6 +301,7 @@ function collectWarningsForLine(
           lineItemId: line.lineItemId,
           lineTitle,
           nodeId: t.stage.nodeId,
+          stageDisplayLabel: t.stage.displayLabel,
           taskTitle: t.title,
         });
       } else if (!isCanonicalExecutionStageKey(t.stage.nodeId)) {
@@ -304,6 +310,7 @@ function collectWarningsForLine(
           lineItemId: line.lineItemId,
           lineTitle,
           nodeId: t.stage.nodeId,
+          stageDisplayLabel: t.stage.displayLabel,
           taskTitle: t.title,
         });
       }
