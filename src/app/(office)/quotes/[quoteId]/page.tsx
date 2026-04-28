@@ -20,16 +20,18 @@ import {
   deriveNewestSentSignTarget,
   derivePortalChangeRequestOnSentTarget,
 } from "@/lib/workspace/derive-workspace-sent-sign-target";
-import { 
-  deriveQuoteHeadWorkspaceReadiness, 
-  type QuoteHeadReadinessInput 
+import {
+  deriveQuoteHeadWorkspaceReadiness,
+  type QuoteHeadReadinessInput,
 } from "@/lib/workspace/derive-quote-head-workspace-readiness";
+import { buildQuoteWorkspaceNextActionView } from "@/lib/workspace/quote-workspace-next-action";
 import { redirect } from "next/navigation";
 import { deriveAppOrigin } from "@/lib/http/derive-app-origin";
 
 // Shared components
 import { QuoteWorkspaceActions } from "@/components/quotes/workspace/quote-workspace-actions";
 import { QuoteWorkspaceShellSummary } from "@/components/quotes/workspace/quote-workspace-shell-summary";
+import { QuoteWorkspaceNextActionCard } from "@/components/quotes/workspace/quote-workspace-next-action-card";
 import { QuoteWorkspaceLineItemSummary } from "@/components/quotes/workspace/quote-workspace-line-item-summary";
 import { QuoteWorkspaceLineItemList } from "@/components/quotes/workspace/quote-workspace-line-item-list";
 import { QuoteWorkspaceHeadReadiness } from "@/components/quotes/workspace/quote-workspace-head-readiness";
@@ -179,11 +181,6 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
     }
   }
 
-  const readiness = deriveQuoteHeadWorkspaceReadiness(
-    headForReadiness ? toReadinessInput(headForReadiness, headLineItemCount, packetStageReadiness) : null,
-  );
-  const recommendedStep = readiness.kind === "head" ? readiness.recommendedStepIndex : null;
-
   const canOfficeMutate = principalHasCapability(auth.principal, "office_mutate");
 
   const latestDraftWorkspaceTarget = headForReadiness?.status === "DRAFT" ? {
@@ -197,6 +194,16 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
   const portalChangeRequestOnSent = derivePortalChangeRequestOnSentTarget(sentSignTarget, ws.versions);
   const signedActivateTarget = deriveNewestSignedWithoutActivationTarget(ws.versions);
   const executionEntryTarget = deriveNewestActivatedExecutionEntryTarget(ws.versions);
+
+  const readiness = deriveQuoteHeadWorkspaceReadiness(
+    headForReadiness ? toReadinessInput(headForReadiness, headLineItemCount, packetStageReadiness) : null,
+  );
+  const recommendedStep = readiness.kind === "head" ? readiness.recommendedStepIndex : null;
+  const headRow = headForReadiness ?? head;
+  const nextActionModel = buildQuoteWorkspaceNextActionView(readiness, quoteId, {
+    sentPortalShareToken: sentSignTarget?.portalQuoteShareToken ?? null,
+    headHasActivation: !!headRow?.hasActivation,
+  });
 
   // Execution bridge data
   const executionBridgeData: ExecutionBridgeData = executionEntryTarget ? {
@@ -212,44 +219,51 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
   } : { kind: "none" };
 
   return (
-    <main className="p-8 max-w-5xl mx-auto">
-      <header className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-zinc-800 pb-6">
+    <main className="p-6 max-w-5xl mx-auto">
+      <header className="mb-4 flex flex-wrap items-end justify-between gap-3 border-b border-zinc-800 pb-4">
         <div>
-          <nav className="flex items-center gap-2 text-xs font-medium text-zinc-500 mb-2">
-            <Link href="/quotes" className="hover:text-zinc-300 transition-colors">Quotes</Link>
+          <nav className="flex items-center gap-2 text-xs font-medium text-zinc-500 mb-1">
+            <Link href="/quotes" className="hover:text-zinc-300 transition-colors">
+              Quotes
+            </Link>
             <span>/</span>
             <span className="text-zinc-400">{ws.quote.quoteNumber}</span>
           </nav>
-          <h1 className="text-3xl font-bold tracking-tight text-zinc-50">
-            Quote Workspace
-          </h1>
-          <p className="mt-2 text-sm text-zinc-400 max-w-2xl">
-            Commercial lifecycle for {ws.customer.name} — {ws.flowGroup.name}. 
-            Follow the steps below to prepare, send, and activate this engagement.
-          </p>
+          <h1 className="text-xl font-semibold tracking-tight text-zinc-50">Quote workspace</h1>
         </div>
-        <div className="flex items-center gap-3">
-           {head ? (
-             <Link href={`/quotes/${quoteId}/versions/${head.id}/scope`} className="px-3 py-1.5 rounded border border-zinc-700 bg-zinc-900 text-xs font-medium text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-all">
-                Inspect Scope
-             </Link>
-           ) : null}
+        <div className="flex items-center gap-2">
+          {head ? (
+            <Link
+              href={`/quotes/${quoteId}/versions/${head.id}/scope`}
+              className="rounded border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-[11px] font-medium text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-all"
+            >
+              Inspect scope
+            </Link>
+          ) : null}
         </div>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 space-y-10">
-          {canonicalPinEnsureError ? (
-            <div
-              className="rounded border border-red-900/50 bg-red-950/30 p-3 text-sm text-red-100"
-              role="alert"
-            >
-              <p className="font-medium">Execution flow binding failed</p>
-              <p className="mt-1 text-xs text-red-200/90">{canonicalPinEnsureError}</p>
-            </div>
-          ) : null}
-          <QuoteWorkspaceShellSummary quoteId={quoteId} shell={ws} head={headForReadiness ?? head} />
+      <QuoteWorkspaceShellSummary
+        quoteId={quoteId}
+        shell={ws}
+        head={headForReadiness ?? head}
+        variant="compact"
+      />
 
+      {canonicalPinEnsureError ? (
+        <div
+          className="mb-4 rounded border border-red-900/50 bg-red-950/30 p-3 text-sm text-red-100"
+          role="alert"
+        >
+          <p className="font-medium">Execution flow binding failed</p>
+          <p className="mt-1 text-xs text-red-200/90">{canonicalPinEnsureError}</p>
+        </div>
+      ) : null}
+
+      <QuoteWorkspaceNextActionCard model={nextActionModel} />
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:gap-8">
+        <div className="lg:col-span-2 space-y-8">
           <section aria-labelledby="workflow-heading">
             <div className="mb-6 border-b border-zinc-800 pb-2">
               <h2 id="workflow-heading" className="text-lg font-semibold text-zinc-50">
@@ -362,12 +376,13 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
           </section>
         </div>
 
-        <div className="space-y-8">
-          <div className="sticky top-24 space-y-8">
+        <div className="space-y-5">
+          <div className="sticky top-20 space-y-5">
             <QuoteWorkspaceHeadReadiness
               head={head}
               headLineItemCount={headLineItemCount}
               packetStageReadiness={packetStageReadiness}
+              variant="rail"
             />
 
             <QuoteWorkspacePreJobTasks flowGroupName={ws.flowGroup.name} tasks={ws.preJobTasks} />

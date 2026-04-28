@@ -24,7 +24,10 @@ type Props = {
 export function QuoteWorkspaceExecutionBridge({ data }: Props) {
   if (data.kind === "none") {
     return (
-      <section className="mb-6 rounded border border-zinc-800 bg-zinc-950/20 p-4 text-sm">
+      <section
+        id="execution-bridge"
+        className="mb-6 rounded border border-zinc-800 bg-zinc-950/20 p-4 text-sm"
+      >
         <h2 className="mb-1 text-sm font-medium text-zinc-200">Execution bridge</h2>
         <p className="text-xs text-zinc-500 italic">
           No version in history has been activated yet. Once a signed version is activated, links to
@@ -44,7 +47,7 @@ export function QuoteWorkspaceExecutionBridge({ data }: Props) {
   } = data;
 
   return (
-    <section className="mb-6 rounded-lg border border-sky-900/30 bg-sky-950/10 p-5 shadow-sm">
+    <section id="execution-bridge" className="mb-6 rounded-lg border border-sky-900/30 bg-sky-950/10 p-5 shadow-sm">
       <div className="mb-4 flex items-center justify-between border-b border-sky-900/20 pb-3">
         <div>
           <h2 className="text-sm font-semibold text-sky-100">Execution created</h2>

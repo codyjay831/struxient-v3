@@ -94,6 +94,15 @@ export function QuoteLocalPacketEditor({
   /** Brief ring highlight when URL hash targets `#field-work-{packetId}`. */
   const [hashHighlightPacketId, setHashHighlightPacketId] = useState<string | null>(null);
 
+  // After `router.refresh()`, the server re-renders this client boundary with a new
+  // `initialPackets` reference (e.g. field work created from a line item above). Without
+  // syncing, `packets` would stay frozen at first mount and the lower editor would miss
+  // new groups until a full reload. Mutations in this component still update `packets`
+  // locally; the next refresh aligns with the server snapshot.
+  useEffect(() => {
+    setPackets(initialPackets);
+  }, [initialPackets]);
+
   // Inline new-packet form
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");

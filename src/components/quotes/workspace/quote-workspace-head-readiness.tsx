@@ -54,7 +54,8 @@ function readinessCardTitle(status: string, hasActivation: boolean): { title: st
   if (status === "DECLINED") {
     return {
       title: "Customer declined",
-      subtitle: "This revision is not signable. Review the decline reason and open a new draft if you need a revised proposal.",
+      subtitle:
+        "This revision is not signable. Review the decline reason and open a new draft if you need a revised proposal.",
     };
   }
   if (status === "VOID") {
@@ -87,63 +88,28 @@ type Props = {
    * (preserves prior behavior).
    */
   packetStageReadiness?: QuoteHeadReadinessInput["packetStageReadiness"];
+  /** `rail`: compact sidebar — checklist behind disclosure (office workspace). */
+  variant?: "default" | "rail";
 };
 
-/**
- * Enhanced readiness / blockers summary for the quote workspace.
- */
-export function QuoteWorkspaceHeadReadiness({
-  head,
-  headLineItemCount = 0,
-  packetStageReadiness = null,
-}: Props) {
-  const r = deriveQuoteHeadWorkspaceReadiness(
-    head ? toReadinessInput(head, headLineItemCount, packetStageReadiness) : null,
-  );
-
-  if (r.kind === "no_versions") {
-    return (
-      <section className="mb-6 rounded-lg border border-dashed border-zinc-800 bg-zinc-950/30 p-6 text-sm">
-        <h2 className="text-base font-semibold text-zinc-200">Get this quote ready to send</h2>
-        <p className="mt-2 text-zinc-500">No versions have been created for this quote yet.</p>
-      </section>
-    );
-  }
-
-  const vid = r.quoteVersionId;
-  const satisfied = r.checklist.filter((c) => c.state === "yes");
-  const missing = r.checklist.filter((c) => c.state === "no");
-  const na = r.checklist.filter((c) => c.state === "n/a");
-  const hasActivation = head?.hasActivation ?? false;
-  const { title: cardTitle, subtitle: cardSubtitle } = readinessCardTitle(r.status, hasActivation);
-  const nextLabel =
-    r.recommendedStepTitle != null && r.recommendedStepIndex != null
-      ? `Next: ${r.recommendedStepTitle}`
-      : null;
-
+function ReadinessBody({
+  r,
+  vid,
+  satisfied,
+  missing,
+  na,
+}: {
+  r: Extract<ReturnType<typeof deriveQuoteHeadWorkspaceReadiness>, { kind: "head" }>;
+  vid: string;
+  satisfied: ReadinessChecklistItem[];
+  missing: ReadinessChecklistItem[];
+  na: ReadinessChecklistItem[];
+}) {
   return (
-    <section className="mb-10 rounded-xl border border-zinc-800 bg-zinc-900/20 p-6 shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-800 pb-4">
+    <>
+      <div className="grid gap-6 sm:grid-cols-2">
         <div>
-          <h2 className="text-lg font-semibold text-zinc-100">{cardTitle}</h2>
-          <p className="mt-1 text-xs text-zinc-400">{cardSubtitle}</p>
-          <p className="mt-2 text-[11px] text-zinc-500">
-            Latest revision (v{r.versionNumber}) ·{" "}
-            <span className="text-zinc-400 font-medium uppercase tracking-wider">{r.status}</span>
-          </p>
-        </div>
-        {nextLabel ? (
-          <div className="rounded-full bg-sky-500/10 px-3 py-1 border border-sky-500/20">
-            <span className="text-[11px] font-bold uppercase tracking-widest text-sky-400">{nextLabel}</span>
-          </div>
-        ) : null}
-      </div>
-
-      <div className="mt-6 grid gap-8 sm:grid-cols-2">
-        <div>
-          <h3 className="text-[11px] font-bold uppercase tracking-wider text-zinc-500 mb-3">
-            Checklist
-          </h3>
+          <h3 className="text-[11px] font-bold uppercase tracking-wider text-zinc-500 mb-3">Checklist</h3>
           <div className="space-y-4">
             {missing.length > 0 && (
               <div>
@@ -187,9 +153,7 @@ export function QuoteWorkspaceHeadReadiness({
         </div>
 
         <div>
-          <h3 className="text-[11px] font-bold uppercase tracking-wider text-zinc-500 mb-3">
-            Recommended path
-          </h3>
+          <h3 className="text-[11px] font-bold uppercase tracking-wider text-zinc-500 mb-3">Recommended path</h3>
           <div className="rounded-lg bg-zinc-950/40 border border-zinc-800 p-4">
             <ol className="list-decimal list-outside ml-4 space-y-3">
               {r.likelyNextSteps.map((s, i) => (
@@ -213,7 +177,7 @@ export function QuoteWorkspaceHeadReadiness({
         </div>
       </div>
 
-      <div className="mt-8 pt-4 border-t border-zinc-800">
+      <div className="mt-6 pt-4 border-t border-zinc-800">
         <details className="text-[10px] text-zinc-600">
           <summary className="cursor-pointer font-medium hover:text-zinc-500">Advanced (support)</summary>
           <div className="mt-4 space-y-3">
@@ -244,6 +208,85 @@ export function QuoteWorkspaceHeadReadiness({
             </div>
           </div>
         </details>
+      </div>
+    </>
+  );
+}
+
+/**
+ * Enhanced readiness / blockers summary for the quote workspace.
+ */
+export function QuoteWorkspaceHeadReadiness({
+  head,
+  headLineItemCount = 0,
+  packetStageReadiness = null,
+  variant = "default",
+}: Props) {
+  const r = deriveQuoteHeadWorkspaceReadiness(
+    head ? toReadinessInput(head, headLineItemCount, packetStageReadiness) : null,
+  );
+
+  if (r.kind === "no_versions") {
+    return (
+      <section className="mb-6 rounded-lg border border-dashed border-zinc-800 bg-zinc-950/30 p-6 text-sm">
+        <h2 className="text-base font-semibold text-zinc-200">Get this quote ready to send</h2>
+        <p className="mt-2 text-zinc-500">No versions have been created for this quote yet.</p>
+      </section>
+    );
+  }
+
+  const vid = r.quoteVersionId;
+  const satisfied = r.checklist.filter((c) => c.state === "yes");
+  const missing = r.checklist.filter((c) => c.state === "no");
+  const na = r.checklist.filter((c) => c.state === "n/a");
+  const hasActivation = head?.hasActivation ?? false;
+  const { title: cardTitle, subtitle: cardSubtitle } = readinessCardTitle(r.status, hasActivation);
+  const nextLabel =
+    r.recommendedStepTitle != null && r.recommendedStepIndex != null
+      ? `Next: ${r.recommendedStepTitle}`
+      : null;
+
+  if (variant === "rail") {
+    return (
+      <section className="rounded-lg border border-zinc-800 bg-zinc-900/25 p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800/80 pb-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Readiness checklist</h2>
+          <span className="text-[10px] text-zinc-500">
+            v{r.versionNumber} · <span className="text-zinc-400">{r.status}</span>
+          </span>
+        </div>
+        <details className="mt-3 group">
+          <summary className="cursor-pointer text-xs font-medium text-sky-400/90 hover:text-sky-300">
+            View full checklist
+          </summary>
+          <div className="mt-4">
+            <ReadinessBody r={r} vid={vid} satisfied={satisfied} missing={missing} na={na} />
+          </div>
+        </details>
+      </section>
+    );
+  }
+
+  return (
+    <section className="mb-10 rounded-xl border border-zinc-800 bg-zinc-900/20 p-6 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-800 pb-4">
+        <div>
+          <h2 className="text-lg font-semibold text-zinc-100">{cardTitle}</h2>
+          <p className="mt-1 text-xs text-zinc-400">{cardSubtitle}</p>
+          <p className="mt-2 text-[11px] text-zinc-500">
+            Latest revision (v{r.versionNumber}) ·{" "}
+            <span className="text-zinc-400 font-medium uppercase tracking-wider">{r.status}</span>
+          </p>
+        </div>
+        {nextLabel ? (
+          <div className="rounded-full bg-sky-500/10 px-3 py-1 border border-sky-500/20">
+            <span className="text-[11px] font-bold uppercase tracking-widest text-sky-400">{nextLabel}</span>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-6">
+        <ReadinessBody r={r} vid={vid} satisfied={satisfied} missing={missing} na={na} />
       </div>
     </section>
   );

@@ -23,7 +23,7 @@ function shortId(id: string): string {
  */
 export function QuoteWorkspaceVersionHistory({ quoteId, versions, canOfficeMutate }: Props) {
   return (
-    <section aria-labelledby="version-history-heading" className="mb-8">
+    <section id="revision-history" aria-labelledby="version-history-heading" className="mb-8">
       <div className="mb-3 flex items-center justify-between">
         <h2 id="version-history-heading" className="text-sm font-semibold text-zinc-200">
           Revision history
