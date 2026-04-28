@@ -7,12 +7,21 @@ import { InternalActionResult } from "@/components/internal/internal-action-resu
 type Props = {
   quoteId: string;
   canOfficeMutate: boolean;
+  /**
+   * `demoted`: quieter chrome for revision-from-head when the main surface is already
+   * the embedded line editor (e.g. rail / versions area).
+   */
+  variant?: "default" | "demoted";
 };
 
 /**
  * Minimal workspace actions: reuses `POST /api/quotes/:quoteId/versions` (office_mutate). No duplicate mutation APIs.
  */
-export function QuoteWorkspaceActions({ quoteId, canOfficeMutate }: Props) {
+export function QuoteWorkspaceActions({
+  quoteId,
+  canOfficeMutate,
+  variant = "default",
+}: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ kind: "success" | "error"; title: string; message?: string; technicalDetails?: string } | null>(null);
@@ -49,30 +58,47 @@ export function QuoteWorkspaceActions({ quoteId, canOfficeMutate }: Props) {
     }
   }
 
+  const isDemoted = variant === "demoted";
+
   return (
     <section
       id="start-new-draft"
-      className="mb-6 rounded border border-zinc-700/80 bg-zinc-900/50 p-4 text-sm"
+      className={
+        isDemoted ?
+          "mb-3 rounded-md border border-zinc-800/60 bg-zinc-950/25 p-3 text-xs text-zinc-500"
+        : "mb-6 rounded-md border border-zinc-800/80 bg-zinc-950/35 p-4 text-sm"
+      }
     >
-      <h2 className="mb-2 text-sm font-medium text-zinc-200">Start a new draft</h2>
+      <h2
+        className={
+          isDemoted ? "mb-1.5 text-xs font-medium text-zinc-400" : "mb-2 text-base font-semibold text-zinc-100"
+        }
+      >
+        {isDemoted ? "Revise quote" : "Start a new draft"}
+      </h2>
       {!canOfficeMutate ? (
-        <p className="text-xs text-zinc-500">
+        <p className={isDemoted ? "text-xs text-zinc-600" : "text-sm text-zinc-500"}>
           Creating a new version requires an office session with elevated permissions.
           Sign in at <code className="text-zinc-400">/login</code> as office to perform this action.
         </p>
       ) : (
-        <div className="space-y-3">
-          <p className="text-xs text-zinc-500 leading-relaxed">
-            Start a new draft version to revise the quote. This clones the current version so you can modify line items
-            or field work before sending a new proposal.
+        <div className={isDemoted ? "space-y-2" : "space-y-3"}>
+          <p className={isDemoted ? "text-xs leading-snug text-zinc-600" : "text-sm text-zinc-500"}>
+            {isDemoted ?
+              "Clones the head draft as a new version you can edit and send separately."
+            : "Clones this revision so you can change lines and tasks, then send a new proposal when ready."}
           </p>
           <button
             type="button"
             disabled={busy}
             onClick={() => void createNextVersion()}
-            className="rounded bg-amber-800/90 px-3 py-1.5 text-xs font-medium text-amber-50 hover:bg-amber-700 disabled:opacity-50 transition-colors"
+            className={
+              isDemoted ?
+                "rounded-md border border-zinc-600/90 bg-zinc-900/50 px-2.5 py-1.5 text-xs font-medium text-zinc-300 hover:border-zinc-500 hover:bg-zinc-800 disabled:opacity-50 transition-colors"
+              : "rounded-md bg-amber-800/90 px-4 py-2 text-sm font-medium text-amber-50 hover:bg-amber-700 disabled:opacity-50 transition-colors"
+            }
           >
-            {busy ? "Creating…" : "Create new draft version"}
+            {busy ? "Creating…" : isDemoted ? "Create revision draft" : "Create new draft version"}
           </button>
         </div>
       )}
@@ -83,21 +109,23 @@ export function QuoteWorkspaceActions({ quoteId, canOfficeMutate }: Props) {
           message={result.message}
           technicalDetails={result.technicalDetails}
           nextStep={
-            result.kind === "success" 
-              ? { label: "Edit quote & work plan", href: "#line-items" } 
-              : undefined
+            result.kind === "success" ?
+              { label: "Line & tasks", href: `/quotes/${encodeURIComponent(quoteId)}/scope` }
+            : undefined
           }
         />
       )}
-      
-      <div className="mt-4 border-t border-zinc-800/40 pt-3">
-        <details className="text-[10px] text-zinc-600">
-          <summary className="cursor-pointer font-medium hover:text-zinc-500">Advanced (support)</summary>
-          <p className="mt-1">
-            Calls <code className="text-zinc-500">POST /api/quotes/{quoteId}/versions</code>. Clones server-side state.
-          </p>
-        </details>
-      </div>
+
+      {!isDemoted ?
+        <div className="mt-4 border-t border-zinc-800/40 pt-3">
+          <details className="text-xs text-zinc-600">
+            <summary className="cursor-pointer font-medium text-zinc-500 hover:text-zinc-400">Support & IDs</summary>
+            <p className="mt-1 text-zinc-500">
+              Creates the next draft from the current version (same server route as before).
+            </p>
+          </details>
+        </div>
+      : null}
     </section>
   );
 }

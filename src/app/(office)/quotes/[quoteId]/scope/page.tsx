@@ -3,60 +3,24 @@ import { redirect } from "next/navigation";
 import { getPrisma } from "@/server/db/prisma";
 import { ensureDraftQuoteVersionPinnedToCanonicalForTenant } from "@/server/slice1/mutations/ensure-draft-quote-version-canonical-pin";
 import { getQuoteWorkspaceForTenant } from "@/server/slice1/reads/quote-workspace-reads";
-import { getQuoteVersionScopeReadModel } from "@/server/slice1/reads/quote-version-scope";
-import { listQuoteLocalPacketsForVersion } from "@/server/slice1/reads/quote-local-packet-reads";
-import { listScopePacketsForTenant } from "@/server/slice1/reads/scope-packet-catalog-reads";
 import {
-  LINE_ITEM_PRESET_LIST_LIMIT_DEFAULTS,
-  listLineItemPresetsForTenant,
-} from "@/server/slice1/reads/line-item-preset-reads";
-import { loadLineItemExecutionPreviewsForTenant } from "@/server/slice1/reads/line-item-execution-preview-support";
-import { SCOPE_PACKET_LIST_LIMIT_DEFAULTS } from "@/lib/scope-packet-catalog-summary";
-import { toQuoteVersionScopeApiDto } from "@/lib/quote-version-scope-dto";
+  buildLineItemTitlesByLocalPacketId,
+  loadOfficeHeadScopeAuthoringModel,
+} from "@/server/slice1/reads/load-office-head-scope-authoring-model";
 import { principalHasCapability, tryGetApiPrincipal } from "@/lib/auth/api-principal";
-import {
-  deriveScopeVersionContext,
-  groupQuoteScopeLineItemsByProposalGroup,
-} from "@/lib/quote-scope/quote-scope-grouping";
+import type { ScopeVersionContext } from "@/lib/quote-scope/quote-scope-grouping";
 import { QuoteLocalPacketEditor } from "@/components/quote-scope/quote-local-packet-editor";
 import { ScopeEditor } from "./scope-editor";
 
 type PageProps = { params: Promise<{ quoteId: string }> };
-
-/** For “Used by” labels on field work cards — presentation-only, no schema change. */
-function buildLineItemTitlesByLocalPacketId(
-  items: ReturnType<typeof toQuoteVersionScopeApiDto>["orderedLineItems"],
-): Record<string, string[]> {
-  const acc = new Map<string, string[]>();
-  for (const line of items) {
-    if (!line.quoteLocalPacketId) continue;
-    const list = acc.get(line.quoteLocalPacketId) ?? [];
-    list.push(line.title);
-    acc.set(line.quoteLocalPacketId, list);
-  }
-  return Object.fromEntries(acc);
-}
 
 export const dynamic = "force-dynamic";
 
 /**
  * Office scope authoring surface: `(office)/quotes/[quoteId]/scope`.
  *
- * Responsibilities:
- *   1. Resolve the auth principal (tenant gate). Redirect to login on failure.
- *   2. Load the quote workspace to find the head version (the editable head =
- *      `versions[0]`, ordered by versionNumber desc).
- *   3. Load the scope read model for that head version and project to the
- *      stable API DTO that the line-item endpoints also speak.
- *   4. Compute version context (latest_draft / older_draft / frozen_*).
- *      DRAFT-on-head is the only state the editor accepts mutations against;
- *      anything else renders a frozen-head banner with a path back to the
- *      workspace (where `QuoteWorkspaceActions` clones a new draft via
- *      `POST /api/quotes/:quoteId/versions`).
- *   5. Compute proposal-group bucketing via the shared pure helper.
- *
- * Auth/tenant/capability gates remain enforced server-side both here (page
- * gate) and in every line-item API route (`office_mutate`).
+ * Data for {@link ScopeEditor} is loaded via {@link loadOfficeHeadScopeAuthoringModel}
+ * (shared with the quote workspace embedded builder).
  */
 export default async function OfficeQuoteScopePage({ params }: PageProps) {
   const { quoteId } = await params;
@@ -110,92 +74,21 @@ export default async function OfficeQuoteScopePage({ params }: PageProps) {
     }
   }
 
-  const scopeModel = await getQuoteVersionScopeReadModel(prisma, {
+  const authoring = await loadOfficeHeadScopeAuthoringModel(prisma, {
     tenantId: auth.principal.tenantId,
     quoteVersionId: head.id,
+    latestQuoteVersionId: ws.latestQuoteVersionId,
   });
 
-  if (!scopeModel) {
-    // Head version disappeared between reads, or tenant scope shifted. Send
-    // the operator back to the workspace to re-resolve canon. We do not
-    // fabricate empty scope.
+  if (!authoring) {
     redirect(`/quotes/${quoteId}`);
   }
 
-  const dto = toQuoteVersionScopeApiDto(scopeModel);
+  const { dto, grouping, versionContext, isEditableHead, localPackets, libraryPackets, presets, executionPreview } =
+    authoring;
+
   const lineItemTitlesByLocalPacketId = buildLineItemTitlesByLocalPacketId(dto.orderedLineItems);
-  const isLatest = ws.latestQuoteVersionId === head.id;
-  const versionContext = deriveScopeVersionContext({
-    status: dto.quoteVersion.status,
-    isLatest,
-    versionNumber: dto.quoteVersion.versionNumber,
-  });
-
-  const isEditableHead = versionContext.kind === "latest_draft";
   const canOfficeMutate = principalHasCapability(auth.principal, "office_mutate");
-
-  const grouping = groupQuoteScopeLineItemsByProposalGroup(dto.proposalGroups, dto.orderedLineItems);
-
-  // Quote-local packets and library packet summaries feed the line-item
-  // packet picker (Triangle Mode). Both are only relevant on the editable
-  // head DRAFT — frozen and older drafts are inspected via
-  // `(office)/quotes/[id]/versions/[vId]/scope`, which deliberately mounts no
-  // mutation controls. Skipping the reads on the non-editable branch avoids
-  // tenant DB round-trips with no UI consumer.
-  //
-  // Library packets are fetched at the catalog list maximum (200 per
-  // `SCOPE_PACKET_LIST_LIMIT_DEFAULTS.max`); the editor downstream filters
-  // them to those with a published revision (the only revisions that are
-  // pinnable from a quote line item).
-  const localPackets = isEditableHead
-    ? await listQuoteLocalPacketsForVersion(prisma, {
-        tenantId: auth.principal.tenantId,
-        quoteVersionId: head.id,
-      })
-    : [];
-  const libraryPackets = isEditableHead
-    ? await listScopePacketsForTenant(prisma, {
-        tenantId: auth.principal.tenantId,
-        limit: SCOPE_PACKET_LIST_LIMIT_DEFAULTS.max,
-      })
-    : [];
-  // Saved-line-item presets (Triangle Mode — Phase 2 / Slice 2). Loaded only
-  // on the editable head DRAFT branch, mirroring the localPackets/libraryPackets
-  // gate above. Frozen and older versions don't surface the Quick Add picker
-  // at all, so loading presets there would be wasted I/O. The list is
-  // tenant-scoped and capped at the read layer's MAX limit (200) — same
-  // ceiling as the catalog packet list.
-  const presets = isEditableHead
-    ? await listLineItemPresetsForTenant(prisma, {
-        tenantId: auth.principal.tenantId,
-        limit: LINE_ITEM_PRESET_LIST_LIMIT_DEFAULTS.max,
-      })
-    : [];
-
-  // Triangle Mode (Slice C): per-line execution preview support data.
-  // Builds a map keyed by `QuoteLineItem.id` whose values describe what
-  // runtime tasks each MANIFEST line will compose into. This is observation-
-  // only — no compose run, no schema change, no RuntimeTask touch.
-  // Skipped on the non-editable branch (matches the localPackets / libraryPackets
-  // gate); read-only inspection of older versions lives on the dedicated
-  // `(office)/quotes/[id]/versions/[vId]/scope` route.
-  const executionPreview = isEditableHead
-    ? await loadLineItemExecutionPreviewsForTenant(prisma, {
-        tenantId: auth.principal.tenantId,
-        pinnedWorkflowVersionId: dto.quoteVersion.pinnedWorkflowVersionId,
-        lineItems: dto.orderedLineItems.map((line) => ({
-          id: line.id,
-          executionMode: line.executionMode,
-          scopePacketRevisionId: line.scopePacketRevisionId,
-          quoteLocalPacketId: line.quoteLocalPacketId,
-          scopeRevision: line.scopeRevision
-            ? { id: line.scopeRevision.id, scopePacketId: line.scopeRevision.scopePacketId }
-            : null,
-        })),
-        libraryPackets,
-        localPackets,
-      })
-    : null;
 
   return (
     <main className="p-8 max-w-5xl mx-auto text-zinc-200">
@@ -254,20 +147,6 @@ export default async function OfficeQuoteScopePage({ params }: PageProps) {
         }
       />
 
-      {/*
-        Quote-local packets (authoring surface). Mounted only on the editable
-        head DRAFT — frozen / older versions are inspected on the read-only
-        version-scope route which deliberately omits mutation controls.
-
-        The editor is canon-safe:
-          - Server-side `office_mutate` gates are enforced by every API route
-            it calls (`/api/quote-versions/.../local-packets`,
-            `/api/quote-local-packets/...`). The `canOfficeMutate` prop only
-            controls UI affordances; it never weakens the backend gate.
-          - The component renders its own locked-state banners when
-            `isDraft = false` or `canOfficeMutate = false`. We still gate at
-            the page level so we don't even fetch packets when not needed.
-      */}
       {isEditableHead ? (
         <section className="mt-14 pt-10 border-t border-zinc-800/80 space-y-6">
           <QuoteLocalPacketEditor
@@ -308,13 +187,7 @@ function ScopeBreadcrumb({ quoteId, quoteNumber }: { quoteId: string; quoteNumbe
   );
 }
 
-function VersionContextBanner({
-  context,
-  quoteId,
-}: {
-  context: ReturnType<typeof deriveScopeVersionContext>;
-  quoteId: string;
-}) {
+function VersionContextBanner({ context, quoteId }: { context: ScopeVersionContext; quoteId: string }) {
   const toneCls =
     context.tone === "emerald"
       ? "border-emerald-900/60 bg-emerald-950/20 text-emerald-200"

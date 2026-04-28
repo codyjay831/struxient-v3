@@ -262,15 +262,15 @@ export default async function DevQuoteWorkspacePage({ params }: PageProps) {
               isRecommended={recommendedStep === 1}
             >
               <div id="line-items" className="space-y-6">
-                <QuoteWorkspaceLineItemSummary
+                <QuoteWorkspaceLineItemList
                   quoteId={quoteId}
                   versionNumber={head?.versionNumber ?? null}
-                  summary={ws.headLineItemSummary}
+                  items={ws.headLineItems}
                 />
 
-                <QuoteWorkspaceLineItemList
+                <QuoteWorkspaceLineItemSummary
                   versionNumber={head?.versionNumber ?? null}
-                  items={ws.headLineItems}
+                  summary={ws.headLineItemSummary}
                 />
 
                 <QuoteWorkspaceActions quoteId={quoteId} canOfficeMutate={canOfficeMutate} />

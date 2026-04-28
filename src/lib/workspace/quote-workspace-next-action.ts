@@ -154,9 +154,9 @@ export function buildQuoteWorkspaceNextActionView(
   if (r.status === "DRAFT" && idx === 1) {
     return {
       headline: "Start here: build the quote",
-      body: "Add the line items the customer is buying. You can add quote-only lines and field-work lines; field-work lines need tasks before you send.",
+      body: "Add or edit line items and tasks first. Proposal-only lines stay on the quote; other lines can attach crew tasks after approval — get those right before you review and send.",
       blockerLine: null,
-      primary: { label: "Add line items", href: `/quotes/${quoteId}/scope` },
+      primary: { label: "Add or edit line items", href: `/quotes/${quoteId}/scope` },
       secondary: { label: "View quote progress", href: "#step-1" },
     };
   }
@@ -166,7 +166,7 @@ export function buildQuoteWorkspaceNextActionView(
       headline: stepTitle ? `Next: ${stepTitle}` : "Next: Review work plan",
       body: draftStep2Body(r),
       blockerLine: blocker,
-      primary: { label: "Fix work plan", href: `/quotes/${quoteId}/scope` },
+      primary: { label: "Fix line items & crew tasks", href: `/quotes/${quoteId}/scope` },
       secondary: { label: "Review work plan", href: "#step-2" },
     };
   }

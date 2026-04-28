@@ -11,9 +11,9 @@
  *   derive the user-facing outcome from packet attachment alone.
  *
  * Outcome mapping (for persisted workspace data only):
- *   - `isLibraryBacked`              => "Field work — saved task packet"
- *   - `isQuoteLocal`                 => "Field work — on this quote"
- *   - neither attached               => "Quote-only"
+ *   - `isLibraryBacked`              => "Crew tasks from saved packet"
+ *   - `isQuoteLocal`                 => "Crew tasks on this quote"
+ *   - neither attached               => "Proposal only"
  *
  * NOTE: A fourth "Field work — needs work template" outcome can exist while
  * editing a line in the Scope Editor (a draft MANIFEST with no packet yet),
@@ -43,11 +43,11 @@ export function formatQuoteLineItemOutcomeLabel(
 ): string {
   switch (outcome) {
     case "quote_only":
-      return "Quote-only";
+      return "Proposal only";
     case "field_work_saved":
-      return "Field work — saved task packet";
+      return "Crew tasks from saved packet";
     case "field_work_one_off":
-      return "Field work — on this quote";
+      return "Crew tasks on this quote";
   }
 }
 

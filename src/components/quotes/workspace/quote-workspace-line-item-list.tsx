@@ -1,3 +1,4 @@
+import { InternalSparseState } from "@/components/internal/internal-state-feedback";
 import type { QuoteLineItemVisibilityDto } from "@/server/slice1/reads/quote-workspace-reads";
 import {
   deriveQuoteLineItemOutcome,
@@ -6,11 +7,12 @@ import {
 } from "@/lib/quote-line-item-outcome";
 
 type Props = {
+  quoteId: string;
   versionNumber: number | null;
   items: QuoteLineItemVisibilityDto[];
 };
 
-export function QuoteWorkspaceLineItemList({ versionNumber, items }: Props) {
+export function QuoteWorkspaceLineItemList({ quoteId, versionNumber, items }: Props) {
   const formatCurrency = (cents: number | null) => {
     if (cents === null) return "—";
     return new Intl.NumberFormat("en-US", {
@@ -19,31 +21,49 @@ export function QuoteWorkspaceLineItemList({ versionNumber, items }: Props) {
     }).format(cents / 100);
   };
 
-  if (items.length === 0) {
-    // The summary card already shows the "no line items yet" empty state with
-    // a CTA. Suppress this duplicate to keep Step 1 focused.
+  if (versionNumber === null) {
     return null;
   }
 
+  if (items.length === 0) {
+    return (
+      <section className="mb-6">
+        <div className="mb-4 flex items-center justify-between border-b border-zinc-800 pb-2">
+          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Quote line items</h2>
+        </div>
+        <InternalSparseState
+          message="No line items yet"
+          hint={`Draft v${versionNumber} is empty. These rows are what the customer sees on the proposal; some lines can also attach crew tasks after approval. Start by adding a line.`}
+          action={{
+            href: `/quotes/${quoteId}/scope`,
+            label: "Add or edit line items →",
+          }}
+        />
+      </section>
+    );
+  }
+
   return (
-    <section className="mb-10">
-      <div className="flex items-center justify-between mb-4 border-b border-zinc-800 pb-2">
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
-          Quote line items
-        </h2>
+    <section className="mb-6">
+      <div className="mb-4 flex items-center justify-between border-b border-zinc-800 pb-2">
+        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Quote line items</h2>
         <span className="text-[10px] font-medium text-zinc-500 uppercase">
-          {items.length} {items.length === 1 ? "Item" : "Items"}
+          {items.length} {items.length === 1 ? "line" : "lines"}
         </span>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/20">
+      <p className="mb-3 text-xs leading-relaxed text-zinc-400">
+        These are the lines the customer will see. Some lines also create crew work after approval.
+      </p>
+
+      <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/30">
         <table className="w-full text-left text-xs text-zinc-300">
           <thead className="bg-zinc-900/60 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
             <tr>
               <th className="px-4 py-2">Line title</th>
               <th className="px-4 py-2 text-right">Qty</th>
               <th className="px-4 py-2 text-right">Amount</th>
-              <th className="px-4 py-2 text-center">What this creates</th>
+              <th className="px-4 py-2 text-center">After approval</th>
             </tr>
           </thead>
           <tbody className="divide-y border-zinc-800">
@@ -73,8 +93,9 @@ export function QuoteWorkspaceLineItemList({ versionNumber, items }: Props) {
         </table>
       </div>
 
-      <p className="mt-3 text-[10px] text-zinc-500 italic">
-        Read-only view for v{versionNumber}. Edit line items from the Build the quote step.
+      <p className="mt-3 text-[10px] text-zinc-500">
+        Read-only for v{versionNumber}. Add or edit line items and tasks in the builder, then review and send from this
+        page.
       </p>
     </section>
   );

@@ -31,8 +31,26 @@ const MAX_DESCRIPTION = SCOPE_LINE_ITEM_MAX_DESCRIPTION;
 
 const FIELD_WORK_SECTION_ID = "quote-local-field-work";
 
-function scrollFieldWorkSectionIntoView() {
+function fieldWorkSectionHref(fieldWorkExternalBaseHref?: string | null): string {
+  if (fieldWorkExternalBaseHref) {
+    return `${fieldWorkExternalBaseHref}#${FIELD_WORK_SECTION_ID}`;
+  }
+  return `#${FIELD_WORK_SECTION_ID}`;
+}
+
+function fieldWorkPacketHref(fieldWorkExternalBaseHref: string | null | undefined, packetId: string): string {
+  if (fieldWorkExternalBaseHref) {
+    return `${fieldWorkExternalBaseHref}#field-work-${packetId}`;
+  }
+  return `#field-work-${packetId}`;
+}
+
+function scrollFieldWorkSectionIntoView(fieldWorkExternalBaseHref?: string | null) {
   window.setTimeout(() => {
+    if (fieldWorkExternalBaseHref) {
+      window.location.assign(`${fieldWorkExternalBaseHref}#${FIELD_WORK_SECTION_ID}`);
+      return;
+    }
     document.getElementById(FIELD_WORK_SECTION_ID)?.scrollIntoView({
       behavior: "smooth",
       block: "start",
@@ -91,6 +109,12 @@ type Props = {
    * When false (e.g. frozen head), quote-local `#field-work-*` targets are not mounted on this page.
    */
   fieldWorkAnchorsActive: boolean;
+  /**
+   * When the editor is embedded without `QuoteLocalPacketEditor` (e.g. quote workspace), set to
+   * `/quotes/:quoteId/scope` so `#field-work-*` / `#quote-local-field-work` links open the full-page
+   * builder where those DOM ids exist. Omit on the scope page for same-page fragment navigation.
+   */
+  fieldWorkExternalBaseHref?: string | null;
   canMutate: boolean;
   editableReason: EditableReason;
 };
@@ -194,6 +218,7 @@ export function ScopeEditor({
   availablePresets = [],
   executionPreviewByLineItemId,
   fieldWorkAnchorsActive,
+  fieldWorkExternalBaseHref,
   canMutate,
   editableReason,
 }: Props) {
@@ -363,6 +388,7 @@ export function ScopeEditor({
         availableLibraryPackets={availableLibraryPackets}
         executionPreviewByLineItemId={executionPreviewByLineItemId}
         fieldWorkAnchorsActive={fieldWorkAnchorsActive}
+        fieldWorkExternalBaseHref={fieldWorkExternalBaseHref}
         singleDefaultMainGroup={singleDefaultMainGroup}
       />
     );
@@ -454,7 +480,7 @@ export function ScopeEditor({
           <span>
             Next: add tasks to this field work.{" "}
             <Link
-              href={`#${FIELD_WORK_SECTION_ID}`}
+              href={fieldWorkSectionHref(fieldWorkExternalBaseHref)}
               className="font-semibold text-emerald-300 underline underline-offset-2 hover:text-emerald-200"
             >
               Add tasks →
@@ -466,7 +492,7 @@ export function ScopeEditor({
       });
       await router.refresh();
       if (showAddTasksLink) {
-        scrollFieldWorkSectionIntoView();
+        scrollFieldWorkSectionIntoView(fieldWorkExternalBaseHref);
       }
     } finally {
       setBusyKey(null);
@@ -530,7 +556,7 @@ export function ScopeEditor({
           <span>
             Next: add tasks to this field work.{" "}
             <Link
-              href={`#${FIELD_WORK_SECTION_ID}`}
+              href={fieldWorkSectionHref(fieldWorkExternalBaseHref)}
               className="font-semibold text-emerald-300 underline underline-offset-2 hover:text-emerald-200"
             >
               Add tasks →
@@ -542,7 +568,7 @@ export function ScopeEditor({
       });
       await router.refresh();
       if (showAddTasksLink) {
-        scrollFieldWorkSectionIntoView();
+        scrollFieldWorkSectionIntoView(fieldWorkExternalBaseHref);
       }
     } finally {
       setBusyKey(null);
@@ -787,6 +813,7 @@ export function ScopeEditor({
                   availableLocalPackets={mergedLocalPackets}
                   onCreateOneOffWork={handleCreateOneOffWork}
                   onForkFromSavedRevision={handleForkFromSavedRevision}
+                  fieldWorkExternalBaseHref={fieldWorkExternalBaseHref}
                   busy={busyKey === `create:${group.id}`}
                   submitLabel="Create line item"
                   onCancel={() => {
@@ -818,6 +845,7 @@ export function ScopeEditor({
                           availableLocalPackets={mergedLocalPackets}
                           onCreateOneOffWork={handleCreateOneOffWork}
                           onForkFromSavedRevision={handleForkFromSavedRevision}
+                          fieldWorkExternalBaseHref={fieldWorkExternalBaseHref}
                           existingItem={item}
                           busy={busyKey === `update:${item.id}`}
                           submitLabel="Save changes"
@@ -832,6 +860,7 @@ export function ScopeEditor({
                             executionPreviewByLineItemId?.[item.id] ?? null
                           }
                           fieldWorkAnchorsActive={fieldWorkAnchorsActive}
+                          fieldWorkExternalBaseHref={fieldWorkExternalBaseHref}
                           localTaskCountHint={
                             item.quoteLocalPacketId
                               ? mergedLocalPackets.find((p) => p.id === item.quoteLocalPacketId)
@@ -865,6 +894,7 @@ function LineItemRow({
   availableLibraryPackets,
   executionPreview,
   fieldWorkAnchorsActive,
+  fieldWorkExternalBaseHref,
   localTaskCountHint,
   busy,
   onEdit,
@@ -874,6 +904,7 @@ function LineItemRow({
   availableLibraryPackets: LibraryPacketOption[];
   executionPreview: LineItemExecutionPreviewDto | null;
   fieldWorkAnchorsActive: boolean;
+  fieldWorkExternalBaseHref?: string | null;
   localTaskCountHint?: number | null;
   busy: boolean;
   onEdit: () => void;
@@ -897,6 +928,7 @@ function LineItemRow({
               executionPreview={executionPreview}
               availableLibraryPackets={availableLibraryPackets}
               fieldWorkAnchorsActive={fieldWorkAnchorsActive}
+              fieldWorkExternalBaseHref={fieldWorkExternalBaseHref}
               localTaskCountHint={localTaskCountHint}
               onSetUpFieldWorkEdit={onEdit}
             />
@@ -957,6 +989,7 @@ function LineItemFieldWorkActions({
   executionPreview,
   availableLibraryPackets,
   fieldWorkAnchorsActive,
+  fieldWorkExternalBaseHref,
   localTaskCountHint,
   onSetUpFieldWorkEdit,
 }: {
@@ -964,6 +997,7 @@ function LineItemFieldWorkActions({
   executionPreview: LineItemExecutionPreviewDto | null;
   availableLibraryPackets: LibraryPacketOption[];
   fieldWorkAnchorsActive: boolean;
+  fieldWorkExternalBaseHref?: string | null;
   localTaskCountHint?: number | null;
   onSetUpFieldWorkEdit?: () => void;
 }) {
@@ -980,7 +1014,7 @@ function LineItemFieldWorkActions({
     return (
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         {fieldWorkAnchorsActive ? (
-          <a className={lineItemFieldWorkLinkClass} href={`#${FIELD_WORK_SECTION_ID}`}>
+          <a className={lineItemFieldWorkLinkClass} href={fieldWorkSectionHref(fieldWorkExternalBaseHref)}>
             Set up field work
           </a>
         ) : onSetUpFieldWorkEdit ? (
@@ -992,12 +1026,15 @@ function LineItemFieldWorkActions({
     );
   }
 
-  if (kind === "manifestLocal" && item.quoteLocalPacketId && fieldWorkAnchorsActive) {
+  if (kind === "manifestLocal" && executionPreview && item.quoteLocalPacketId && fieldWorkAnchorsActive) {
     const n = executionPreview.tasks.length;
     const label = n > 0 ? "Edit tasks" : "Add tasks";
     return (
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <a className={lineItemFieldWorkLinkClass} href={`#field-work-${item.quoteLocalPacketId}`}>
+        <a
+          className={lineItemFieldWorkLinkClass}
+          href={fieldWorkPacketHref(fieldWorkExternalBaseHref, item.quoteLocalPacketId)}
+        >
           {label}
         </a>
       </div>
@@ -1014,7 +1051,10 @@ function LineItemFieldWorkActions({
     const label = n > 0 ? "Edit tasks" : "Add tasks";
     return (
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <a className={lineItemFieldWorkLinkClass} href={`#field-work-${item.quoteLocalPacketId}`}>
+        <a
+          className={lineItemFieldWorkLinkClass}
+          href={fieldWorkPacketHref(fieldWorkExternalBaseHref, item.quoteLocalPacketId)}
+        >
           {label}
         </a>
       </div>
@@ -1066,6 +1106,7 @@ function LineItemForm({
   availableLocalPackets,
   onCreateOneOffWork,
   onForkFromSavedRevision,
+  fieldWorkExternalBaseHref,
   existingItem,
   busy,
   submitLabel,
@@ -1076,6 +1117,7 @@ function LineItemForm({
   proposalGroupOptions: ProposalGroup[];
   pinnableLibraryPackets: LibraryPacketOption[];
   availableLocalPackets: LocalPacketOption[];
+  fieldWorkExternalBaseHref?: string | null;
   /**
    * Inline create for a quote-local task packet (same POST as the section
    * below). On success the form pins the new packet to this line.
@@ -1281,7 +1323,7 @@ function LineItemForm({
         <p className="rounded border border-emerald-900/40 bg-emerald-950/15 px-3 py-2 text-[11px] text-emerald-200/95">
           {localPacketHint}{" "}
           <Link
-            href={`#${FIELD_WORK_SECTION_ID}`}
+            href={fieldWorkSectionHref(fieldWorkExternalBaseHref)}
             className="font-semibold text-emerald-300 underline underline-offset-2 hover:text-emerald-200"
           >
             Add tasks below →
@@ -1938,6 +1980,7 @@ function ReadOnlyView({
   availableLibraryPackets,
   executionPreviewByLineItemId,
   fieldWorkAnchorsActive,
+  fieldWorkExternalBaseHref,
   singleDefaultMainGroup,
 }: {
   groupedLineItems: GroupWithItems[];
@@ -1947,6 +1990,7 @@ function ReadOnlyView({
   availableLibraryPackets: LibraryPacketOption[];
   executionPreviewByLineItemId: Record<string, LineItemExecutionPreviewDto> | null;
   fieldWorkAnchorsActive: boolean;
+  fieldWorkExternalBaseHref?: string | null;
   singleDefaultMainGroup: boolean;
 }) {
   const reasonMessage =
@@ -2012,6 +2056,7 @@ function ReadOnlyView({
                           executionPreview={preview}
                           availableLibraryPackets={availableLibraryPackets}
                           fieldWorkAnchorsActive={fieldWorkAnchorsActive}
+                          fieldWorkExternalBaseHref={fieldWorkExternalBaseHref}
                           localTaskCountHint={null}
                         />
                         {showPacketSummaryLine && packetSummary ? (

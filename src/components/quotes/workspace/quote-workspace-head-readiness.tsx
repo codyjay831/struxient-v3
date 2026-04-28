@@ -90,6 +90,11 @@ type Props = {
   packetStageReadiness?: QuoteHeadReadinessInput["packetStageReadiness"];
   /** `rail`: compact sidebar — checklist behind disclosure (office workspace). */
   variant?: "default" | "rail";
+  /**
+   * When the line-item builder is already embedded on the workspace, hide the
+   * recommended-path column (step list + “Go to step …”) so the rail stays status-only.
+   */
+  hideRecommendedPath?: boolean;
 };
 
 function ReadinessBody({
@@ -98,22 +103,24 @@ function ReadinessBody({
   satisfied,
   missing,
   na,
+  hideRecommendedPath,
 }: {
   r: Extract<ReturnType<typeof deriveQuoteHeadWorkspaceReadiness>, { kind: "head" }>;
   vid: string;
   satisfied: ReadinessChecklistItem[];
   missing: ReadinessChecklistItem[];
   na: ReadinessChecklistItem[];
+  hideRecommendedPath?: boolean;
 }) {
   return (
     <>
-      <div className="grid gap-6 sm:grid-cols-2">
+      <div className={hideRecommendedPath ? "grid gap-6" : "grid gap-6 sm:grid-cols-2"}>
         <div>
-          <h3 className="text-[11px] font-bold uppercase tracking-wider text-zinc-500 mb-3">Checklist</h3>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-3">Checklist</h3>
           <div className="space-y-4">
             {missing.length > 0 && (
               <div>
-                <h4 className="text-[10px] font-bold uppercase tracking-tight text-amber-500/80 mb-2">
+                <h4 className="text-xs font-semibold uppercase tracking-tight text-amber-500/80 mb-2">
                   Needs attention
                 </h4>
                 <ul className="space-y-1.5">
@@ -126,7 +133,7 @@ function ReadinessBody({
 
             {satisfied.length > 0 && (
               <div>
-                <h4 className="text-[10px] font-bold uppercase tracking-tight text-emerald-500/80 mb-2">
+                <h4 className="text-xs font-semibold uppercase tracking-tight text-emerald-500/80 mb-2">
                   Satisfied
                 </h4>
                 <ul className="space-y-1.5">
@@ -139,7 +146,7 @@ function ReadinessBody({
 
             {na.length > 0 && (
               <div>
-                <h4 className="text-[10px] font-bold uppercase tracking-tight text-zinc-600 mb-2">
+                <h4 className="text-xs font-semibold uppercase tracking-tight text-zinc-600 mb-2">
                   N/A for current status
                 </h4>
                 <ul className="space-y-1.5">
@@ -152,34 +159,36 @@ function ReadinessBody({
           </div>
         </div>
 
-        <div>
-          <h3 className="text-[11px] font-bold uppercase tracking-wider text-zinc-500 mb-3">Recommended path</h3>
-          <div className="rounded-lg bg-zinc-950/40 border border-zinc-800 p-4">
-            <ol className="list-decimal list-outside ml-4 space-y-3">
-              {r.likelyNextSteps.map((s, i) => (
-                <li key={i} className="text-xs text-zinc-300 leading-relaxed pl-1">
-                  {s}
-                </li>
-              ))}
-            </ol>
-            {r.recommendedStepIndex && r.recommendedStepTitle ? (
-              <div className="mt-4 pt-4 border-t border-zinc-800">
-                <p className="text-[10px] text-zinc-500">
-                  Go to{" "}
-                  <a href={`#step-${r.recommendedStepIndex}`} className="text-sky-400/90 hover:underline font-medium">
-                    step {r.recommendedStepIndex}: {r.recommendedStepTitle}
-                  </a>
-                  .
-                </p>
-              </div>
-            ) : null}
+        {!hideRecommendedPath ?
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-3">Recommended path</h3>
+            <div className="rounded-lg bg-zinc-950/40 border border-zinc-800 p-4">
+              <ol className="list-decimal list-outside ml-4 space-y-3">
+                {r.likelyNextSteps.map((s, i) => (
+                  <li key={i} className="text-xs text-zinc-300 leading-relaxed pl-1">
+                    {s}
+                  </li>
+                ))}
+              </ol>
+              {r.recommendedStepIndex && r.recommendedStepTitle ?
+                <div className="mt-4 border-t border-zinc-800 pt-4">
+                  <p className="text-[10px] text-zinc-500">
+                    Go to{" "}
+                    <a href={`#step-${r.recommendedStepIndex}`} className="font-medium text-sky-400/90 hover:underline">
+                      step {r.recommendedStepIndex}: {r.recommendedStepTitle}
+                    </a>
+                    .
+                  </p>
+                </div>
+              : null}
+            </div>
           </div>
-        </div>
+        : null}
       </div>
 
       <div className="mt-6 pt-4 border-t border-zinc-800">
         <details className="text-[10px] text-zinc-600">
-          <summary className="cursor-pointer font-medium hover:text-zinc-500">Advanced (support)</summary>
+          <summary className="cursor-pointer font-medium text-zinc-500 hover:text-zinc-400">Support & IDs</summary>
           <div className="mt-4 space-y-3">
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
@@ -221,6 +230,7 @@ export function QuoteWorkspaceHeadReadiness({
   headLineItemCount = 0,
   packetStageReadiness = null,
   variant = "default",
+  hideRecommendedPath = false,
 }: Props) {
   const r = deriveQuoteHeadWorkspaceReadiness(
     head ? toReadinessInput(head, headLineItemCount, packetStageReadiness) : null,
@@ -248,27 +258,34 @@ export function QuoteWorkspaceHeadReadiness({
 
   if (variant === "rail") {
     return (
-      <details className="group rounded-lg border border-zinc-800 bg-zinc-900/25 shadow-sm">
-        <summary className="cursor-pointer list-none p-4 marker:content-none [&::-webkit-details-marker]:hidden">
+      <details className="group rounded-md border border-zinc-800/70 bg-zinc-950/30">
+        <summary className="cursor-pointer list-none p-3 marker:content-none [&::-webkit-details-marker]:hidden">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Readiness checklist</span>
-            <span className="text-[10px] text-zinc-500">
+            <span className="text-sm font-medium text-zinc-400">Readiness</span>
+            <span className="text-xs tabular-nums text-zinc-500">
               v{r.versionNumber} · <span className="text-zinc-400">{r.status}</span>
             </span>
           </div>
-          <p className="mt-2 text-[11px] text-zinc-500 group-open:hidden">
-            Expand for checklist, recommended path, and support notes.
+          <p className="mt-1.5 text-xs text-zinc-600 group-open:hidden">
+            {hideRecommendedPath ? "Checklist." : "Checklist and next steps."}
           </p>
         </summary>
-        <div className="border-t border-zinc-800/80 px-4 pb-4 pt-2">
-          <ReadinessBody r={r} vid={vid} satisfied={satisfied} missing={missing} na={na} />
+        <div className="border-t border-zinc-800/80 px-3 pb-3 pt-2">
+          <ReadinessBody
+            r={r}
+            vid={vid}
+            satisfied={satisfied}
+            missing={missing}
+            na={na}
+            hideRecommendedPath={hideRecommendedPath}
+          />
         </div>
       </details>
     );
   }
 
   return (
-    <section className="mb-10 rounded-xl border border-zinc-800 bg-zinc-900/20 p-6 shadow-sm">
+    <section className="mb-10 rounded-md border border-zinc-800 bg-zinc-900/20 p-6">
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-800 pb-4">
         <div>
           <h2 className="text-lg font-semibold text-zinc-100">{cardTitle}</h2>
@@ -286,7 +303,14 @@ export function QuoteWorkspaceHeadReadiness({
       </div>
 
       <div className="mt-6">
-        <ReadinessBody r={r} vid={vid} satisfied={satisfied} missing={missing} na={na} />
+        <ReadinessBody
+          r={r}
+          vid={vid}
+          satisfied={satisfied}
+          missing={missing}
+          na={na}
+          hideRecommendedPath={hideRecommendedPath}
+        />
       </div>
     </section>
   );
@@ -320,7 +344,7 @@ function ReadinessItem({ item }: { item: ReadinessChecklistItem }) {
           {item.label}
         </p>
         {item.note && (
-          <p className="text-[10px] text-zinc-500 leading-snug mt-0.5 max-w-sm">{item.note}</p>
+          <p className="text-xs text-zinc-500 leading-snug mt-0.5 max-w-sm">{item.note}</p>
         )}
       </div>
     </li>

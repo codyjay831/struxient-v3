@@ -1,24 +1,22 @@
-import { InternalSparseState } from "@/components/internal/internal-state-feedback";
 import type { QuoteVersionLineItemSummaryDto } from "@/server/slice1/reads/quote-workspace-reads";
 import { deriveQuoteLineItemOutcomeBreakdown } from "@/lib/quote-line-item-outcome";
 
 type Props = {
-  quoteId: string;
   versionNumber: number | null;
   summary: QuoteVersionLineItemSummaryDto | null;
 };
 
 /**
- * Read-only summary of the current quote version's line items and totals.
- *
- * Tiles are outcome-first: contractors see what the customer is buying
- * (Quote-only vs Field work) before the technical breakdown of where the
- * field-work instructions came from (saved template vs one-off).
+ * Read-only supportive totals for the head version (counts + subtotal).
+ * Primary line-by-line context lives in {@link QuoteWorkspaceLineItemList}.
  */
-export function QuoteWorkspaceLineItemSummary({ quoteId, versionNumber, summary }: Props) {
+export function QuoteWorkspaceLineItemSummary({ versionNumber, summary }: Props) {
   if (!summary || versionNumber === null) return null;
 
   const { lineItemCount, libraryLineItemCount, localLineItemCount, totalLineItemCents } = summary;
+
+  /** Empty draft: primary empty state + CTA live on the line item list. */
+  if (lineItemCount === 0) return null;
 
   const formatCurrency = (cents: number | null) => {
     if (cents === null) return "—";
@@ -28,24 +26,6 @@ export function QuoteWorkspaceLineItemSummary({ quoteId, versionNumber, summary 
     }).format(cents / 100);
   };
 
-  if (lineItemCount === 0) {
-    return (
-      <section className="mb-6">
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 mb-4">
-          What the customer is buying
-        </h2>
-        <InternalSparseState
-          message="No line items yet"
-          hint={`Draft v${versionNumber} is empty. Start by writing a custom line or inserting a saved line.`}
-          action={{
-            href: `/quotes/${quoteId}/scope`,
-            label: "Edit line items →",
-          }}
-        />
-      </section>
-    );
-  }
-
   const outcomes = deriveQuoteLineItemOutcomeBreakdown({
     lineItemCount,
     libraryLineItemCount,
@@ -53,43 +33,38 @@ export function QuoteWorkspaceLineItemSummary({ quoteId, versionNumber, summary 
   });
 
   return (
-    <section className="mb-6 rounded-lg border border-zinc-800 bg-zinc-900/30 p-5 shadow-sm">
-      <div className="flex items-center justify-between border-b border-zinc-800 pb-3 mb-4">
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">What the customer is buying</h2>
-        <span className="text-[10px] font-medium text-zinc-500 bg-zinc-800 px-2 py-0.5 rounded">v{versionNumber}</span>
+    <section className="mb-4 rounded-md border border-zinc-800/80 bg-zinc-950/40 px-3 py-3 sm:px-4">
+      <div className="mb-3 flex items-center justify-between border-b border-zinc-800/80 pb-2">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Line item summary</h2>
+        <span className="text-xs font-medium tabular-nums text-zinc-500">v{versionNumber}</span>
       </div>
 
-      <div className="grid grid-cols-2 gap-6 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <div>
-          <p className="text-[10px] font-medium text-zinc-500 uppercase tracking-tight">Total line items</p>
-          <p className="mt-1 text-xl font-semibold text-zinc-100">{outcomes.total}</p>
+          <p className="text-xs font-medium uppercase tracking-tight text-zinc-500">Total lines</p>
+          <p className="mt-0.5 text-lg font-semibold tabular-nums text-zinc-100">{outcomes.total}</p>
         </div>
         <div>
-          <p className="text-[10px] font-medium text-zinc-500 uppercase tracking-tight">Quote-only</p>
-          <p className="mt-1 text-xl font-semibold text-zinc-300">{outcomes.quoteOnly}</p>
-          <p className="mt-0.5 text-[10px] text-zinc-500">on the proposal only</p>
+          <p className="text-xs font-medium uppercase tracking-tight text-zinc-500">Proposal only</p>
+          <p className="mt-0.5 text-lg font-semibold tabular-nums text-zinc-300">{outcomes.quoteOnly}</p>
+          <p className="mt-0.5 text-xs text-zinc-600">No crew tasks from this line</p>
         </div>
         <div>
-          <p className="text-[10px] font-medium text-zinc-500 uppercase tracking-tight">Field work</p>
-          <p className="mt-1 text-xl font-semibold text-sky-400">{outcomes.fieldWork}</p>
-          <p className="mt-0.5 text-[10px] text-zinc-500">create crew tasks after approval</p>
+          <p className="text-xs font-medium uppercase tracking-tight text-zinc-500">With crew tasks</p>
+          <p className="mt-0.5 text-lg font-semibold tabular-nums text-sky-400/90">{outcomes.fieldWork}</p>
+          <p className="mt-0.5 text-xs text-zinc-600">After customer approval</p>
         </div>
         <div>
-          <p className="text-[10px] font-medium text-zinc-500 uppercase tracking-tight">Subtotal</p>
-          <p className="mt-1 text-xl font-semibold text-emerald-500/90">{formatCurrency(totalLineItemCents)}</p>
+          <p className="text-xs font-medium uppercase tracking-tight text-zinc-500">Subtotal</p>
+          <p className="mt-0.5 text-lg font-semibold tabular-nums text-emerald-500/90">{formatCurrency(totalLineItemCents)}</p>
         </div>
       </div>
 
-      <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-zinc-500">
-        <div className="flex items-center gap-2">
-          <div className="h-1 w-1 rounded-full bg-zinc-700"></div>
-          <span>
-            Field work breakdown:{" "}
-            <span className="text-zinc-300">{outcomes.fieldWorkSaved}</span> from saved task packets
-            {" · "}
-            <span className="text-zinc-300">{outcomes.fieldWorkOneOff}</span> field work on this quote
-          </span>
-        </div>
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-600">
+        <span>
+          Crew tasks: <span className="text-zinc-400 tabular-nums">{outcomes.fieldWorkSaved}</span> from saved
+          packets · <span className="text-zinc-400 tabular-nums">{outcomes.fieldWorkOneOff}</span> on this quote
+        </span>
       </div>
     </section>
   );

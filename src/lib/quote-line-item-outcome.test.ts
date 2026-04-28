@@ -34,12 +34,12 @@ describe("deriveQuoteLineItemOutcome", () => {
 
 describe("formatQuoteLineItemOutcomeLabel", () => {
   it("maps each outcome to a contractor-friendly label", () => {
-    expect(formatQuoteLineItemOutcomeLabel("quote_only")).toBe("Quote-only");
+    expect(formatQuoteLineItemOutcomeLabel("quote_only")).toBe("Proposal only");
     expect(formatQuoteLineItemOutcomeLabel("field_work_saved")).toBe(
-      "Field work — saved task packet",
+      "Crew tasks from saved packet",
     );
     expect(formatQuoteLineItemOutcomeLabel("field_work_one_off")).toBe(
-      "Field work — on this quote",
+      "Crew tasks on this quote",
     );
   });
 });

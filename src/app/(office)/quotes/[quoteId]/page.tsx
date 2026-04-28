@@ -7,6 +7,7 @@ import { listQuoteLocalPacketsForVersion } from "@/server/slice1/reads/quote-loc
 import { listScopePacketsForTenant } from "@/server/slice1/reads/scope-packet-catalog-reads";
 import { loadLineItemExecutionPreviewsForTenant } from "@/server/slice1/reads/line-item-execution-preview-support";
 import { SCOPE_PACKET_LIST_LIMIT_DEFAULTS } from "@/lib/scope-packet-catalog-summary";
+import { loadOfficeHeadScopeAuthoringModel } from "@/server/slice1/reads/load-office-head-scope-authoring-model";
 import { derivePacketStageReadiness } from "@/lib/workspace/derive-packet-stage-readiness";
 import {
   buildProposedExecutionFlow,
@@ -27,6 +28,7 @@ import {
 import { buildQuoteWorkspaceNextActionView } from "@/lib/workspace/quote-workspace-next-action";
 import { redirect } from "next/navigation";
 import { deriveAppOrigin } from "@/lib/http/derive-app-origin";
+import type { QuoteVersionHistoryItemDto } from "@/server/slice1/reads/quote-version-history-reads";
 
 // Shared components
 import { QuoteWorkspaceActions } from "@/components/quotes/workspace/quote-workspace-actions";
@@ -34,6 +36,7 @@ import { QuoteWorkspaceShellSummary } from "@/components/quotes/workspace/quote-
 import { QuoteWorkspaceNextActionCard } from "@/components/quotes/workspace/quote-workspace-next-action-card";
 import { QuoteWorkspaceLineItemSummary } from "@/components/quotes/workspace/quote-workspace-line-item-summary";
 import { QuoteWorkspaceLineItemList } from "@/components/quotes/workspace/quote-workspace-line-item-list";
+import { QuoteWorkspaceEmbeddedScopeEditor } from "@/components/quotes/workspace/quote-workspace-embedded-scope-editor";
 import { QuoteWorkspaceHeadReadiness } from "@/components/quotes/workspace/quote-workspace-head-readiness";
 import { QuoteWorkspaceProposedExecutionFlow } from "@/components/quotes/workspace/quote-workspace-proposed-execution-flow";
 import { QuoteWorkspaceComposeSendPanel } from "@/components/quotes/workspace/quote-workspace-compose-send-panel";
@@ -52,7 +55,7 @@ type PageProps = { params: Promise<{ quoteId: string }> };
 export const dynamic = "force-dynamic";
 
 function toReadinessInput(
-  row: any,
+  row: QuoteVersionHistoryItemDto,
   lineItemCount: number,
   packetStageReadiness: QuoteHeadReadinessInput["packetStageReadiness"] = null,
 ): QuoteHeadReadinessInput {
@@ -94,6 +97,8 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
   const headLineItemCount = head?.lineItemCount ?? ws.headLineItemSummary?.lineItemCount ?? 0;
 
   const prisma = getPrisma();
+  const canOfficeMutate = principalHasCapability(auth.principal, "office_mutate");
+
   let canonicalPinEnsureError: string | null = null;
   let headForReadiness = head;
   if (head?.status === "DRAFT") {
@@ -114,24 +119,53 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
     }
   }
 
-  // Packet/stage readiness signal (Triangle Mode visibility slice). Only
-  // loaded when the head is the editable DRAFT and actually has line items
-  // — those are the cases where pre-send authoring help is meaningful and
-  // where the scope page already pays the same I/O cost. Frozen / signed
-  // versions don't get the signal here; we deliberately leave the row off
-  // their readiness rather than re-confirm what send already verified.
-  //
-  // Reuses the exact same loader the scope page uses
-  // (`loadLineItemExecutionPreviewsForTenant`) so the workspace cannot
-  // disagree with the editor about which lines need attention. We do NOT
-  // duplicate compose logic — `derivePacketStageReadiness` only summarizes
-  // the existing per-line `LineItemExecutionPreviewDto` shapes.
+  const shouldAttemptEmbeddedScopeEditor =
+    head != null &&
+    head.status === "DRAFT" &&
+    canOfficeMutate &&
+    ws.latestQuoteVersionId === head.id;
+
+  let officeAuthoring: Awaited<ReturnType<typeof loadOfficeHeadScopeAuthoringModel>> = null;
+  if (shouldAttemptEmbeddedScopeEditor) {
+    officeAuthoring = await loadOfficeHeadScopeAuthoringModel(prisma, {
+      tenantId: auth.principal.tenantId,
+      quoteVersionId: head.id,
+      latestQuoteVersionId: ws.latestQuoteVersionId,
+    });
+    if (!officeAuthoring) {
+      redirect(`/quotes/${quoteId}`);
+    }
+  }
+
+  const embedScopeEditorInWorkspace =
+    officeAuthoring != null && officeAuthoring.isEditableHead && canOfficeMutate;
+
   const headIsEditableDraft = head?.status === "DRAFT";
-  const shouldLoadPacketReadiness =
-    headIsEditableDraft && head != null && headLineItemCount > 0;
+  const shouldLoadPacketReadinessFallback =
+    headIsEditableDraft && head != null && headLineItemCount > 0 && !embedScopeEditorInWorkspace;
+
   let packetStageReadiness: QuoteHeadReadinessInput["packetStageReadiness"] = null;
   let proposedExecutionFlow: ProposedExecutionFlow | null = null;
-  if (shouldLoadPacketReadiness) {
+
+  if (embedScopeEditorInWorkspace && officeAuthoring && headLineItemCount > 0 && officeAuthoring.executionPreview) {
+    const dto = officeAuthoring.dto;
+    const support = officeAuthoring.executionPreview;
+    const lineInputs = dto.orderedLineItems.map((line) => ({
+      lineItemId: line.id,
+      lineTitle: line.title ?? null,
+      preview: support.previewsByLineItemId[line.id]!,
+    }));
+    const workflowSnapshotHasStageNodes =
+      dto.quoteVersion.pinnedWorkflowVersionId != null && support.workflowNodeKeys.length > 0;
+    const signal = derivePacketStageReadiness(
+      lineInputs.map((l) => ({ lineItemId: l.lineItemId, preview: l.preview })),
+      { workflowSnapshotHasStageNodes },
+    );
+    packetStageReadiness = { state: signal.state, note: signal.note };
+    proposedExecutionFlow = buildProposedExecutionFlow(lineInputs, {
+      workflowSnapshotHasStageNodes,
+    });
+  } else if (shouldLoadPacketReadinessFallback) {
     const scopeModel = await getQuoteVersionScopeReadModel(prisma, {
       tenantId: auth.principal.tenantId,
       quoteVersionId: head.id,
@@ -181,8 +215,6 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
     }
   }
 
-  const canOfficeMutate = principalHasCapability(auth.principal, "office_mutate");
-
   const latestDraftWorkspaceTarget = headForReadiness?.status === "DRAFT" ? {
     quoteVersionId: headForReadiness.id,
     versionNumber: headForReadiness.versionNumber,
@@ -223,31 +255,11 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
   const executionLinked = executionBridgeData.kind === "linked";
   const stepQuiet = (n: number) => recommendedStep != null && recommendedStep !== n;
 
-  return (
-    <main className="p-6 max-w-5xl mx-auto">
-      <header className="mb-4 flex flex-wrap items-end justify-between gap-3 border-b border-zinc-800 pb-4">
-        <div>
-          <nav className="flex items-center gap-2 text-xs font-medium text-zinc-500 mb-1">
-            <Link href="/quotes" className="hover:text-zinc-300 transition-colors">
-              Quotes
-            </Link>
-            <span>/</span>
-            <span className="text-zinc-400">{ws.quote.quoteNumber}</span>
-          </nav>
-          <h1 className="text-xl font-semibold tracking-tight text-zinc-50">Quote workspace</h1>
-        </div>
-        <div className="flex items-center gap-2">
-          {head ? (
-            <Link
-              href={`/quotes/${quoteId}/scope`}
-              className="rounded border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-[11px] font-medium text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-all"
-            >
-              Edit quote & work plan
-            </Link>
-          ) : null}
-        </div>
-      </header>
+  const scopeHref = `/quotes/${quoteId}/scope`;
+  const headDisplay = headForReadiness ?? head;
 
+  return (
+    <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <QuoteWorkspaceShellSummary
         quoteId={quoteId}
         shell={ws}
@@ -257,7 +269,7 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
 
       {canonicalPinEnsureError ? (
         <div
-          className="mb-4 rounded border border-red-900/50 bg-red-950/30 p-3 text-sm text-red-100"
+          className="mb-4 rounded-md border border-red-900/50 bg-red-950/30 p-3 text-sm text-red-100"
           role="alert"
         >
           <p className="font-medium">Work plan binding failed</p>
@@ -265,59 +277,116 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
         </div>
       ) : null}
 
-      <QuoteWorkspaceNextActionCard model={nextActionModel} />
+      {!embedScopeEditorInWorkspace ?
+        <QuoteWorkspaceNextActionCard model={nextActionModel} variant="band" />
+      : null}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:gap-8">
-        <div className="lg:col-span-2 space-y-8">
-          <section aria-labelledby="workflow-heading">
-            <div className="mb-6 border-b border-zinc-800 pb-2">
-              <h2 id="workflow-heading" className="text-lg font-semibold text-zinc-50">
-                Quote progress
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 lg:gap-10">
+        <div className="space-y-8 lg:col-span-8">
+          <section aria-labelledby="workflow-heading" className="space-y-6">
+            <div className="border-b border-zinc-800/90 pb-4">
+              <h2 id="workflow-heading" className="text-xl font-semibold tracking-tight text-zinc-50 sm:text-2xl">
+                Build quote
               </h2>
-              <p className="mt-1 text-sm text-zinc-500">
-                Follow the steps in order. Edit line items and tasks on the scope page; use this page to review the work
-                plan, send, capture approval, and start work.
+              <p className="mt-1 max-w-2xl text-sm text-zinc-500">
+                Line items and pricing below, then work plan, send, approval, and start work.
               </p>
             </div>
 
-            <div className="space-y-8">
+            <div className="space-y-10">
               <div id="step-1">
                 <QuoteWorkspacePipelineStep
                   step={1}
-                  title="Build the quote"
-                  hint="Add the line items the customer is buying. Some lines just appear on the proposal; others create work for your crew after approval."
+                  title="Line items & pricing"
+                  hint="Proposal-only lines stay on the quote; other lines can carry crew tasks after approval."
                   isRecommended={recommendedStep === 1}
                   isQuiet={stepQuiet(1)}
+                  titleAside={
+                    embedScopeEditorInWorkspace && officeAuthoring ?
+                      <div className="flex flex-col items-end gap-0.5">
+                        <Link
+                          href={scopeHref}
+                          className="inline-block w-fit max-w-full rounded-md border border-zinc-700/80 bg-zinc-900/60 px-2.5 py-1.5 text-xs font-medium text-zinc-300 hover:border-zinc-600 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
+                        >
+                          Line & tasks →
+                        </Link>
+                        <span className="max-w-[11rem] text-right text-[10px] leading-tight text-zinc-600">
+                          Full-page task builder
+                        </span>
+                      </div>
+                    : undefined
+                  }
                 >
-                  <div id="line-items" className="space-y-6">
-                    <QuoteWorkspaceLineItemSummary
-                      quoteId={quoteId}
-                      versionNumber={head?.versionNumber ?? null}
-                      summary={ws.headLineItemSummary}
-                    />
+                  <div id="line-items" className="space-y-5">
+                    {embedScopeEditorInWorkspace && officeAuthoring ? (
+                      <>
+                        <p className="text-sm text-zinc-500">
+                          Custom crew tasks for this quote only: use{" "}
+                          <Link href={scopeHref} className="font-medium text-sky-400/90 hover:text-sky-300">
+                            Line & tasks
+                          </Link>
+                          . Field-work links from a line open there when needed.
+                        </p>
 
-                    <QuoteWorkspaceLineItemList
-                      versionNumber={head?.versionNumber ?? null}
-                      items={ws.headLineItems}
-                    />
+                        <div className="rounded-md border border-zinc-800/90 bg-zinc-950/40 p-3 ring-1 ring-zinc-800/60 sm:p-4">
+                        <QuoteWorkspaceEmbeddedScopeEditor
+                          quoteId={quoteId}
+                          quoteVersionId={officeAuthoring.dto.quoteVersion.id}
+                          versionNumber={officeAuthoring.dto.quoteVersion.versionNumber}
+                          proposalGroups={officeAuthoring.dto.proposalGroups}
+                          groupedLineItems={officeAuthoring.grouping.groupsWithItems}
+                          availableLibraryPackets={officeAuthoring.libraryPackets}
+                          availableLocalPackets={officeAuthoring.localPackets}
+                          availablePresets={officeAuthoring.presets}
+                          executionPreviewByLineItemId={
+                            officeAuthoring.executionPreview?.previewsByLineItemId ?? null
+                          }
+                          fieldWorkAnchorsActive={officeAuthoring.isEditableHead}
+                          fieldWorkExternalBaseHref={scopeHref}
+                          canMutate={canOfficeMutate && officeAuthoring.isEditableHead}
+                          editableReason={
+                            !canOfficeMutate
+                              ? "missing_capability"
+                              : !officeAuthoring.isEditableHead
+                                ? "not_editable_head"
+                                : "ok"
+                          }
+                        />
+                        </div>
 
-                    {/* Authoring lives on a dedicated office route. The
-                        workspace stays the overview/control surface; this
-                        button hands off to the scope editor for line-item
-                        CRUD on the head draft. */}
-                    <div className="flex flex-wrap items-center gap-3">
-                      <Link
-                        href={`/quotes/${quoteId}/scope`}
-                        className="rounded bg-sky-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-600 transition-colors"
-                      >
-                        Edit quote & work plan →
-                      </Link>
-                      <span className="text-[11px] text-zinc-500">
-                        Add lines, field work, and tasks on the scope page.
-                      </span>
-                    </div>
+                        <QuoteWorkspaceLineItemSummary
+                          versionNumber={head?.versionNumber ?? null}
+                          summary={ws.headLineItemSummary}
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <QuoteWorkspaceLineItemList
+                          quoteId={quoteId}
+                          versionNumber={head?.versionNumber ?? null}
+                          items={ws.headLineItems}
+                        />
 
-                    <QuoteWorkspaceActions quoteId={quoteId} canOfficeMutate={canOfficeMutate} />
+                        <QuoteWorkspaceLineItemSummary
+                          versionNumber={head?.versionNumber ?? null}
+                          summary={ws.headLineItemSummary}
+                        />
+
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                          <Link
+                            href={scopeHref}
+                            className="rounded-md bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-500 transition-colors"
+                          >
+                            Line & tasks →
+                          </Link>
+                          <span className="text-xs text-zinc-500">Edit lines, pricing, saved packets, and custom tasks.</span>
+                        </div>
+                      </>
+                    )}
+
+                    {!embedScopeEditorInWorkspace ?
+                      <QuoteWorkspaceActions quoteId={quoteId} canOfficeMutate={canOfficeMutate} />
+                    : null}
                   </div>
                 </QuoteWorkspacePipelineStep>
               </div>
@@ -326,7 +395,7 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
                 <QuoteWorkspacePipelineStep
                   step={2}
                   title="Review work plan"
-                  hint="Preview crew tasks by phase from your line items and task packets. Fix issues in Edit quote & work plan."
+                  hint="Tasks by phase from your lines and packets. Fix issues in step 1 before send."
                   isRecommended={recommendedStep === 2}
                   isQuiet={stepQuiet(2)}
                 >
@@ -341,7 +410,7 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
                 <QuoteWorkspacePipelineStep
                   step={3}
                   title="Send proposal"
-                  hint="Lock this draft and send the proposal to the customer."
+                  hint="Lock this draft and send to the customer."
                   isRecommended={recommendedStep === 3}
                   isQuiet={stepQuiet(3)}
                 >
@@ -353,7 +422,7 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
                 <QuoteWorkspacePipelineStep
                   step={4}
                   title="Record customer approval"
-                  hint="Use the portal or in-office steps to capture approval and move this version to SIGNED."
+                  hint="Portal or in-office steps to capture approval (SIGNED)."
                   isRecommended={recommendedStep === 4}
                   isQuiet={stepQuiet(4)}
                 >
@@ -372,7 +441,7 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
                 <QuoteWorkspacePipelineStep
                   step={5}
                   title="Start work"
-                  hint="Create the job task list from the signed proposal when you are ready for the crew."
+                  hint="Create the job task list from the signed proposal when the crew is ready."
                   isRecommended={recommendedStep === 5}
                   isQuiet={stepQuiet(5)}
                 >
@@ -386,8 +455,8 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
           </section>
         </div>
 
-        <div className="space-y-5">
-          <div className="sticky top-20 space-y-5">
+        <div className="space-y-4 lg:col-span-4">
+          <div className="sticky top-20 space-y-4">
             {executionLinked ? (
               <QuoteWorkspaceExecutionBridge data={executionBridgeData} />
             ) : null}
@@ -397,12 +466,13 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
               headLineItemCount={headLineItemCount}
               packetStageReadiness={packetStageReadiness}
               variant="rail"
+              hideRecommendedPath={embedScopeEditorInWorkspace}
             />
 
             {isDraftHead ? (
-              <details className="rounded-lg border border-zinc-800 bg-zinc-900/20">
-                <summary className="cursor-pointer px-3 py-2.5 text-xs font-medium text-zinc-400 hover:text-zinc-300">
-                  Site & billing context
+              <details className="rounded-md border border-zinc-800/70 bg-zinc-950/25">
+                <summary className="cursor-pointer px-3 py-2.5 text-sm font-medium text-zinc-400 hover:text-zinc-300">
+                  Site & billing
                 </summary>
                 <div className="space-y-5 border-t border-zinc-800 px-3 pb-4 pt-4">
                   <QuoteWorkspacePreJobTasks flowGroupName={ws.flowGroup.name} tasks={ws.preJobTasks} />
@@ -431,8 +501,8 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
             )}
 
             {!executionLinked ? (
-              <details className="rounded-lg border border-zinc-800 bg-zinc-900/20">
-                <summary className="cursor-pointer px-3 py-2.5 text-xs font-medium text-zinc-400 hover:text-zinc-300">
+              <details className="rounded-md border border-zinc-800/70 bg-zinc-950/25">
+                <summary className="cursor-pointer px-3 py-2.5 text-sm font-medium text-zinc-400 hover:text-zinc-300">
                   After approval
                 </summary>
                 <div className="border-t border-zinc-800 px-3 pb-4 pt-4">
@@ -441,11 +511,20 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
               </details>
             ) : null}
 
-            <details className="rounded-lg border border-zinc-800 bg-zinc-900/20">
-              <summary className="cursor-pointer px-3 py-2.5 text-xs font-medium text-zinc-400 hover:text-zinc-300">
+            <details className="rounded-md border border-zinc-800/70 bg-zinc-950/25">
+              <summary className="cursor-pointer px-3 py-2.5 text-sm font-medium text-zinc-400 hover:text-zinc-300">
                 Quote versions
               </summary>
               <div className="border-t border-zinc-800 px-1 pb-2 pt-2">
+                {embedScopeEditorInWorkspace ?
+                  <div className="px-2 pb-2 pt-1">
+                    <QuoteWorkspaceActions
+                      quoteId={quoteId}
+                      canOfficeMutate={canOfficeMutate}
+                      variant="demoted"
+                    />
+                  </div>
+                : null}
                 <QuoteWorkspaceVersionHistory
                   quoteId={quoteId}
                   versions={ws.versions}
@@ -455,26 +534,61 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
               </div>
             </details>
 
-            <details className="rounded-lg border border-zinc-800 bg-zinc-900/20">
-              <summary className="cursor-pointer px-3 py-2.5 text-xs font-medium text-zinc-400 hover:text-zinc-300">
-                Advanced & metadata
+            <details className="rounded-md border border-zinc-800/70 bg-zinc-950/25">
+              <summary className="cursor-pointer px-3 py-2.5 text-sm font-medium text-zinc-500 hover:text-zinc-400">
+                Support & IDs
               </summary>
-              <div className="space-y-3 border-t border-zinc-800 px-4 py-4 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-zinc-500">Quote ID</span>
+              <div className="space-y-3 border-t border-zinc-800/80 px-3 py-3 text-xs text-zinc-500">
+                <div className="flex justify-between gap-2">
+                  <span>Quote number</span>
+                  <span className="font-mono text-zinc-400">{ws.quote.quoteNumber}</span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span>Quote ID</span>
                   <span className="font-mono text-zinc-400">{quoteId}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-500">Tenant</span>
-                  <span className="text-zinc-400">{auth.principal.tenantId}</span>
+                {headDisplay ?
+                  <div className="flex justify-between gap-2">
+                    <span>Version ID</span>
+                    <span className="max-w-[55%] truncate font-mono text-zinc-400">{headDisplay.id}</span>
+                  </div>
+                : null}
+                <div className="flex justify-between gap-2">
+                  <span>Tenant</span>
+                  <span className="max-w-[55%] truncate text-zinc-400">{auth.principal.tenantId}</span>
                 </div>
-                <div className="flex flex-wrap gap-3 pt-2">
-                  <Link href={`/api/quotes/${quoteId}/workspace`} className="text-sky-500 hover:underline">
-                    Workspace JSON
-                  </Link>
-                  <Link href={`/api/quotes/${quoteId}/versions`} className="text-sky-500 hover:underline">
-                    Versions JSON
-                  </Link>
+                <div className="flex flex-col gap-2 border-t border-zinc-800/60 pt-3">
+                  <span className="text-[11px] font-medium uppercase tracking-wide text-zinc-600">API</span>
+                  <div className="flex flex-wrap gap-x-3 gap-y-1">
+                    <Link
+                      href={`/api/quotes/${quoteId}/workspace`}
+                      className="text-sky-500/80 hover:text-sky-400 hover:underline"
+                      prefetch={false}
+                    >
+                      Workspace
+                    </Link>
+                    <Link
+                      href={`/api/quotes/${quoteId}/versions`}
+                      className="text-sky-500/80 hover:text-sky-400 hover:underline"
+                      prefetch={false}
+                    >
+                      Versions
+                    </Link>
+                    <Link
+                      href={`/api/customers/${ws.customer.id}`}
+                      className="text-sky-500/80 hover:text-sky-400 hover:underline"
+                      prefetch={false}
+                    >
+                      Customer
+                    </Link>
+                    <Link
+                      href={`/api/flow-groups/${ws.flowGroup.id}`}
+                      className="text-sky-500/80 hover:text-sky-400 hover:underline"
+                      prefetch={false}
+                    >
+                      Flow group
+                    </Link>
+                  </div>
                 </div>
               </div>
             </details>

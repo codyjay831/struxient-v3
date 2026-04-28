@@ -442,9 +442,9 @@ export function QuoteWorkspaceSignSent({
             <>
               <p className="mt-2 text-[11px] leading-relaxed text-amber-100/88">
                 Typical office response: use <strong className="text-amber-50/95">Start a new draft</strong> to clone
-                the current head, open <strong className="text-amber-50/95">Edit quote & work plan</strong> to adjust line
-                items, then return to <strong className="text-amber-50/95">Prepare and send</strong> when you are ready
-                to issue a revised proposal. This SENT version stays locked until a newer version is sent.
+                the current head, then <strong className="text-amber-50/95">add or edit line items and tasks</strong> in
+                the builder before you <strong className="text-amber-50/95">prepare and send</strong> a revised
+                proposal. This SENT version stays locked until a newer version is sent.
               </p>
               <p className="mt-2">
                 <Link

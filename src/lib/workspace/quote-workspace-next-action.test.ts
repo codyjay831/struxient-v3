@@ -32,11 +32,11 @@ function view(
 }
 
 describe("buildQuoteWorkspaceNextActionView", () => {
-  it("empty draft: hero visible with Add line items CTA", () => {
+  it("empty draft: hero visible with Add or edit line items CTA", () => {
     const v = view(base({ status: "DRAFT", lineItemCount: 0, hasPinnedWorkflow: false }));
     expect(v.headline.toLowerCase()).toContain("start here");
     expect(v.blockerLine).toBeNull();
-    expect(v.primary.label).toBe("Add line items");
+    expect(v.primary.label).toBe("Add or edit line items");
     expect(v.primary.href).toBe("/quotes/quote_test_1/scope");
     expect(v.secondary?.label).toBe("View quote progress");
   });
@@ -58,7 +58,7 @@ describe("buildQuoteWorkspaceNextActionView", () => {
     expect(v.blockerLine).toBe("Field work on this draft needs attention before you can send.");
     expect(v.headline.toLowerCase()).toContain("review work plan");
     expect(v.body.toLowerCase()).toMatch(/field.work|attention/);
-    expect(v.primary.label).toBe("Fix work plan");
+    expect(v.primary.label).toBe("Fix line items & crew tasks");
     expect(v.primary.href).toBe("/quotes/quote_test_1/scope");
   });
 
@@ -122,17 +122,14 @@ describe("buildQuoteWorkspaceNextActionView", () => {
     expect(v.primary.href).toBe("#execution-bridge");
   });
 
-  it("compact office shell nests InternalQuickJump after Advanced summary (not main strip)", () => {
+  it("shell summary nests InternalQuickJump after More info disclosure", () => {
     const src = readFileSync(
       path.resolve(__dirname, "../../components/quotes/workspace/quote-workspace-shell-summary.tsx"),
       "utf8",
     );
-    const compactIdx = src.indexOf('variant === "compact"');
-    expect(compactIdx).toBeGreaterThan(-1);
-    const slice = src.slice(compactIdx);
-    const adv = slice.indexOf("Advanced (support)");
-    const qj = slice.indexOf("InternalQuickJump");
-    expect(adv).toBeGreaterThan(-1);
-    expect(qj).toBeGreaterThan(adv);
+    const more = src.indexOf(">More info</summary>");
+    const qj = src.indexOf("<InternalQuickJump");
+    expect(more).toBeGreaterThan(-1);
+    expect(qj).toBeGreaterThan(more);
   });
 });
