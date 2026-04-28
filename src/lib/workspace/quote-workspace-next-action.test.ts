@@ -32,21 +32,21 @@ function view(
 }
 
 describe("buildQuoteWorkspaceNextActionView", () => {
-  it("empty draft: hides prominent card; pipeline step 1 carries the CTA", () => {
+  it("empty draft: hero visible with Add line items CTA", () => {
     const v = view(base({ status: "DRAFT", lineItemCount: 0, hasPinnedWorkflow: false }));
-    expect(v.cardLayout).toBe("hidden");
+    expect(v.headline.toLowerCase()).toContain("start here");
     expect(v.blockerLine).toBeNull();
     expect(v.primary.label).toBe("Add line items");
     expect(v.primary.href).toBe("/quotes/quote_test_1/scope");
+    expect(v.secondary?.label).toBe("View quote progress");
   });
 
   it("draft step 2: prominent card with short blocker for work plan row", () => {
     const v = view(base({ status: "DRAFT", lineItemCount: 2, hasPinnedWorkflow: false }));
-    expect(v.cardLayout).toBe("prominent");
     expect(v.blockerLine).toBe("Work plan is not attached to this draft yet.");
   });
 
-  it("draft with scope warnings recommends review flow + field-work style body", () => {
+  it("draft with scope warnings recommends fix work plan + field-work style body", () => {
     const v = view(
       base({
         status: "DRAFT",
@@ -55,24 +55,24 @@ describe("buildQuoteWorkspaceNextActionView", () => {
         packetStageReadiness: { state: "no", note: "1 of 2 field-work line(s) need attention." },
       }),
     );
-    expect(v.cardLayout).toBe("prominent");
     expect(v.blockerLine).toBe("Field work on this draft needs attention before you can send.");
-    expect(v.headline.toLowerCase()).toContain("review execution flow");
+    expect(v.headline.toLowerCase()).toContain("review work plan");
     expect(v.body.toLowerCase()).toMatch(/field.work|attention/);
-    expect(v.primary.label).toBe("Review execution flow");
-    expect(v.primary.href).toBe("#step-2");
+    expect(v.primary.label).toBe("Fix work plan");
+    expect(v.primary.href).toBe("/quotes/quote_test_1/scope");
   });
 
-  it("ready draft: Next Send proposal + preview & send", () => {
-    const v = view(base({ status: "DRAFT", lineItemCount: 2, hasPinnedWorkflow: true }));
-    expect(v.cardLayout).toBe("prominent");
+  it("ready draft: send headline + preview & send; no activation-style blocker", () => {
+    const v = view(base({ status: "DRAFT", lineItemCount: 2, hasPinnedWorkflow: true, proposalGroupCount: 2 }));
     expect(v.headline.toLowerCase()).toContain("send proposal");
     expect(v.body.toLowerCase()).toContain("preview");
     expect(v.primary.label).toBe("Preview & send proposal");
     expect(v.primary.href).toBe("#step-3");
+    expect(v.blockerLine?.toLowerCase() ?? "").not.toContain("execution");
+    expect(v.blockerLine?.toLowerCase() ?? "").not.toContain("not been started");
   });
 
-  it("sent: Waiting on customer — not a draft send-framing headline", () => {
+  it("sent: waiting on customer + record customer approval", () => {
     const v = view(
       base({
         status: "SENT",
@@ -83,14 +83,13 @@ describe("buildQuoteWorkspaceNextActionView", () => {
       }),
       { sentPortalShareToken: "tok_abc" },
     );
-    expect(v.cardLayout).toBe("prominent");
     expect(v.headline.toLowerCase()).toBe("waiting on customer");
     expect(v.headline.toLowerCase()).not.toContain("before you can send");
-    expect(v.primary.label).toBe("Record signature");
+    expect(v.primary.label).toBe("Record customer approval");
     expect(v.secondary?.label).toBe("Open customer portal");
   });
 
-  it("signed without activation: Ready to start work + Activate execution", () => {
+  it("signed without activation: Start work CTA", () => {
     const v = view(
       base({
         status: "SIGNED",
@@ -102,12 +101,11 @@ describe("buildQuoteWorkspaceNextActionView", () => {
       }),
       { headHasActivation: false },
     );
-    expect(v.cardLayout).toBe("prominent");
     expect(v.headline.toLowerCase()).toContain("ready to start work");
-    expect(v.primary.label).toBe("Activate execution");
+    expect(v.primary.label).toBe("Start work");
   });
 
-  it("signed with activation: execution is active", () => {
+  it("signed with activation: Open job", () => {
     const v = view(
       base({
         status: "SIGNED",
@@ -119,8 +117,8 @@ describe("buildQuoteWorkspaceNextActionView", () => {
       }),
       { headHasActivation: true },
     );
-    expect(v.cardLayout).toBe("prominent");
-    expect(v.headline.toLowerCase()).toContain("execution is active");
+    expect(v.headline.toLowerCase()).toContain("work in progress");
+    expect(v.primary.label).toBe("Open job");
     expect(v.primary.href).toBe("#execution-bridge");
   });
 

@@ -38,16 +38,16 @@ export function QuoteWorkspaceActivateSigned({ activateTarget, canOfficeMutate }
       if (!res.ok) {
         setResult({
           kind: "error",
-          title: "Activation failed",
-          message: body.error?.message ?? "An error occurred while starting execution for this quote.",
+          title: "Could not start work",
+          message: body.error?.message ?? "An error occurred while starting work for this quote.",
           technicalDetails: `${body.error?.code ?? "ERROR"}: ${res.status}`,
         });
         return;
       }
       setResult({
         kind: "success",
-        title: "Execution created",
-        message: "Execution has been started. You can track progress in the work feed or flow detail.",
+        title: "Work started",
+        message: "You can track progress in the work feed or flow detail.",
       });
       router.refresh();
     } finally {
@@ -58,10 +58,10 @@ export function QuoteWorkspaceActivateSigned({ activateTarget, canOfficeMutate }
   if (!activateTarget) {
     return (
       <section className="mb-6 rounded border border-zinc-800 bg-zinc-950/25 p-4 text-sm">
-        <h2 className="mb-1 text-sm font-medium text-zinc-200">Activate execution</h2>
+        <h2 className="mb-1 text-sm font-medium text-zinc-200">Start work</h2>
         <p className="text-xs text-zinc-500">
-          Execution created. Use the <span className="font-medium text-sky-400">Execution bridge</span> below to open
-          the work feed.
+          Work has been started. Use <span className="font-medium text-sky-400">Job execution</span> below to open the
+          work feed.
         </p>
       </section>
     );
@@ -69,14 +69,14 @@ export function QuoteWorkspaceActivateSigned({ activateTarget, canOfficeMutate }
 
   return (
     <section className="mb-6 rounded border border-zinc-800 bg-zinc-950/25 p-4 text-sm">
-      <h2 className="mb-1 text-sm font-medium text-zinc-200">Activate execution</h2>
+      <h2 className="mb-1 text-sm font-medium text-zinc-200">Start work</h2>
       <p className="text-xs text-zinc-500">
-        Start execution for v{activateTarget.versionNumber}.
+        Create the job task list from the signed proposal for v{activateTarget.versionNumber}.
       </p>
 
       {!canOfficeMutate ? (
         <p className="mt-3 text-xs text-zinc-500">
-          Activating execution requires an office session with elevated permissions.
+          Starting work requires an office session with elevated permissions.
         </p>
       ) : (
         <div className="mt-4">
@@ -86,11 +86,10 @@ export function QuoteWorkspaceActivateSigned({ activateTarget, canOfficeMutate }
             onClick={() => void runActivate()}
             className="rounded bg-teal-900/85 px-4 py-1.5 text-xs font-medium text-teal-50 hover:bg-teal-800/90 disabled:opacity-50 transition-colors"
           >
-            {busy ? "Activating…" : "Launch execution"}
+            {busy ? "Starting…" : "Start work"}
           </button>
           <p className="mt-2 text-[11px] text-zinc-500 leading-relaxed">
-            Launching creates the job&apos;s task list from the signed proposal. After this, the quote moves into the
-            execution phase.
+            This creates the job task list from the locked proposal. After this, you can track work from Job execution.
           </p>
         </div>
       )}
@@ -134,7 +133,7 @@ export function QuoteWorkspaceActivateSigned({ activateTarget, canOfficeMutate }
           technicalDetails={result.technicalDetails}
           nextStep={
             result.kind === "success" 
-              ? { label: "Go to Execution bridge", href: "#execution-bridge" } 
+              ? { label: "Open job", href: "#execution-bridge" } 
               : undefined
           }
         />

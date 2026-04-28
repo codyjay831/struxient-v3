@@ -54,7 +54,7 @@ describe("deriveQuoteHeadWorkspaceReadiness", () => {
     expect(r.kind).toBe("head");
     if (r.kind !== "head") return;
     expect(r.recommendedStepIndex).toBe(2);
-    expect(r.recommendedStepTitle).toBe("Review execution flow");
+    expect(r.recommendedStepTitle).toBe("Review work plan");
     expect(r.checklist.find((c) => c.id === "scope")?.state).toBe("yes");
     const pin = r.checklist.find((c) => c.id === "pin");
     expect(pin?.state).toBe("no");
@@ -75,9 +75,7 @@ describe("deriveQuoteHeadWorkspaceReadiness", () => {
     expect(r.recommendedStepTitle).toBe("Send proposal");
     expect(r.checklist.find((c) => c.id === "pin")?.state).toBe("yes");
     expect(r.likelyNextSteps.some((s) => s.toLowerCase().includes("preview proposal"))).toBe(true);
-    expect(
-      r.likelyNextSteps.some((s) => s.toLowerCase().includes("proposed execution flow")),
-    ).toBe(true);
+    expect(r.likelyNextSteps.some((s) => s.toLowerCase().includes("work plan"))).toBe(true);
   });
 
   it("draft with scope, bound flow, and packet-stage warnings recommends reviewing the flow (step 2)", () => {
@@ -95,10 +93,8 @@ describe("deriveQuoteHeadWorkspaceReadiness", () => {
     expect(r.kind).toBe("head");
     if (r.kind !== "head") return;
     expect(r.recommendedStepIndex).toBe(2);
-    expect(r.recommendedStepTitle).toBe("Review execution flow");
-    expect(
-      r.likelyNextSteps.some((s) => s.toLowerCase().includes("proposed execution flow")),
-    ).toBe(true);
+    expect(r.recommendedStepTitle).toBe("Review work plan");
+    expect(r.likelyNextSteps.some((s) => s.toLowerCase().includes("work plan"))).toBe(true);
     expect(r.likelyNextSteps.some((s) => s.toLowerCase().includes("line-item"))).toBe(true);
   });
 
@@ -115,7 +111,7 @@ describe("deriveQuoteHeadWorkspaceReadiness", () => {
     expect(r.kind).toBe("head");
     if (r.kind !== "head") return;
     expect(r.recommendedStepIndex).toBe(4);
-    expect(r.recommendedStepTitle).toBe("Record signature");
+    expect(r.recommendedStepTitle).toBe("Record customer approval");
     const blob = allReadinessStrings(r);
     expect(blob.toLowerCase()).not.toContain("get ");
     expect(blob.toLowerCase()).not.toContain("post ");
@@ -138,13 +134,13 @@ describe("deriveQuoteHeadWorkspaceReadiness", () => {
     expect(r.kind).toBe("head");
     if (r.kind !== "head") return;
     expect(r.recommendedStepIndex).toBe(5);
-    expect(r.recommendedStepTitle).toBe("Activate execution");
+    expect(r.recommendedStepTitle).toBe("Start work");
     const blob = allReadinessStrings(r);
     expect(blob.toLowerCase()).not.toContain("post ");
     expect(blob.toLowerCase()).not.toContain("/activate");
   });
 
-  it("signed with activation clears recommended step and mentions execution bridge", () => {
+  it("signed with activation clears recommended step and mentions job execution", () => {
     const r = deriveQuoteHeadWorkspaceReadiness(
       base({ status: "SIGNED", lineItemCount: 2, hasPinnedWorkflow: true, hasFrozenArtifacts: true, hasActivation: true }),
     );
@@ -152,7 +148,7 @@ describe("deriveQuoteHeadWorkspaceReadiness", () => {
     if (r.kind !== "head") return;
     expect(r.recommendedStepIndex).toBeNull();
     expect(r.recommendedStepTitle).toBeNull();
-    expect(r.likelyNextSteps.some((s) => s.toLowerCase().includes("execution bridge"))).toBe(true);
+    expect(r.likelyNextSteps.some((s) => s.toLowerCase().includes("job execution"))).toBe(true);
   });
 
   it("honesty notes teach scope-first canon under Path B (no skeleton/pin language)", () => {
@@ -164,7 +160,7 @@ describe("deriveQuoteHeadWorkspaceReadiness", () => {
         (s) =>
           s.toLowerCase().includes("line items") &&
           s.toLowerCase().includes("task packets") &&
-          s.toLowerCase().includes("stages"),
+          s.toLowerCase().includes("phases"),
       ),
     ).toBe(true);
     expect(r.honestyNotes.every((s) => !s.toLowerCase().includes("skeleton"))).toBe(true);
@@ -247,5 +243,28 @@ describe("deriveQuoteHeadWorkspaceReadiness", () => {
     const frozen = r.checklist.find((c) => c.id === "frozen");
     expect(frozen?.state).toBe("n/a");
     expect(frozen?.label.toLowerCase()).toContain("not sent");
+  });
+
+  it("draft and sent: activation checklist row is n/a (not a pre-start-work blocker)", () => {
+    const draft = deriveQuoteHeadWorkspaceReadiness(
+      base({ status: "DRAFT", lineItemCount: 1, hasPinnedWorkflow: true, hasActivation: false }),
+    );
+    expect(draft.kind).toBe("head");
+    if (draft.kind !== "head") return;
+    expect(draft.checklist.find((c) => c.id === "activation")?.state).toBe("n/a");
+
+    const sent = deriveQuoteHeadWorkspaceReadiness(
+      base({
+        status: "SENT",
+        lineItemCount: 1,
+        hasPinnedWorkflow: true,
+        hasFrozenArtifacts: true,
+        hasActivation: false,
+        sentAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+    expect(sent.kind).toBe("head");
+    if (sent.kind !== "head") return;
+    expect(sent.checklist.find((c) => c.id === "activation")?.state).toBe("n/a");
   });
 });

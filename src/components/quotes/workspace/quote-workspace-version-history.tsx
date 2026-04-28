@@ -11,6 +11,8 @@ type Props = {
   quoteId: string;
   versions: QuoteVersionHistoryItemDto[];
   canOfficeMutate: boolean;
+  /** When false, hides the visible H2 (e.g. parent disclosure already labels the block). */
+  showSectionHeader?: boolean;
 };
 
 function shortId(id: string): string {
@@ -21,23 +23,40 @@ function shortId(id: string): string {
  * Compact version history for office scanning; raw JSON behind disclosure per row.
  * Epic 14: line counts for minimal compare; void control for SENT (no activation) / non-only DRAFT.
  */
-export function QuoteWorkspaceVersionHistory({ quoteId, versions, canOfficeMutate }: Props) {
+export function QuoteWorkspaceVersionHistory({
+  quoteId,
+  versions,
+  canOfficeMutate,
+  showSectionHeader = true,
+}: Props) {
   return (
-    <section id="revision-history" aria-labelledby="version-history-heading" className="mb-8">
-      <div className="mb-3 flex items-center justify-between">
-        <h2 id="version-history-heading" className="text-sm font-semibold text-zinc-200">
-          Revision history
+    <section
+      id="quote-versions"
+      aria-labelledby="version-history-heading"
+      className={showSectionHeader ? "mb-8" : "mb-0"}
+    >
+      {showSectionHeader ? (
+        <>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 id="version-history-heading" className="text-sm font-semibold text-zinc-200">
+              Quote versions
+            </h2>
+            <span className="text-[10px] font-medium uppercase tracking-tight text-zinc-500">
+              {versions.length} {versions.length === 1 ? "Version" : "Versions"} total
+            </span>
+          </div>
+          <p className="mb-4 text-xs text-zinc-500 italic">
+            Full record of commercial revisions. <span className="font-medium text-zinc-400">Superseded</span> means
+            a newer version was sent; <span className="font-medium text-zinc-400">Void</span> means office withdrew the
+            revision (locked records kept for audit). Line counts plus &ldquo;vs prior&rdquo; are high-level hints only
+            — not a scope line diff.
+          </p>
+        </>
+      ) : (
+        <h2 id="version-history-heading" className="sr-only">
+          Quote versions
         </h2>
-        <span className="text-[10px] font-medium uppercase tracking-tight text-zinc-500">
-          {versions.length} {versions.length === 1 ? "Version" : "Versions"} total
-        </span>
-      </div>
-      <p className="mb-4 text-xs text-zinc-500 italic">
-        Full record of commercial revisions. <span className="font-medium text-zinc-400">Superseded</span> means a
-        newer version was sent; <span className="font-medium text-zinc-400">Void</span> means office withdrew the
-        revision (locked records kept for audit). Line counts plus &ldquo;vs prior&rdquo; are high-level hints only —
-        not a scope line diff.
-      </p>
+      )}
 
       <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/40">
         <table className="w-full text-left text-sm">

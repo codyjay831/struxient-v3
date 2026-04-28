@@ -6,13 +6,9 @@ type Props = {
 };
 
 /**
- * First-screen command center: status, next action, blocker, primary CTA.
+ * Current-step hero: orient → missing items → primary action (calm, not alarm-styled).
  */
 export function QuoteWorkspaceNextActionCard({ model }: Props) {
-  if (model.cardLayout === "hidden") {
-    return null;
-  }
-
   const Primary = model.primary.external ? (
     <a
       href={model.primary.href}
@@ -53,15 +49,16 @@ export function QuoteWorkspaceNextActionCard({ model }: Props) {
   return (
     <section
       aria-labelledby="workspace-next-action-heading"
-      className="mb-6 rounded-xl border border-sky-800/40 bg-gradient-to-br from-sky-950/50 to-zinc-950/80 p-5 shadow-md shadow-black/20"
+      className="mb-6 rounded-xl border border-zinc-700/80 bg-zinc-900/40 p-5 shadow-sm"
     >
-      <h2 id="workspace-next-action-heading" className="text-lg font-semibold tracking-tight text-sky-100">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Current step</p>
+      <h2 id="workspace-next-action-heading" className="mt-1 text-lg font-semibold tracking-tight text-zinc-100">
         {model.headline}
       </h2>
-      <p className="mt-2 text-sm leading-relaxed text-zinc-300">{model.body}</p>
+      <p className="mt-2 text-sm leading-relaxed text-zinc-400">{model.body}</p>
       {model.blockerLine ? (
-        <p className="mt-3 rounded-md border border-amber-900/35 bg-amber-950/25 px-3 py-2 text-xs leading-snug text-amber-100/95">
-          <span className="font-semibold text-amber-200/95">Needs attention: </span>
+        <p className="mt-3 rounded-md border border-zinc-700/80 bg-zinc-950/60 px-3 py-2 text-xs leading-snug text-zinc-200">
+          <span className="font-medium text-zinc-400">Before you continue: </span>
           {model.blockerLine}
         </p>
       ) : null}

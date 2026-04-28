@@ -34,7 +34,7 @@ type Props = {
   /** Public site origin for copy + email links (e.g. `https://app.example.com`). */
   appOrigin: string;
   /**
-   * Same-quote workspace URL with `#revision-management` (create draft + scope handoff).
+   * Same-quote workspace URL with `#start-new-draft` (create draft + scope handoff).
    * When set, the portal change-request banner links staff to the existing revise path.
    */
   quoteWorkspaceRevisionSectionHref?: string | null;
@@ -148,20 +148,20 @@ export function QuoteWorkspaceSignSent({
       if (!res.ok) {
         const extra =
           body.error?.code === "SIGN_ROLLED_BACK_AUTO_ACTIVATE_FAILED" ?
-            " (auto-activate after sign failed; transaction rolled back — see activation error in response.)"
+            " (auto-start-work after approval failed; transaction rolled back — see error details in response.)"
           : "";
         setResult({
           kind: "error",
-          title: "Signature failed",
-          message: body.error?.message ?? "An error occurred while recording the customer signature.",
+          title: "Approval not recorded",
+          message: body.error?.message ?? "An error occurred while recording customer approval.",
           technicalDetails: `${body.error?.code ?? "ERROR"}: ${res.status}${extra}`,
         });
         return;
       }
       setResult({
         kind: "success",
-        title: "Quote signed",
-        message: "The customer signature has been recorded. This version is now ready to activate execution.",
+        title: "Customer approval recorded",
+        message: "This version is now signed and ready for Start work when you are ready.",
       });
       router.refresh();
     } finally {
@@ -398,10 +398,10 @@ export function QuoteWorkspaceSignSent({
     }
     return (
       <section className="mb-6 rounded border border-zinc-800 bg-zinc-950/30 p-4 text-sm">
-        <h2 className="mb-1 text-sm font-medium text-zinc-200">Record signature</h2>
+        <h2 className="mb-1 text-sm font-medium text-zinc-200">Record customer approval</h2>
         <p className="text-xs text-zinc-500">
-          No sent revision is waiting on a signature from this workspace view. If the customer already signed, use{" "}
-          <span className="font-medium text-teal-400">Activate execution</span> when eligible.
+          No sent revision is waiting on approval from this workspace view. If the customer already approved, use{" "}
+          <span className="font-medium text-teal-400">Start work</span> when eligible.
         </p>
       </section>
     );
@@ -409,7 +409,7 @@ export function QuoteWorkspaceSignSent({
 
   return (
     <section className="mb-6 rounded border border-zinc-800 bg-zinc-950/30 p-4 text-sm border-violet-900/20 bg-violet-950/5">
-      <h2 className="mb-1 text-sm font-medium text-zinc-200">Record signature</h2>
+      <h2 className="mb-1 text-sm font-medium text-zinc-200">Record customer approval</h2>
       <p className="text-xs text-zinc-500">Formal customer approval for v{signTarget.versionNumber}.</p>
 
       {portalDeclinedSummary &&
@@ -441,18 +441,17 @@ export function QuoteWorkspaceSignSent({
           {quoteWorkspaceRevisionSectionHref ? (
             <>
               <p className="mt-2 text-[11px] leading-relaxed text-amber-100/88">
-                Typical office response: use <strong className="text-amber-50/95">Revision management</strong> to
-                start a new draft from the current head, open <strong className="text-amber-50/95">Scope editor</strong>{" "}
-                to adjust line items, then return to <strong className="text-amber-50/95">Prepare and send</strong> when
-                you are ready to issue a revised proposal. This SENT version remains unchanged until a newer version is
-                sent.
+                Typical office response: use <strong className="text-amber-50/95">Start a new draft</strong> to clone
+                the current head, open <strong className="text-amber-50/95">Edit quote & work plan</strong> to adjust line
+                items, then return to <strong className="text-amber-50/95">Prepare and send</strong> when you are ready
+                to issue a revised proposal. This SENT version stays locked until a newer version is sent.
               </p>
               <p className="mt-2">
                 <Link
                   href={quoteWorkspaceRevisionSectionHref}
                   className="inline-flex text-[11px] font-semibold text-amber-200 underline underline-offset-2 hover:text-amber-100"
                 >
-                  Jump to revision and scope (step 1)
+                  Jump to Start a new draft
                 </Link>
               </p>
             </>
@@ -612,7 +611,7 @@ export function QuoteWorkspaceSignSent({
 
       {!canOfficeMutate ? (
         <p className="mt-3 text-xs text-zinc-500">
-          Recording signatures requires an office session with elevated permissions.
+          Recording customer approval requires an office session with elevated permissions.
         </p>
       ) : (
         <div className="mt-4">
@@ -622,11 +621,11 @@ export function QuoteWorkspaceSignSent({
             onClick={() => void runSign()}
             className="rounded bg-violet-900/85 px-4 py-1.5 text-xs font-medium text-violet-50 hover:bg-violet-800/90 disabled:opacity-50 transition-colors"
           >
-            {busy ? "Signing…" : "Record customer signature"}
+            {busy ? "Saving…" : "Record customer approval"}
           </button>
           <p className="mt-2 text-[11px] text-zinc-500">
-            Confirming the signature will move v{signTarget.versionNumber} to{" "}
-            <span className="text-zinc-400 font-medium">SIGNED</span> and allow for execution activation.
+            Confirming approval will move v{signTarget.versionNumber} to{" "}
+            <span className="text-zinc-400 font-medium">SIGNED</span> so you can start work when ready.
           </p>
         </div>
       )}
@@ -669,7 +668,7 @@ export function QuoteWorkspaceSignSent({
           title={result.title}
           message={result.message}
           technicalDetails={result.technicalDetails}
-          nextStep={result.kind === "success" ? { label: "Activate execution", href: "#step-5" } : undefined}
+          nextStep={result.kind === "success" ? { label: "Start work", href: "#step-5" } : undefined}
         />
       )}
     </section>

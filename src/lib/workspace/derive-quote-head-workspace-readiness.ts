@@ -20,13 +20,13 @@
  *     internal implementation details under Path B.
  */
 
-/** 1-indexed step numbers matching the office workspace pipeline UI. */
+/** 1-indexed step numbers matching the office workspace quote progress UI. */
 export const WORKSPACE_PIPELINE_STEP_TITLES: Record<number, string> = {
   1: "Build the quote",
-  2: "Review execution flow",
+  2: "Review work plan",
   3: "Send proposal",
-  4: "Record signature",
-  5: "Activate execution",
+  4: "Record customer approval",
+  5: "Start work",
 };
 
 export function workspaceRecommendedStepTitle(stepIndex: number | null): string | null {
@@ -123,9 +123,9 @@ export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput 
       status === "DRAFT"
         ? hasScope
           ? `${String(head.lineItemCount)} line item(s) on this draft. Line items and their task packets define the sold work.`
-          : "No line items yet — add line items in step 1 before reviewing the execution flow or sending."
+          : "No line items yet — add line items in step 1 before reviewing the work plan or sending."
         : hasScope
-          ? "Line items on this version are what activation uses after sign-off."
+          ? "Line items on this version are what the job task list uses after sign-off."
           : "Unusual for sent/signed — no line items recorded on this version.",
     ),
     checklistItem(
@@ -134,7 +134,7 @@ export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput 
       head.hasPinnedWorkflow ? "yes" : "no",
       status === "DRAFT"
         ? head.hasPinnedWorkflow
-          ? "The proposed execution flow is attached. Review it in step 2 before sending."
+          ? "The work plan is attached. Review it in step 2 before sending."
           : "This draft is not attached to a standard work plan. New quotes attach automatically; if this persists, contact support and use Advanced on this card for the version id."
         : status === "SENT" || status === "SIGNED" || status === "DECLINED"
           ? head.hasPinnedWorkflow
@@ -170,17 +170,21 @@ export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput 
         ]),
     checklistItem(
       "activation",
-      "Activation recorded",
-      head.hasActivation ? "yes" : "no",
+      "Work started on this version",
       status === "DRAFT" || status === "SENT"
-        ? "Activation comes after signature in the normal path (not expected on draft or sent-only)."
+        ? "n/a"
+        : head.hasActivation
+          ? "yes"
+          : "no",
+      status === "DRAFT" || status === "SENT"
+        ? "You will start work after the customer approves and you run Start work on a signed version."
         : status === "DECLINED"
-          ? "Customer declined this revision on the portal — not eligible for activation."
+          ? "Customer declined this revision on the portal — not eligible to start work."
           : status === "SIGNED"
-          ? head.hasActivation
-            ? "Execution has been started for this revision."
-            : "Signed but not started — use Activate execution when prerequisites are met."
-          : undefined,
+            ? head.hasActivation
+              ? "Work has been started for this revision."
+              : "Signed but not started — use Start work when prerequisites are met."
+            : undefined,
     ),
     checklistItem(
       "groups",
@@ -209,7 +213,7 @@ export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput 
   let recommendedStepIndex: number | null = null;
   const honestyNotes: string[] = [
     "This card summarizes fields from your workspace history. It is not a substitute for a full commercial or legal review.",
-    "Line items define what you sell; task packets define the crew work after approval. Stages group that work in the proposed execution flow.",
+    "Line items define what you sell; task packets define the crew work after approval. Phases group that work in the work plan.",
   ];
 
   if (status === "DRAFT") {
@@ -222,7 +226,7 @@ export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput 
       likelyNextSteps.push(
         "Add line items to this draft — line items are the primary scope object. Field-work lines also need a task packet attached.",
       );
-      likelyNextSteps.push("Then review the proposed execution flow (step 2) before sending.");
+      likelyNextSteps.push("Then review the work plan (step 2) before sending.");
     } else if (!head.hasPinnedWorkflow) {
       recommendedStepIndex = 2; // Review proposed execution flow (system-bind issue surfaces here)
       likelyNextSteps.push(
@@ -236,7 +240,7 @@ export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput 
       // plan with known stage placement issues.
       recommendedStepIndex = 2;
       likelyNextSteps.push(
-        "Review the proposed execution flow (step 2) — one or more field-work lines need attention before sending.",
+        "Review the work plan (step 2) — one or more field-work lines need attention before sending.",
       );
       likelyNextSteps.push(
         "Open the line-item editor to attach a task packet or move tasks to a standard phase.",
@@ -247,27 +251,27 @@ export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput 
       // operator can review step 2 if they want and then send (step 3).
       recommendedStepIndex = 3;
       likelyNextSteps.push(
-        "Review the proposed execution flow (step 2) if you want to verify phases and tasks before sending.",
+        "Review the work plan (step 2) if you want to verify phases and tasks before sending.",
       );
       likelyNextSteps.push(
         "When ready: run Preview proposal, then Send proposal in step 3.",
       );
     }
   } else if (status === "SENT") {
-    recommendedStepIndex = 4; // Record signature
+    recommendedStepIndex = 4; // Record customer approval
     likelyNextSteps.push(
-      "Share the customer portal link (step 4), then record the signature when the customer has approved.",
+      "Share the customer portal link (step 4), then record customer approval when the customer has agreed.",
     );
-    likelyNextSteps.push("If you use in-office sign-off instead, use Record customer signature when allowed.");
+    likelyNextSteps.push("If you use in-office sign-off instead, use Record customer approval when allowed.");
   } else if (status === "SIGNED") {
     if (!head.hasActivation) {
-      recommendedStepIndex = 5; // Activate execution
-      likelyNextSteps.push("When prerequisites are met, use Activate execution (step 5) to create the job task list.");
-      likelyNextSteps.push("If something blocks activation, check the message on the Activate panel or contact support.");
+      recommendedStepIndex = 5; // Start work
+      likelyNextSteps.push("When prerequisites are met, use Start work (step 5) to create the job task list.");
+      likelyNextSteps.push("If something blocks starting work, check the message on the Start work panel or contact support.");
     } else {
       recommendedStepIndex = null; // Done
       likelyNextSteps.push(
-        "Execution is already active for this revision. Use Execution bridge on this page to open the work feed or related tools.",
+        "Work is already in progress for this revision. Use Job execution on this page to open the work feed or related tools.",
       );
     }
   } else if (status === "DECLINED") {
@@ -276,20 +280,20 @@ export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput 
       "This revision was declined by the customer on the portal. Locked records are kept for audit; it is not signable.",
     );
     likelyNextSteps.push(
-      "Review the decline reason in revision history or the signature panel, then create a new draft if you need a revised proposal.",
+      "Review the decline reason under Quote versions or the customer approval panel, then create a new draft if you need a revised proposal.",
     );
   } else if (status === "VOID") {
     recommendedStepIndex = null;
     honestyNotes.push("This revision was voided (withdrawn). Locked records are kept for audit; it is not signable.");
-    likelyNextSteps.push("Use revision history: create or open a non-void draft to continue commercial work.");
+    likelyNextSteps.push("Use Quote versions: create or open a non-void draft to continue commercial work.");
   } else if (status === "SUPERSEDED") {
     recommendedStepIndex = null;
     honestyNotes.push(
       "This revision was superseded when a newer version was sent. It is not the active customer proposal.",
     );
-    likelyNextSteps.push("Open the newest SENT or draft row in revision history for current work.");
+    likelyNextSteps.push("Open the newest SENT or draft row in Quote versions for current work.");
   } else {
-    likelyNextSteps.push("This status is unexpected here — contact support or check revision history.");
+    likelyNextSteps.push("This status is unexpected here — contact support or check Quote versions.");
   }
 
   return {

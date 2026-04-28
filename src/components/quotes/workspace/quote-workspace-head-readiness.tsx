@@ -36,19 +36,19 @@ function readinessCardTitle(status: string, hasActivation: boolean): { title: st
   if (status === "SENT") {
     return {
       title: "Waiting on the customer",
-      subtitle: "Track portal delivery and record the signature when the customer approves.",
+      subtitle: "Track portal delivery and record customer approval when the customer agrees.",
     };
   }
   if (status === "SIGNED") {
     if (hasActivation) {
       return {
-        title: "Execution is active",
-        subtitle: "This revision has been started. Use Execution bridge for the work feed and related tools.",
+        title: "Work in progress",
+        subtitle: "This revision has been started. Use Job execution for the work feed and related tools.",
       };
     }
     return {
       title: "Ready to start work",
-      subtitle: "The customer has signed. Activate execution when prerequisites are met.",
+      subtitle: "The customer has signed. Start work when prerequisites are met.",
     };
   }
   if (status === "DECLINED") {
@@ -61,7 +61,7 @@ function readinessCardTitle(status: string, hasActivation: boolean): { title: st
   if (status === "VOID") {
     return {
       title: "Revision withdrawn",
-      subtitle: "Office voided this revision. Use revision history to open or create a draft to continue.",
+      subtitle: "Office voided this revision. Use Quote versions to open or create a draft to continue.",
     };
   }
   if (status === "SUPERSEDED") {
@@ -248,22 +248,22 @@ export function QuoteWorkspaceHeadReadiness({
 
   if (variant === "rail") {
     return (
-      <section className="rounded-lg border border-zinc-800 bg-zinc-900/25 p-4 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800/80 pb-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Readiness checklist</h2>
-          <span className="text-[10px] text-zinc-500">
-            v{r.versionNumber} · <span className="text-zinc-400">{r.status}</span>
-          </span>
-        </div>
-        <details className="mt-3 group">
-          <summary className="cursor-pointer text-xs font-medium text-sky-400/90 hover:text-sky-300">
-            View full checklist
-          </summary>
-          <div className="mt-4">
-            <ReadinessBody r={r} vid={vid} satisfied={satisfied} missing={missing} na={na} />
+      <details className="group rounded-lg border border-zinc-800 bg-zinc-900/25 shadow-sm">
+        <summary className="cursor-pointer list-none p-4 marker:content-none [&::-webkit-details-marker]:hidden">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Readiness checklist</span>
+            <span className="text-[10px] text-zinc-500">
+              v{r.versionNumber} · <span className="text-zinc-400">{r.status}</span>
+            </span>
           </div>
-        </details>
-      </section>
+          <p className="mt-2 text-[11px] text-zinc-500 group-open:hidden">
+            Expand for checklist, recommended path, and support notes.
+          </p>
+        </summary>
+        <div className="border-t border-zinc-800/80 px-4 pb-4 pt-2">
+          <ReadinessBody r={r} vid={vid} satisfied={satisfied} missing={missing} na={na} />
+        </div>
+      </details>
     );
   }
 

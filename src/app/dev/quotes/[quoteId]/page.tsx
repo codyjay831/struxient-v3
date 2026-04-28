@@ -316,7 +316,7 @@ export default async function DevQuoteWorkspacePage({ params }: PageProps) {
                 portalChangeRequestOnSent={portalChangeRequestOnSent}
                 canOfficeMutate={canOfficeMutate}
                 appOrigin={appOrigin}
-                quoteWorkspaceRevisionSectionHref={`/dev/quotes/${quoteId}#revision-management`}
+                quoteWorkspaceRevisionSectionHref={`/dev/quotes/${quoteId}#start-new-draft`}
               />
             </QuoteWorkspacePipelineStep>
           </div>

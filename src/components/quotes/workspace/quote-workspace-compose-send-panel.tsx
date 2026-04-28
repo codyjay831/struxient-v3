@@ -193,7 +193,7 @@ export function QuoteWorkspaceComposeSendPanel({ latestDraft, canOfficeMutate }:
       <section className="mb-6 rounded border border-zinc-800 bg-zinc-950/60 p-4 text-sm">
         <h2 className="mb-1 text-sm font-medium text-zinc-200">Prepare & send proposal</h2>
         <p className="text-xs text-zinc-500">
-          Proposal sent. Next step: <span className="font-medium text-violet-400">Record signature</span>.
+          Proposal sent. Next step: <span className="font-medium text-violet-400">Record customer approval</span>.
         </p>
       </section>
     );
@@ -214,7 +214,7 @@ export function QuoteWorkspaceComposeSendPanel({ latestDraft, canOfficeMutate }:
         <>
           {!latestDraft.hasPinnedWorkflow ? (
             <p className="mt-2 text-xs text-amber-700/90">
-              <span className="font-medium text-amber-600/90">Work plan not ready.</span> The proposed execution flow
+              <span className="font-medium text-amber-600/90">Work plan not ready.</span> The standard work plan
               isn&apos;t attached yet. You can still run Preview proposal to check line items, but send stays disabled
               until the system finishes attaching the plan.
             </p>
@@ -270,7 +270,7 @@ export function QuoteWorkspaceComposeSendPanel({ latestDraft, canOfficeMutate }:
               technicalDetails={result.technicalDetails}
               nextStep={
                 result.kind === "success" && result.title === "Proposal sent"
-                  ? { label: "Record signature", href: "#step-4" }
+                  ? { label: "Record customer approval", href: "#step-4" }
                   : undefined
               }
             />

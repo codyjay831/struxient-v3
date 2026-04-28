@@ -28,13 +28,11 @@ type Props = {
 };
 
 /**
- * "Review Proposed Execution Flow" panel — the user-facing replacement for
- * the old "Pin Process Template" step.
+ * Read-only work plan preview from line items + task packets (authoring on scope).
  *
  * Path B / Triangle Mode product direction:
- *   - Stages organize the work; line items + task packets define it. The
- *     panel shows the operator the runtime tasks the proposed plan would
- *     generate, grouped by canonical execution stage.
+ *   - Phases organize the work; line items + task packets define it. The
+ *     panel shows the crew tasks the plan would generate, grouped by phase.
  *   - There is no "process template" picker here. The canonical workflow
  *     is auto-pinned in the backend; the user only authors line items,
  *     reviews the plan, and sends.
@@ -45,18 +43,17 @@ export function QuoteWorkspaceProposedExecutionFlow({ flow, isEditableDraft }: P
   return (
     <section className="mb-6 rounded border border-zinc-800 bg-zinc-950/40 p-4 text-sm">
       <h2 className="mb-1 text-sm font-medium text-zinc-200">
-        Review proposed execution flow
+        Review work plan
       </h2>
       <p className="text-xs text-zinc-500 leading-relaxed">
-        This plan is generated from the quoted line items and their task packets.
-        Stages organize the work; task packets define the actual tasks, order,
-        blockers, and proof requirements.
+        This preview is built from the quoted line items and their task packets.
+        Phases organize the work; task packets define tasks, order, blockers, and proof requirements.
       </p>
 
       {flow == null ? (
         <p className="mt-4 text-xs text-zinc-500">
-          The proposed execution flow appears here once the head DRAFT has line items.
-          Add line items in step 1 to populate the plan.
+          The work plan preview appears here once the head draft has line items.
+          Add line items in step 1 to populate the preview.
         </p>
       ) : (
         <>
@@ -96,7 +93,7 @@ function SummaryRow({ summary }: { summary: ProposedExecutionFlow["summary"] }) 
         muted={summary.packetCount === 0}
       />
       <SummaryStat
-        label="Generated tasks"
+        label="Planned tasks"
         value={summary.generatedTaskCount}
         muted={summary.generatedTaskCount === 0}
       />
@@ -167,8 +164,8 @@ function WarningsList({
       ) : null}
       {isEditableDraft ? (
         <p className="mt-2 text-[11px] text-amber-300/80">
-          If a line needs a packet or a stage fix, open the line-item editor. If the note is about execution
-          flow binding, wait for the system to finish binding or contact support.
+          If a line needs a packet or a phase fix, open the line-item editor. If the note is about work plan binding,
+          wait for the system to finish attaching the plan or contact support.
         </p>
       ) : (
         <p className="mt-2 text-[11px] text-amber-300/80">
@@ -222,8 +219,8 @@ function EmptyState({ summary }: { summary: ProposedExecutionFlow["summary"] }) 
   if (summary.quotedLineCount === 0) {
     return (
       <p className="mt-4 text-xs text-zinc-500">
-        No quoted lines yet. Add line items in step 1 — the proposed execution flow
-        appears once at least one field-work line has a task packet attached.
+        No quoted lines yet. Add line items in step 1 — the work plan preview appears once at least one field-work line
+        has a task packet attached.
       </p>
     );
   }

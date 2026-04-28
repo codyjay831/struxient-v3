@@ -51,10 +51,10 @@ export function QuoteWorkspaceActions({ quoteId, canOfficeMutate }: Props) {
 
   return (
     <section
-      id="revision-management"
+      id="start-new-draft"
       className="mb-6 rounded border border-zinc-700/80 bg-zinc-900/50 p-4 text-sm"
     >
-      <h2 className="mb-2 text-sm font-medium text-zinc-200">Revision management</h2>
+      <h2 className="mb-2 text-sm font-medium text-zinc-200">Start a new draft</h2>
       {!canOfficeMutate ? (
         <p className="text-xs text-zinc-500">
           Creating a new version requires an office session with elevated permissions.
@@ -84,7 +84,7 @@ export function QuoteWorkspaceActions({ quoteId, canOfficeMutate }: Props) {
           technicalDetails={result.technicalDetails}
           nextStep={
             result.kind === "success" 
-              ? { label: "Review scope", href: "#line-items" } 
+              ? { label: "Edit quote & work plan", href: "#line-items" } 
               : undefined
           }
         />

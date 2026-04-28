@@ -205,7 +205,7 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
     headHasActivation: !!headRow?.hasActivation,
   });
 
-  // Execution bridge data
+  // Job execution / activation entry target for links panel
   const executionBridgeData: ExecutionBridgeData = executionEntryTarget ? {
     kind: "linked",
     quoteId,
@@ -217,6 +217,11 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
     activatedAtIso: null,
     runtimeTaskCount: null,
   } : { kind: "none" };
+
+  const headStatus = headRow?.status ?? "";
+  const isDraftHead = headStatus === "DRAFT";
+  const executionLinked = executionBridgeData.kind === "linked";
+  const stepQuiet = (n: number) => recommendedStep != null && recommendedStep !== n;
 
   return (
     <main className="p-6 max-w-5xl mx-auto">
@@ -234,10 +239,10 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
         <div className="flex items-center gap-2">
           {head ? (
             <Link
-              href={`/quotes/${quoteId}/versions/${head.id}/scope`}
+              href={`/quotes/${quoteId}/scope`}
               className="rounded border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-[11px] font-medium text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-all"
             >
-              Inspect scope
+              Edit quote & work plan
             </Link>
           ) : null}
         </div>
@@ -255,7 +260,7 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
           className="mb-4 rounded border border-red-900/50 bg-red-950/30 p-3 text-sm text-red-100"
           role="alert"
         >
-          <p className="font-medium">Execution flow binding failed</p>
+          <p className="font-medium">Work plan binding failed</p>
           <p className="mt-1 text-xs text-red-200/90">{canonicalPinEnsureError}</p>
         </div>
       ) : null}
@@ -267,11 +272,11 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
           <section aria-labelledby="workflow-heading">
             <div className="mb-6 border-b border-zinc-800 pb-2">
               <h2 id="workflow-heading" className="text-lg font-semibold text-zinc-50">
-                Commercial Pipeline
+                Quote progress
               </h2>
               <p className="mt-1 text-sm text-zinc-500">
-                Line items and their task packets define the work. Author the scope, review the
-                proposed execution flow, then send.
+                Follow the steps in order. Edit line items and tasks on the scope page; use this page to review the work
+                plan, send, capture approval, and start work.
               </p>
             </div>
 
@@ -282,6 +287,7 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
                   title="Build the quote"
                   hint="Add the line items the customer is buying. Some lines just appear on the proposal; others create work for your crew after approval."
                   isRecommended={recommendedStep === 1}
+                  isQuiet={stepQuiet(1)}
                 >
                   <div id="line-items" className="space-y-6">
                     <QuoteWorkspaceLineItemSummary
@@ -304,10 +310,10 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
                         href={`/quotes/${quoteId}/scope`}
                         className="rounded bg-sky-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-600 transition-colors"
                       >
-                        Edit line items →
+                        Edit quote & work plan →
                       </Link>
                       <span className="text-[11px] text-zinc-500">
-                        Open the editor to write a custom line or insert one of your saved lines.
+                        Add lines, field work, and tasks on the scope page.
                       </span>
                     </div>
 
@@ -319,9 +325,10 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
               <div id="step-2">
                 <QuoteWorkspacePipelineStep
                   step={2}
-                  title="Review Proposed Execution Flow"
-                  hint="This plan is generated from the quoted line items and their task packets. Stages organize the work; task packets define the actual tasks, order, blockers, and proof requirements."
+                  title="Review work plan"
+                  hint="Preview crew tasks by phase from your line items and task packets. Fix issues in Edit quote & work plan."
                   isRecommended={recommendedStep === 2}
+                  isQuiet={stepQuiet(2)}
                 >
                   <QuoteWorkspaceProposedExecutionFlow
                     flow={proposedExecutionFlow}
@@ -333,9 +340,10 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
               <div id="step-3">
                 <QuoteWorkspacePipelineStep
                   step={3}
-                  title="Send Proposal"
+                  title="Send proposal"
                   hint="Lock this draft and send the proposal to the customer."
                   isRecommended={recommendedStep === 3}
+                  isQuiet={stepQuiet(3)}
                 >
                   <QuoteWorkspaceComposeSendPanel latestDraft={latestDraftWorkspaceTarget} canOfficeMutate={canOfficeMutate} />
                 </QuoteWorkspacePipelineStep>
@@ -344,9 +352,10 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
               <div id="step-4">
                 <QuoteWorkspacePipelineStep
                   step={4}
-                  title="Record Signature"
-                  hint="Capture customer approval to move this version to SIGNED."
+                  title="Record customer approval"
+                  hint="Use the portal or in-office steps to capture approval and move this version to SIGNED."
                   isRecommended={recommendedStep === 4}
+                  isQuiet={stepQuiet(4)}
                 >
                   <QuoteWorkspaceSignSent
                     signTarget={sentSignTarget}
@@ -354,7 +363,7 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
                     portalChangeRequestOnSent={portalChangeRequestOnSent}
                     canOfficeMutate={canOfficeMutate}
                     appOrigin={appOrigin}
-                    quoteWorkspaceRevisionSectionHref={`/quotes/${quoteId}#revision-management`}
+                    quoteWorkspaceRevisionSectionHref={`/quotes/${quoteId}#start-new-draft`}
                   />
                 </QuoteWorkspacePipelineStep>
               </div>
@@ -362,9 +371,10 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
               <div id="step-5">
                 <QuoteWorkspacePipelineStep
                   step={5}
-                  title="Activate Execution"
-                  hint="Create the job’s task list from the signed proposal."
+                  title="Start work"
+                  hint="Create the job task list from the signed proposal when you are ready for the crew."
                   isRecommended={recommendedStep === 5}
+                  isQuiet={stepQuiet(5)}
                 >
                   <QuoteWorkspaceActivateSigned
                     activateTarget={signedActivateTarget}
@@ -378,6 +388,10 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
 
         <div className="space-y-5">
           <div className="sticky top-20 space-y-5">
+            {executionLinked ? (
+              <QuoteWorkspaceExecutionBridge data={executionBridgeData} />
+            ) : null}
+
             <QuoteWorkspaceHeadReadiness
               head={head}
               headLineItemCount={headLineItemCount}
@@ -385,35 +399,85 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
               variant="rail"
             />
 
-            <QuoteWorkspacePreJobTasks flowGroupName={ws.flowGroup.name} tasks={ws.preJobTasks} />
+            {isDraftHead ? (
+              <details className="rounded-lg border border-zinc-800 bg-zinc-900/20">
+                <summary className="cursor-pointer px-3 py-2.5 text-xs font-medium text-zinc-400 hover:text-zinc-300">
+                  Site & billing context
+                </summary>
+                <div className="space-y-5 border-t border-zinc-800 px-3 pb-4 pt-4">
+                  <QuoteWorkspacePreJobTasks flowGroupName={ws.flowGroup.name} tasks={ws.preJobTasks} />
+                  <QuoteWorkspacePaymentGates quoteId={quoteId} gates={ws.paymentGates} canOfficeMutate={canOfficeMutate} />
+                  <QuoteWorkspaceChangeOrders
+                    quoteId={quoteId}
+                    jobId={ws.flowGroup.jobId}
+                    changeOrders={ws.changeOrders}
+                    canOfficeMutate={canOfficeMutate}
+                  />
+                  <QuoteWorkspaceEvidence evidence={ws.evidence} />
+                </div>
+              </details>
+            ) : (
+              <>
+                <QuoteWorkspacePreJobTasks flowGroupName={ws.flowGroup.name} tasks={ws.preJobTasks} />
+                <QuoteWorkspacePaymentGates quoteId={quoteId} gates={ws.paymentGates} canOfficeMutate={canOfficeMutate} />
+                <QuoteWorkspaceChangeOrders
+                  quoteId={quoteId}
+                  jobId={ws.flowGroup.jobId}
+                  changeOrders={ws.changeOrders}
+                  canOfficeMutate={canOfficeMutate}
+                />
+                <QuoteWorkspaceEvidence evidence={ws.evidence} />
+              </>
+            )}
 
-            <QuoteWorkspacePaymentGates quoteId={quoteId} gates={ws.paymentGates} canOfficeMutate={canOfficeMutate} />
-            
-            <QuoteWorkspaceChangeOrders quoteId={quoteId} jobId={ws.flowGroup.jobId} changeOrders={ws.changeOrders} canOfficeMutate={canOfficeMutate} />
-            
-            <QuoteWorkspaceEvidence evidence={ws.evidence} />
+            {!executionLinked ? (
+              <details className="rounded-lg border border-zinc-800 bg-zinc-900/20">
+                <summary className="cursor-pointer px-3 py-2.5 text-xs font-medium text-zinc-400 hover:text-zinc-300">
+                  After approval
+                </summary>
+                <div className="border-t border-zinc-800 px-3 pb-4 pt-4">
+                  <QuoteWorkspaceExecutionBridge data={executionBridgeData} />
+                </div>
+              </details>
+            ) : null}
 
-            <QuoteWorkspaceExecutionBridge data={executionBridgeData} />
-            
-            <QuoteWorkspaceVersionHistory quoteId={quoteId} versions={ws.versions} canOfficeMutate={canOfficeMutate} />
+            <details className="rounded-lg border border-zinc-800 bg-zinc-900/20">
+              <summary className="cursor-pointer px-3 py-2.5 text-xs font-medium text-zinc-400 hover:text-zinc-300">
+                Quote versions
+              </summary>
+              <div className="border-t border-zinc-800 px-1 pb-2 pt-2">
+                <QuoteWorkspaceVersionHistory
+                  quoteId={quoteId}
+                  versions={ws.versions}
+                  canOfficeMutate={canOfficeMutate}
+                  showSectionHeader={false}
+                />
+              </div>
+            </details>
 
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-6">
-               <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500 mb-4">Advanced & metadata</h3>
-               <div className="space-y-3 text-xs">
-                  <div className="flex justify-between">
-                     <span className="text-zinc-500">Quote ID</span>
-                     <span className="font-mono text-zinc-400">{quoteId}</span>
-                  </div>
-                  <div className="flex justify-between">
-                     <span className="text-zinc-500">Tenant</span>
-                     <span className="text-zinc-400">{auth.principal.tenantId}</span>
-                  </div>
-                  <div className="pt-4 flex flex-wrap gap-3">
-                     <Link href={`/api/quotes/${quoteId}/workspace`} className="text-sky-500 hover:underline">Workspace JSON</Link>
-                     <Link href={`/api/quotes/${quoteId}/versions`} className="text-sky-500 hover:underline">Versions JSON</Link>
-                  </div>
-               </div>
-            </div>
+            <details className="rounded-lg border border-zinc-800 bg-zinc-900/20">
+              <summary className="cursor-pointer px-3 py-2.5 text-xs font-medium text-zinc-400 hover:text-zinc-300">
+                Advanced & metadata
+              </summary>
+              <div className="space-y-3 border-t border-zinc-800 px-4 py-4 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Quote ID</span>
+                  <span className="font-mono text-zinc-400">{quoteId}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Tenant</span>
+                  <span className="text-zinc-400">{auth.principal.tenantId}</span>
+                </div>
+                <div className="flex flex-wrap gap-3 pt-2">
+                  <Link href={`/api/quotes/${quoteId}/workspace`} className="text-sky-500 hover:underline">
+                    Workspace JSON
+                  </Link>
+                  <Link href={`/api/quotes/${quoteId}/versions`} className="text-sky-500 hover:underline">
+                    Versions JSON
+                  </Link>
+                </div>
+              </div>
+            </details>
           </div>
         </div>
       </div>
