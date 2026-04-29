@@ -24,4 +24,17 @@ describe("line-item-execution-preview-block copy (static)", () => {
   it("keeps explicit empty-task guidance for operators", () => {
     expect(source).toMatch(/No tasks yet/i);
   });
+
+  it("labels attached packet preview as Task Packet with name, not a duplicate line-item title", () => {
+    expect(source).toContain("Task Packet - ");
+    expect(source).toContain("taskPacketPreviewHeading");
+    expect(source).toContain("Tasks from saved packet");
+    expect(source).toContain("Crew work attached to this line");
+  });
+
+  it("supports workspace crew-task presentation without removing default packet copy", () => {
+    expect(source).toContain("workspaceCrewTasks");
+    expect(source).toContain("workspaceCrewTasksHeading");
+    expect(source).toContain("LineItemExecutionPreviewPresentation");
+  });
 });

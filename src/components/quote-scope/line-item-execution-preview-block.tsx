@@ -1,7 +1,39 @@
+import type { ReactNode } from "react";
 import type {
   ExecutionPreviewTaskRow,
   LineItemExecutionPreviewDto,
 } from "@/lib/quote-line-item-execution-preview";
+
+export type LineItemExecutionPreviewPresentation = "default" | "workspaceCrewTasks";
+
+/** Primary heading for the attached packet preview (full /scope and read-only scope). */
+function taskPacketPreviewHeading(packetName: string): string {
+  const t = packetName.trim();
+  if (!t) return "Task Packet";
+  return `Task Packet - ${t}`;
+}
+
+/** Workspace-embedded quote UI: crew-task framing, not packet administration. */
+function workspaceCrewTasksHeading(): string {
+  return "Crew tasks";
+}
+
+function taskPacketRelationshipLine(kind: "manifestLibrary" | "manifestLocal"): string {
+  return kind === "manifestLibrary" ? "Tasks from saved packet" : "Crew work attached to this line";
+}
+
+function workspaceCrewRelationshipLine(kind: "manifestLibrary" | "manifestLocal"): string {
+  return kind === "manifestLibrary"
+    ? "Linked from your saved task catalog."
+    : "Crew tasks for this line.";
+}
+
+/** Visual connector so the preview reads as a child of the line item card above. */
+function LineItemPreviewNest({ children }: { children: ReactNode }) {
+  return (
+    <div className="mt-1 ml-2 border-l-2 border-zinc-600/50 pl-3 sm:ml-3">{children}</div>
+  );
+}
 
 /**
  * Read-only execution preview rendered under each line item.
@@ -19,109 +51,134 @@ import type {
  */
 export function LineItemExecutionPreviewBlock({
   preview,
+  presentation = "default",
 }: {
   preview: LineItemExecutionPreviewDto;
+  /** `workspaceCrewTasks`: quote workspace — hide packet-style headings. */
+  presentation?: LineItemExecutionPreviewPresentation;
 }) {
   if (preview.kind === "soldScopeCommercial") {
     return (
-      <div className="rounded-lg border border-zinc-800/80 bg-zinc-950/35 px-4 py-3 text-sm leading-relaxed text-zinc-400">
-        Quote-only line. Won&rsquo;t create crew work unless a task packet is attached.
-      </div>
+      <LineItemPreviewNest>
+        <div className="rounded-md border border-zinc-800/90 bg-zinc-950/50 px-3 py-2.5 text-sm leading-relaxed text-zinc-400">
+          Quote-only line. Won&rsquo;t create crew work unless a task packet is attached.
+        </div>
+      </LineItemPreviewNest>
     );
   }
   if (preview.kind === "manifestNoPacket") {
     return (
-      <div className="rounded-lg border border-amber-900/45 bg-amber-950/25 px-4 py-3 text-sm leading-relaxed text-amber-200">
-        No field work attached yet. Attach saved field work or create field work on this quote,
-        then save the line.
-      </div>
+      <LineItemPreviewNest>
+        <div className="rounded-md border border-amber-900/45 bg-amber-950/30 px-3 py-2.5 text-sm leading-relaxed text-amber-200">
+          No field work attached yet. Attach saved field work or create field work on this quote,
+          then save the line.
+        </div>
+      </LineItemPreviewNest>
     );
   }
   if (preview.kind === "manifestLibraryMissing") {
     return (
-      <div className="rounded-lg border border-red-900/45 bg-red-950/25 px-4 py-3 text-sm text-red-200 space-y-2">
-        <p className="font-semibold text-red-100">Saved task packet isn&rsquo;t available</p>
-        <p className="text-xs text-red-200/90 leading-relaxed">
-          The packet may have been archived or moved. Re-attach this line to a visible saved task
-          packet.
-        </p>
-        <details className="text-xs text-red-300/80">
-          <summary className="cursor-pointer hover:text-red-200 select-none">Technical details</summary>
-          <p className="mt-1 font-mono text-[11px] opacity-90 break-all">
-            revisionId: {preview.scopePacketRevisionId}
+      <LineItemPreviewNest>
+        <div className="rounded-md border border-red-900/45 bg-red-950/30 px-3 py-2.5 text-sm text-red-200 space-y-2">
+          <p className="font-semibold text-red-100">Saved task packet isn&rsquo;t available</p>
+          <p className="text-xs text-red-200/90 leading-relaxed">
+            The packet may have been archived or moved. Re-attach this line to a visible saved task
+            packet.
           </p>
-        </details>
-      </div>
+          <details className="text-xs text-red-300/80">
+            <summary className="cursor-pointer hover:text-red-200 select-none">Technical details</summary>
+            <p className="mt-1 font-mono text-[11px] opacity-90 break-all">
+              revisionId: {preview.scopePacketRevisionId}
+            </p>
+          </details>
+        </div>
+      </LineItemPreviewNest>
     );
   }
   if (preview.kind === "manifestLocalMissing") {
     return (
-      <div className="rounded-lg border border-red-900/45 bg-red-950/25 px-4 py-3 text-sm text-red-200 space-y-2">
-        <p className="font-semibold text-red-100">Field work on this quote isn&rsquo;t available</p>
-        <p className="text-xs text-red-200/90 leading-relaxed">
-          It may have been removed from this quote. Re-attach field work or a saved task packet.
-        </p>
-        <details className="text-xs text-red-300/80">
-          <summary className="cursor-pointer hover:text-red-200 select-none">Technical details</summary>
-          <p className="mt-1 font-mono text-[11px] opacity-90 break-all">
-            quoteLocalPacketId: {preview.quoteLocalPacketId}
+      <LineItemPreviewNest>
+        <div className="rounded-md border border-red-900/45 bg-red-950/30 px-3 py-2.5 text-sm text-red-200 space-y-2">
+          <p className="font-semibold text-red-100">Field work on this quote isn&rsquo;t available</p>
+          <p className="text-xs text-red-200/90 leading-relaxed">
+            It may have been removed from this quote. Re-attach field work or a saved task packet.
           </p>
-        </details>
-      </div>
+          <details className="text-xs text-red-300/80">
+            <summary className="cursor-pointer hover:text-red-200 select-none">Technical details</summary>
+            <p className="mt-1 font-mono text-[11px] opacity-90 break-all">
+              quoteLocalPacketId: {preview.quoteLocalPacketId}
+            </p>
+          </details>
+        </div>
+      </LineItemPreviewNest>
     );
   }
 
-  const headerTitle = preview.packetName;
+  const isWorkspaceCrew = presentation === "workspaceCrewTasks";
+  const packetHeading = isWorkspaceCrew
+    ? workspaceCrewTasksHeading()
+    : taskPacketPreviewHeading(preview.packetName);
+  const relationshipLine = isWorkspaceCrew
+    ? workspaceCrewRelationshipLine(preview.kind)
+    : taskPacketRelationshipLine(preview.kind);
   const taskCount = preview.tasks.length;
   const headerTone =
     preview.kind === "manifestLibrary"
       ? preview.revisionIsLatest
-        ? "border-sky-900/40 bg-sky-950/20"
-        : "border-amber-900/40 bg-amber-950/20"
-      : "border-emerald-900/40 bg-emerald-950/20";
+        ? "border-sky-900/35 bg-sky-950/15"
+        : "border-amber-900/35 bg-amber-950/15"
+      : "border-emerald-900/35 bg-emerald-950/15";
 
-  const librarySummary =
+  const libraryRevisionMeta =
     preview.kind === "manifestLibrary"
       ? `${formatRevisionStatus(preview.revisionStatus)} · version ${preview.revisionNumber}${
           preview.revisionIsLatest ? "" : " · not the latest published version"
         }`
-      : "Editable on this quote";
+      : null;
 
   return (
-    <div className={`rounded-lg border ${headerTone} px-4 py-3 space-y-3`}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 flex-1 space-y-1">
-          <p className="text-base font-semibold text-zinc-50 leading-snug truncate">{headerTitle}</p>
-          <p className="text-xs text-zinc-500 leading-relaxed">
-            {preview.kind === "manifestLibrary" ? "Saved task packet" : "Field work on this quote"} ·{" "}
-            {librarySummary}
+    <LineItemPreviewNest>
+      <div
+        className={`rounded-md border ${headerTone} bg-zinc-950/40 px-3 py-2.5 space-y-2`}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-2 gap-y-1">
+          <div className="min-w-0 flex-1 space-y-0.5">
+            <p className="text-sm font-medium text-zinc-300 leading-snug truncate">{packetHeading}</p>
+            <p className="text-[11px] text-zinc-500 leading-relaxed">{relationshipLine}</p>
+            {libraryRevisionMeta ? (
+              <p className="text-[10px] text-zinc-600 leading-relaxed">{libraryRevisionMeta}</p>
+            ) : null}
+            {preview.kind === "manifestLibrary" ? (
+              <details className="text-[11px] text-zinc-600">
+                <summary className="cursor-pointer hover:text-zinc-400 select-none">Catalog reference</summary>
+                <div className="mt-1 space-y-0.5 font-mono text-[10px] text-zinc-500 break-all">
+                  <p>packetKey: {preview.packetKey}</p>
+                  <p>revisionId: {preview.revisionId}</p>
+                </div>
+              </details>
+            ) : null}
+          </div>
+          <p className="text-[11px] font-normal text-zinc-600 shrink-0 tabular-nums pt-0.5">
+            {taskCount} {taskCount === 1 ? "task" : "tasks"}
           </p>
-          {preview.kind === "manifestLibrary" ? (
-            <details className="text-xs text-zinc-600">
-              <summary className="cursor-pointer hover:text-zinc-400 select-none">Catalog reference</summary>
-              <div className="mt-1 space-y-0.5 font-mono text-[11px] text-zinc-500 break-all">
-                <p>packetKey: {preview.packetKey}</p>
-                <p>revisionId: {preview.revisionId}</p>
-              </div>
-            </details>
-          ) : null}
         </div>
-        <p className="text-xs font-medium text-zinc-500 shrink-0 tabular-nums">
-          {taskCount} {taskCount === 1 ? "task" : "tasks"}
-        </p>
+        {taskCount === 0 ? (
+          <p className="text-xs text-amber-200/95 leading-relaxed">
+            {preview.kind === "manifestLocal"
+              ? isWorkspaceCrew
+                ? "No crew tasks yet. Use Add task below."
+                : "No tasks yet. Add tasks in Field work on this quote below."
+              : isWorkspaceCrew
+                ? "No crew tasks from this catalog yet — nothing will run for this line until tasks exist."
+                : "No tasks in this packet yet — no crew tasks will be created for this line."}
+          </p>
+        ) : (
+          <ul className="space-y-2.5 list-none p-0 m-0">
+            {renderPreviewTasksWithStageGroups(preview.tasks)}
+          </ul>
+        )}
       </div>
-      {taskCount === 0 ? (
-        <p className="text-sm text-amber-200/95 leading-relaxed">
-          {preview.kind === "manifestLocal"
-            ? "No tasks yet. Add tasks in Field work on this quote below."
-            : "No tasks in this packet yet — no crew tasks will be created for this line."}
-        </p>
-      ) : (
-        <ul className="space-y-3 list-none p-0 m-0">
-          {renderPreviewTasksWithStageGroups(preview.tasks)}
-        </ul>
-      )}
-    </div>
+    </LineItemPreviewNest>
   );
 }
 
@@ -155,7 +212,7 @@ function renderPreviewTasksWithStageGroups(tasks: ExecutionPreviewTaskRow[]) {
   }
   return groups.map((g, idx) => (
     <li key={`${idx}-${g.stageLabel}`} className="list-none">
-      <p className="text-xs font-semibold text-zinc-500">{g.stageLabel}</p>
+      <p className="text-xs font-semibold text-zinc-400">{g.stageLabel}</p>
       <ul className="mt-1.5 space-y-0.5 list-none p-0 m-0">
         {g.tasks.map((task) => (
           <ExecutionPreviewTaskItem key={task.lineKey} task={task} stageGrouped />

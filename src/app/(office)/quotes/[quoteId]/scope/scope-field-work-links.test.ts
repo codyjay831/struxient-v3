@@ -23,8 +23,14 @@ const packetEditor = readFileSync(
 );
 
 describe("line item → field work links (static)", () => {
-  it("PacketRow exposes stable field-work anchor id", () => {
-    expect(packetEditor).toMatch(/id=\{`field-work-\$\{packet\.id\}`\}/);
+  it("LineItemRow exposes stable #line-item-{id} anchor for workspace deep links", () => {
+    expect(scopeEditor).toMatch(/id=\{`line-item-\$\{item\.id\}`\}/);
+    expect(scopeEditor).toContain("scroll-mt-24");
+  });
+
+  it("PacketRow defaults stable field-work anchor id when rowDomId omitted", () => {
+    expect(packetEditor).toMatch(/rowDomId \?\? `field-work-\$\{packet\.id\}`/);
+    expect(packetEditor).toMatch(/id=\{rowId\}/);
   });
 
   it("library branch does not link to quote-local field-work anchors", () => {

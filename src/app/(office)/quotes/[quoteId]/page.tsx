@@ -36,9 +36,10 @@ import { QuoteWorkspaceShellSummary } from "@/components/quotes/workspace/quote-
 import { QuoteWorkspaceNextActionCard } from "@/components/quotes/workspace/quote-workspace-next-action-card";
 import { QuoteWorkspaceLineItemSummary } from "@/components/quotes/workspace/quote-workspace-line-item-summary";
 import { QuoteWorkspaceLineItemList } from "@/components/quotes/workspace/quote-workspace-line-item-list";
-import { QuoteWorkspaceEmbeddedScopeEditor } from "@/components/quotes/workspace/quote-workspace-embedded-scope-editor";
+import { QuoteWorkspaceSimpleBuilder } from "@/components/quotes/workspace/quote-workspace-simple-builder";
 import { QuoteWorkspaceHeadReadiness } from "@/components/quotes/workspace/quote-workspace-head-readiness";
 import { QuoteWorkspaceProposedExecutionFlow } from "@/components/quotes/workspace/quote-workspace-proposed-execution-flow";
+import { QuoteWorkspaceComposePreviewProvider } from "@/components/quotes/workspace/quote-workspace-compose-preview-context";
 import { QuoteWorkspaceComposeSendPanel } from "@/components/quotes/workspace/quote-workspace-compose-send-panel";
 import { QuoteWorkspaceSignSent } from "@/components/quotes/workspace/quote-workspace-sign-sent";
 import { QuoteWorkspaceActivateSigned } from "@/components/quotes/workspace/quote-workspace-activate-signed";
@@ -283,13 +284,16 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 lg:gap-10">
         <div className="space-y-8 lg:col-span-8">
+          <QuoteWorkspaceComposePreviewProvider quoteId={quoteId}>
           <section aria-labelledby="workflow-heading" className="space-y-6">
             <div className="border-b border-zinc-800/90 pb-4">
               <h2 id="workflow-heading" className="text-xl font-semibold tracking-tight text-zinc-50 sm:text-2xl">
                 Build quote
               </h2>
               <p className="mt-1 max-w-2xl text-sm text-zinc-500">
-                Line items and pricing below, then work plan, send, approval, and start work.
+                Line items and pricing first, then work plan, send, approval, and start work. Build the quote here in
+                step 1 when you see + Add line item. Open Line & tasks when you need saved work, crew tasks, or
+                technical options.
               </p>
             </div>
 
@@ -298,7 +302,7 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
                 <QuoteWorkspacePipelineStep
                   step={1}
                   title="Line items & pricing"
-                  hint="Proposal-only lines stay on the quote; other lines can carry crew tasks after approval."
+                  hint="Build estimate-only lines here. Add crew tasks later for lines that need work after approval. Line & tasks is for saved work, crew tasks, and technical options when you need them."
                   isRecommended={recommendedStep === 1}
                   isQuiet={stepQuiet(1)}
                   titleAside={
@@ -310,8 +314,8 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
                         >
                           Line & tasks →
                         </Link>
-                        <span className="max-w-[11rem] text-right text-[10px] leading-tight text-zinc-600">
-                          Full-page task builder
+                        <span className="max-w-[14rem] text-right text-[10px] leading-tight text-zinc-600">
+                          Saved work, crew tasks, and technical options
                         </span>
                       </div>
                     : undefined
@@ -320,38 +324,24 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
                   <div id="line-items" className="space-y-5">
                     {embedScopeEditorInWorkspace && officeAuthoring ? (
                       <>
-                        <p className="text-sm text-zinc-500">
-                          Custom crew tasks for this quote only: use{" "}
-                          <Link href={scopeHref} className="font-medium text-sky-400/90 hover:text-sky-300">
-                            Line & tasks
-                          </Link>
-                          . Field-work links from a line open there when needed.
-                        </p>
-
                         <div className="rounded-md border border-zinc-800/90 bg-zinc-950/40 p-3 ring-1 ring-zinc-800/60 sm:p-4">
-                        <QuoteWorkspaceEmbeddedScopeEditor
-                          quoteId={quoteId}
-                          quoteVersionId={officeAuthoring.dto.quoteVersion.id}
-                          versionNumber={officeAuthoring.dto.quoteVersion.versionNumber}
-                          proposalGroups={officeAuthoring.dto.proposalGroups}
-                          groupedLineItems={officeAuthoring.grouping.groupsWithItems}
-                          availableLibraryPackets={officeAuthoring.libraryPackets}
-                          availableLocalPackets={officeAuthoring.localPackets}
-                          availablePresets={officeAuthoring.presets}
-                          executionPreviewByLineItemId={
-                            officeAuthoring.executionPreview?.previewsByLineItemId ?? null
-                          }
-                          fieldWorkAnchorsActive={officeAuthoring.isEditableHead}
-                          fieldWorkExternalBaseHref={scopeHref}
-                          canMutate={canOfficeMutate && officeAuthoring.isEditableHead}
-                          editableReason={
-                            !canOfficeMutate
-                              ? "missing_capability"
-                              : !officeAuthoring.isEditableHead
-                                ? "not_editable_head"
-                                : "ok"
-                          }
-                        />
+                          <QuoteWorkspaceSimpleBuilder
+                            quoteId={quoteId}
+                            quoteVersionId={officeAuthoring.dto.quoteVersion.id}
+                            groupsWithItems={officeAuthoring.grouping.groupsWithItems}
+                            orphanedItems={officeAuthoring.grouping.orphanedItems}
+                            headLineItems={ws.headLineItems}
+                            executionPreviewByLineItemId={
+                              officeAuthoring.executionPreview?.previewsByLineItemId ?? null
+                            }
+                            localPackets={officeAuthoring.localPackets}
+                            canAuthorTasks={
+                              officeAuthoring.isEditableHead && canOfficeMutate
+                            }
+                            pinnedWorkflowVersionId={
+                              officeAuthoring.dto.quoteVersion.pinnedWorkflowVersionId ?? null
+                            }
+                          />
                         </div>
 
                         <QuoteWorkspaceLineItemSummary
@@ -379,7 +369,10 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
                           >
                             Line & tasks →
                           </Link>
-                          <span className="text-xs text-zinc-500">Edit lines, pricing, saved packets, and custom tasks.</span>
+                          <span className="text-xs text-zinc-500">
+                            Use Line & tasks for saved work, crew tasks, and technical options. Not required for a
+                            basic quote line.
+                          </span>
                         </div>
                       </>
                     )}
@@ -453,6 +446,7 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
               </div>
             </div>
           </section>
+          </QuoteWorkspaceComposePreviewProvider>
         </div>
 
         <div className="space-y-4 lg:col-span-4">

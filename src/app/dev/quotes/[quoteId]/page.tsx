@@ -35,6 +35,7 @@ import { QuoteWorkspaceLineItemList } from "@/components/quotes/workspace/quote-
 import { QuoteWorkspaceHeadReadiness } from "@/components/quotes/workspace/quote-workspace-head-readiness";
 import { QuoteWorkspacePinWorkflow } from "@/components/quotes/workspace/quote-workspace-pin-workflow";
 import { QuoteWorkspaceProposedExecutionFlow } from "@/components/quotes/workspace/quote-workspace-proposed-execution-flow";
+import { QuoteWorkspaceComposePreviewProvider } from "@/components/quotes/workspace/quote-workspace-compose-preview-context";
 import { QuoteWorkspaceComposeSendPanel } from "@/components/quotes/workspace/quote-workspace-compose-send-panel";
 import { QuoteWorkspaceSignSent } from "@/components/quotes/workspace/quote-workspace-sign-sent";
 import { QuoteWorkspaceActivateSigned } from "@/components/quotes/workspace/quote-workspace-activate-signed";
@@ -253,6 +254,7 @@ export default async function DevQuoteWorkspacePage({ params }: PageProps) {
           </p>
         </div>
 
+        <QuoteWorkspaceComposePreviewProvider quoteId={quoteId}>
         <div className="space-y-10">
           <div id="step-1">
             <QuoteWorkspacePipelineStep
@@ -335,6 +337,7 @@ export default async function DevQuoteWorkspacePage({ params }: PageProps) {
             </QuoteWorkspacePipelineStep>
           </div>
         </div>
+        </QuoteWorkspaceComposePreviewProvider>
       </section>
 
       <div className="mb-10" id="execution-bridge">

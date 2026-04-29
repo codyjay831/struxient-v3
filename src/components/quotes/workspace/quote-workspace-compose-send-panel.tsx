@@ -1,25 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { InternalActionResult } from "@/components/internal/internal-action-result";
+import { useQuoteWorkspaceComposePreview } from "@/components/quotes/workspace/quote-workspace-compose-preview-context";
+import type { ComposePreviewClientData } from "@/lib/workspace/quote-workspace-compose-preview-client-types";
 import { composeSendProposalDisabledReason } from "@/lib/workspace/quote-workspace-send-disabled-reason";
-
-/** Mirrors `ComposePreviewResponseDto` fields we surface (avoid importing server-only types). */
-type ComposePreviewData = {
-  quoteVersionId: string;
-  stalenessToken: string | null;
-  staleness: "fresh" | "stale";
-  errors: { code: string; message: string }[];
-  warnings: { code: string; message: string }[];
-  stats: {
-    lineItemCount: number;
-    planTaskCount: number;
-    packageTaskCount: number;
-    skeletonSlotCount: number;
-    soldSlotCount: number;
-  };
-};
 
 export type LatestDraftWorkspaceTarget = {
   quoteVersionId: string;
@@ -42,6 +29,24 @@ function newSendClientRequestId(): string {
  */
 export function QuoteWorkspaceComposeSendPanel({ latestDraft, canOfficeMutate }: Props) {
   const router = useRouter();
+  const {
+    quoteId: workspaceQuoteId,
+    lastCompose: ctxLastCompose,
+    setLastCompose: setCtxLastCompose,
+  } = useQuoteWorkspaceComposePreview();
+  const composeConnected = workspaceQuoteId.length > 0;
+  const [localLastCompose, setLocalLastCompose] = useState<ComposePreviewClientData | null>(null);
+  const lastCompose = composeConnected ? ctxLastCompose : localLastCompose;
+  const setLastCompose = useCallback(
+    (data: ComposePreviewClientData | null) => {
+      if (composeConnected) {
+        setCtxLastCompose(data);
+      } else {
+        setLocalLastCompose(data);
+      }
+    },
+    [composeConnected, setCtxLastCompose],
+  );
   const [composeBusy, setComposeBusy] = useState(false);
   const [sendBusy, setSendBusy] = useState(false);
   const [result, setResult] = useState<{
@@ -52,7 +57,6 @@ export function QuoteWorkspaceComposeSendPanel({ latestDraft, canOfficeMutate }:
   } | null>(null);
   /** Token from the last successful compose HTTP response (`data.stalenessToken`); required body field for send. */
   const [stalenessTokenForSend, setStalenessTokenForSend] = useState<string | null | undefined>(undefined);
-  const [lastCompose, setLastCompose] = useState<ComposePreviewData | null>(null);
 
   const runComposePreview = useCallback(async () => {
     if (!latestDraft || !canOfficeMutate) return;
@@ -72,7 +76,7 @@ export function QuoteWorkspaceComposeSendPanel({ latestDraft, canOfficeMutate }:
         },
       );
       const body = (await res.json().catch(() => ({}))) as {
-        data?: ComposePreviewData;
+        data?: ComposePreviewClientData;
         error?: { code?: string; message?: string };
       };
       if (!res.ok) {
@@ -87,6 +91,8 @@ export function QuoteWorkspaceComposeSendPanel({ latestDraft, canOfficeMutate }:
         return;
       }
       if (!body.data) {
+        setLastCompose(null);
+        setStalenessTokenForSend(undefined);
         setResult({
           kind: "error",
           title: "Preview failed",
@@ -111,7 +117,7 @@ export function QuoteWorkspaceComposeSendPanel({ latestDraft, canOfficeMutate }:
     } finally {
       setComposeBusy(false);
     }
-  }, [canOfficeMutate, latestDraft, lastCompose]);
+  }, [canOfficeMutate, latestDraft, lastCompose, setLastCompose]);
 
   const runSend = useCallback(async () => {
     if (!latestDraft || !canOfficeMutate) return;
@@ -168,7 +174,7 @@ export function QuoteWorkspaceComposeSendPanel({ latestDraft, canOfficeMutate }:
     } finally {
       setSendBusy(false);
     }
-  }, [canOfficeMutate, latestDraft, router, stalenessTokenForSend]);
+  }, [canOfficeMutate, latestDraft, router, setLastCompose, stalenessTokenForSend]);
 
   const composeBlocking = lastCompose != null && lastCompose.errors.length > 0;
   const sendReady =
@@ -275,6 +281,17 @@ export function QuoteWorkspaceComposeSendPanel({ latestDraft, canOfficeMutate }:
               }
             />
           )}
+
+          {lastCompose != null &&
+          lastCompose.errors.length > 0 &&
+          lastCompose.errors.some((e) => typeof e.lineItemId === "string" && e.lineItemId.length > 0) ? (
+            <p className="mt-2 text-[11px] leading-relaxed text-zinc-400">
+              <Link href="#line-items" className="font-medium text-sky-400/90 hover:text-sky-300 underline">
+                Jump to line items in step 1
+              </Link>{" "}
+              to see which lines need changes.
+            </p>
+          ) : null}
 
           <div className="mt-4 border-t border-zinc-800/40 pt-3">
             <details className="text-[10px] text-zinc-600">

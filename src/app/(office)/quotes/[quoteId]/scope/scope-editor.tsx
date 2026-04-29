@@ -10,6 +10,8 @@ import type { QuoteLocalPacketDto } from "@/server/slice1/reads/quote-local-pack
 import type { LineItemPresetSummaryDto } from "@/server/slice1/reads/line-item-preset-reads";
 import { type LineItemExecutionPreviewDto } from "@/lib/quote-line-item-execution-preview";
 import { LineItemExecutionPreviewBlock } from "@/components/quote-scope/line-item-execution-preview-block";
+import { InlineQuickTaskEditor } from "@/components/quote-scope/inline-quick-task-editor";
+import { type SavedPacketOption } from "@/components/quote-scope/quote-local-packet-editor";
 import { QuickAddLineItemPicker } from "@/components/quote-scope/quick-add-line-item-picker";
 import type { LineItemForRecent } from "@/lib/quick-add-line-item-picker-filter";
 import {
@@ -120,6 +122,22 @@ type Props = {
   fieldWorkExternalBaseHref?: string | null;
   canMutate: boolean;
   editableReason: EditableReason;
+  /**
+   * When true (e.g. quote workspace), crew tasks for quote-local packets open
+   * {@link InlineQuickTaskEditor} under the line instead of same-page `#field-work-*`.
+   */
+  inlineLocalTaskEditing?: boolean;
+  /** Pinned workflow for inline quick task editor / task stage pickers. */
+  pinnedWorkflowVersionId?: string | null;
+  /** Saved library packets for promote-into-existing in the inline editor. */
+  availableSavedPacketsForFieldWork?: SavedPacketOption[];
+  /** Line titles keyed by quote-local packet id (inline “Used by” labels). */
+  lineItemTitlesByLocalPacketId?: Record<string, string[]>;
+  /**
+   * Quote workspace: use crew-task wording under line items (not “Task Packet” headings).
+   * Full `/scope` page omits this so packet-oriented copy stays there.
+   */
+  workspaceCrewTaskCopy?: boolean;
 };
 
 type ExecutionMode = "SOLD_SCOPE" | "MANIFEST";
@@ -224,8 +242,17 @@ export function ScopeEditor({
   fieldWorkExternalBaseHref,
   canMutate,
   editableReason,
+  inlineLocalTaskEditing = false,
+  pinnedWorkflowVersionId = null,
+  availableSavedPacketsForFieldWork = [],
+  lineItemTitlesByLocalPacketId = {},
+  workspaceCrewTaskCopy = false,
 }: Props) {
+  void availableSavedPacketsForFieldWork;
+  void lineItemTitlesByLocalPacketId;
+
   const router = useRouter();
+  const [inlineTaskLineItemId, setInlineTaskLineItemId] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [banner, setBanner] = useState<Banner>(null);
   const [addingForGroupId, setAddingForGroupId] = useState<string | null>(null);
@@ -392,6 +419,8 @@ export function ScopeEditor({
         executionPreviewByLineItemId={executionPreviewByLineItemId}
         fieldWorkAnchorsActive={fieldWorkAnchorsActive}
         fieldWorkExternalBaseHref={fieldWorkExternalBaseHref}
+        inlineLocalTaskEditing={false}
+        workspaceCrewTaskCopy={workspaceCrewTaskCopy}
         singleDefaultMainGroup={singleDefaultMainGroup}
       />
     );
@@ -858,12 +887,21 @@ export function ScopeEditor({
                       ) : (
                         <LineItemRow
                           item={item}
+                          canMutate={canMutate}
                           availableLibraryPackets={availableLibraryPackets}
+                          availableLocalPackets={mergedLocalPackets}
                           executionPreview={
                             executionPreviewByLineItemId?.[item.id] ?? null
                           }
                           fieldWorkAnchorsActive={fieldWorkAnchorsActive}
                           fieldWorkExternalBaseHref={fieldWorkExternalBaseHref}
+                          inlineLocalTaskEditing={inlineLocalTaskEditing}
+                          workspaceCrewTaskCopy={workspaceCrewTaskCopy}
+                          pinnedWorkflowVersionId={pinnedWorkflowVersionId}
+                          inlineTaskExpanded={inlineTaskLineItemId === item.id}
+                          onToggleInlineTasks={() => {
+                            setInlineTaskLineItemId((cur) => (cur === item.id ? null : item.id));
+                          }}
                           localTaskCountHint={
                             item.quoteLocalPacketId
                               ? mergedLocalPackets.find((p) => p.id === item.quoteLocalPacketId)
@@ -894,20 +932,34 @@ export function ScopeEditor({
 
 function LineItemRow({
   item,
+  canMutate,
   availableLibraryPackets,
+  availableLocalPackets,
   executionPreview,
   fieldWorkAnchorsActive,
   fieldWorkExternalBaseHref,
+  inlineLocalTaskEditing,
+  workspaceCrewTaskCopy,
+  pinnedWorkflowVersionId,
+  inlineTaskExpanded,
+  onToggleInlineTasks,
   localTaskCountHint,
   busy,
   onEdit,
   onDelete,
 }: {
   item: LineItem;
+  canMutate: boolean;
   availableLibraryPackets: LibraryPacketOption[];
+  availableLocalPackets: LocalPacketOption[];
   executionPreview: LineItemExecutionPreviewDto | null;
   fieldWorkAnchorsActive: boolean;
   fieldWorkExternalBaseHref?: string | null;
+  inlineLocalTaskEditing: boolean;
+  workspaceCrewTaskCopy: boolean;
+  pinnedWorkflowVersionId: string | null;
+  inlineTaskExpanded: boolean;
+  onToggleInlineTasks: () => void;
   localTaskCountHint?: number | null;
   busy: boolean;
   onEdit: () => void;
@@ -916,8 +968,20 @@ function LineItemRow({
   const packetSummary = describeAttachedPacket(item, availableLibraryPackets);
   const statusChip = lineItemFieldWorkStatusChip(item, executionPreview);
   const showPacketSummaryLine = shouldShowPacketSummaryUnderTitle(executionPreview);
+  const localPacketDto =
+    item.quoteLocalPacketId != null
+      ? availableLocalPackets.find((p) => p.id === item.quoteLocalPacketId) ?? null
+      : null;
+  const showInlinePacketEditor =
+    inlineLocalTaskEditing &&
+    fieldWorkAnchorsActive &&
+    item.executionMode === "MANIFEST" &&
+    item.quoteLocalPacketId != null &&
+    localPacketDto != null &&
+    inlineTaskExpanded;
+
   return (
-    <div className="space-y-3">
+    <div id={`line-item-${item.id}`} className="space-y-3 scroll-mt-24">
       <div className="rounded-lg border border-zinc-800/70 bg-zinc-950/30 p-4">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1 space-y-2">
@@ -932,6 +996,10 @@ function LineItemRow({
               availableLibraryPackets={availableLibraryPackets}
               fieldWorkAnchorsActive={fieldWorkAnchorsActive}
               fieldWorkExternalBaseHref={fieldWorkExternalBaseHref}
+              inlineLocalTaskEditing={inlineLocalTaskEditing}
+              workspaceCrewTaskCopy={workspaceCrewTaskCopy}
+              inlineTaskExpanded={inlineTaskExpanded}
+              onToggleInlineTasks={onToggleInlineTasks}
               localTaskCountHint={localTaskCountHint}
               onSetUpFieldWorkEdit={onEdit}
             />
@@ -959,9 +1027,25 @@ function LineItemRow({
           </div>
         </div>
       </div>
-      {executionPreview ? (
-        <div id={`line-item-${item.id}-task-preview`}>
-          <LineItemExecutionPreviewBlock preview={executionPreview} />
+      {executionPreview != null || (inlineLocalTaskEditing && localPacketDto != null) ? (
+        <div id={`line-item-${item.id}-task-preview`} className="space-y-0">
+          {executionPreview ? (
+            <LineItemExecutionPreviewBlock
+              preview={executionPreview}
+              presentation={workspaceCrewTaskCopy ? "workspaceCrewTasks" : "default"}
+            />
+          ) : null}
+          {showInlinePacketEditor ? (
+            <InlineQuickTaskEditor
+              initialPacket={localPacketDto!}
+              pinnedWorkflowVersionId={pinnedWorkflowVersionId}
+              isDraft
+              canOfficeMutate={canMutate}
+              onClose={() => {
+                onToggleInlineTasks();
+              }}
+            />
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -993,6 +1077,10 @@ function LineItemFieldWorkActions({
   availableLibraryPackets,
   fieldWorkAnchorsActive,
   fieldWorkExternalBaseHref,
+  inlineLocalTaskEditing = false,
+  workspaceCrewTaskCopy = false,
+  inlineTaskExpanded = false,
+  onToggleInlineTasks,
   localTaskCountHint,
   onSetUpFieldWorkEdit,
 }: {
@@ -1001,6 +1089,10 @@ function LineItemFieldWorkActions({
   availableLibraryPackets: LibraryPacketOption[];
   fieldWorkAnchorsActive: boolean;
   fieldWorkExternalBaseHref?: string | null;
+  inlineLocalTaskEditing?: boolean;
+  workspaceCrewTaskCopy?: boolean;
+  inlineTaskExpanded?: boolean;
+  onToggleInlineTasks?: () => void;
   localTaskCountHint?: number | null;
   onSetUpFieldWorkEdit?: () => void;
 }) {
@@ -1031,14 +1123,35 @@ function LineItemFieldWorkActions({
 
   if (kind === "manifestLocal" && executionPreview && item.quoteLocalPacketId && fieldWorkAnchorsActive) {
     const n = executionPreview.tasks.length;
-    const label = n > 0 ? "Edit tasks" : "Add tasks";
+    const hideLabel = workspaceCrewTaskCopy ? "Hide" : "Hide tasks";
+    const openLabel =
+      n > 0
+        ? workspaceCrewTaskCopy
+          ? "Crew tasks"
+          : "Edit tasks"
+        : workspaceCrewTaskCopy
+          ? "Add task"
+          : "Add tasks";
+    if (inlineLocalTaskEditing && onToggleInlineTasks) {
+      return (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <button
+            type="button"
+            onClick={onToggleInlineTasks}
+            className={`${lineItemFieldWorkLinkClass} cursor-pointer bg-transparent p-0 text-left border-0`}
+          >
+            {inlineTaskExpanded ? hideLabel : openLabel}
+          </button>
+        </div>
+      );
+    }
     return (
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <a
           className={lineItemFieldWorkLinkClass}
           href={fieldWorkPacketHref(fieldWorkExternalBaseHref, item.quoteLocalPacketId)}
         >
-          {label}
+          {openLabel}
         </a>
       </div>
     );
@@ -1051,14 +1164,35 @@ function LineItemFieldWorkActions({
     executionPreview == null
   ) {
     const n = localTaskCountHint ?? 0;
-    const label = n > 0 ? "Edit tasks" : "Add tasks";
+    const hideLabel = workspaceCrewTaskCopy ? "Hide" : "Hide tasks";
+    const openLabel =
+      n > 0
+        ? workspaceCrewTaskCopy
+          ? "Crew tasks"
+          : "Edit tasks"
+        : workspaceCrewTaskCopy
+          ? "Add task"
+          : "Add tasks";
+    if (inlineLocalTaskEditing && onToggleInlineTasks) {
+      return (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <button
+            type="button"
+            onClick={onToggleInlineTasks}
+            className={`${lineItemFieldWorkLinkClass} cursor-pointer bg-transparent p-0 text-left border-0`}
+          >
+            {inlineTaskExpanded ? hideLabel : openLabel}
+          </button>
+        </div>
+      );
+    }
     return (
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <a
           className={lineItemFieldWorkLinkClass}
           href={fieldWorkPacketHref(fieldWorkExternalBaseHref, item.quoteLocalPacketId)}
         >
-          {label}
+          {openLabel}
         </a>
       </div>
     );
@@ -1984,6 +2118,8 @@ function ReadOnlyView({
   executionPreviewByLineItemId,
   fieldWorkAnchorsActive,
   fieldWorkExternalBaseHref,
+  inlineLocalTaskEditing,
+  workspaceCrewTaskCopy,
   singleDefaultMainGroup,
 }: {
   groupedLineItems: GroupWithItems[];
@@ -1994,6 +2130,8 @@ function ReadOnlyView({
   executionPreviewByLineItemId: Record<string, LineItemExecutionPreviewDto> | null;
   fieldWorkAnchorsActive: boolean;
   fieldWorkExternalBaseHref?: string | null;
+  inlineLocalTaskEditing: boolean;
+  workspaceCrewTaskCopy: boolean;
   singleDefaultMainGroup: boolean;
 }) {
   const reasonMessage =
@@ -2046,7 +2184,11 @@ function ReadOnlyView({
                 const statusChip = lineItemFieldWorkStatusChip(item, preview);
                 const showPacketSummaryLine = shouldShowPacketSummaryUnderTitle(preview);
                 return (
-                  <li key={item.id} className="px-4 py-4 space-y-3">
+                  <li
+                    key={item.id}
+                    id={`line-item-${item.id}`}
+                    className="px-4 py-4 space-y-3 scroll-mt-24"
+                  >
                     <div className="rounded-lg border border-zinc-800/70 bg-zinc-950/30 p-4">
                       <div className="space-y-2">
                         <div className="flex flex-wrap items-center gap-2 gap-y-1">
@@ -2060,6 +2202,10 @@ function ReadOnlyView({
                           availableLibraryPackets={availableLibraryPackets}
                           fieldWorkAnchorsActive={fieldWorkAnchorsActive}
                           fieldWorkExternalBaseHref={fieldWorkExternalBaseHref}
+                          inlineLocalTaskEditing={inlineLocalTaskEditing}
+                          workspaceCrewTaskCopy={workspaceCrewTaskCopy}
+                          inlineTaskExpanded={false}
+                          onToggleInlineTasks={undefined}
                           localTaskCountHint={null}
                         />
                         {showPacketSummaryLine && packetSummary ? (
@@ -2069,7 +2215,10 @@ function ReadOnlyView({
                     </div>
                     {preview ? (
                       <div id={`line-item-${item.id}-task-preview`}>
-                        <LineItemExecutionPreviewBlock preview={preview} />
+                        <LineItemExecutionPreviewBlock
+                          preview={preview}
+                          presentation={workspaceCrewTaskCopy ? "workspaceCrewTasks" : "default"}
+                        />
                       </div>
                     ) : null}
                   </li>

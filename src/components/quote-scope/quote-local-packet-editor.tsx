@@ -1,19 +1,16 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { QuoteLocalPacketDto, QuoteLocalPacketItemDto } from "@/server/slice1/reads/quote-local-packet-reads";
 import {
-  TaskDefinitionPicker,
-  type SelectedTaskDefinitionSummary,
-} from "@/components/quote-scope/task-definition-picker";
-import { TargetNodePicker } from "@/components/quote-scope/target-node-picker";
+  EmbeddedTaskAuthoringForm,
+  LibraryItemEditor,
+  LibraryTaskCreateForm,
+} from "@/components/quote-scope/quote-local-packet-task-forms";
 import { humanizeCanonicalExecutionStageKey } from "@/lib/canonical-execution-stages";
-import { lineKeyFromTaskName } from "@/lib/line-key-from-task-name";
 import {
   draftToBody,
-  emptyDraft,
-  finalizeEmbeddedDraftForSubmit,
   itemToDraft,
   lineKeysForPacketCollision,
   readCompletionRequirementCount,
@@ -48,7 +45,7 @@ type Props = {
    * workflow's snapshot nodes. When null, the picker LOCKS in
    * `quoteScopeStage` mode and the author must pin a workflow first — we no
    * longer accept free-text node ids in normal quote authoring (Triangle
-   * Mode). See {@link TargetNodePicker}.
+   * Mode). See `TargetNodePicker` (`target-node-picker.tsx`).
    */
   pinnedWorkflowVersionId: string | null;
   /**
@@ -516,6 +513,11 @@ type PacketRowProps = {
   editable: boolean;
   busy: boolean;
   pinnedWorkflowVersionId: string | null;
+  /**
+   * When set, used as the row `id` (e.g. inline under a line item) to avoid
+   * colliding with `#field-work-{packetId}` on the full-page editor.
+   */
+  rowDomId?: string;
   /** True briefly when navigated via `#field-work-{packet.id}`. */
   hashHighlighted?: boolean;
   /** Line item titles that pin this packet (optional; from scope page). */
@@ -538,6 +540,8 @@ type PacketRowProps = {
     | ((payload: PromoteIntoExistingPayload) => Promise<PromoteIntoExistingResult>)
     | null;
   availableSavedPackets: SavedPacketOption[];
+  /** `inline`: under line-item preview — lighter chrome, no duplicate title, advanced tucked away. */
+  presentation?: "default" | "inline";
 };
 
 function PacketRow({
@@ -545,6 +549,7 @@ function PacketRow({
   editable,
   busy,
   pinnedWorkflowVersionId,
+  rowDomId,
   hashHighlighted = false,
   lineItemTitlesForPacket,
   onUpdatePacket,
@@ -555,6 +560,7 @@ function PacketRow({
   onPromotePacket,
   onPromotePacketIntoExisting,
   availableSavedPackets,
+  presentation = "default",
 }: PacketRowProps) {
   const [editingHeader, setEditingHeader] = useState(false);
   const [headerName, setHeaderName] = useState(packet.displayName);
@@ -571,6 +577,7 @@ function PacketRow({
   const isPromoted =
     packet.promotionStatus === "COMPLETED" && packet.promotedScopePacketId !== null;
 
+  const isInline = presentation === "inline";
   const titles = lineItemTitlesForPacket?.filter((t) => t.trim().length > 0) ?? [];
   const usedByLabel =
     pinned && titles.length > 0
@@ -581,14 +588,105 @@ function PacketRow({
         ? `Used by ${packet.pinnedByLineItemCount} line item${packet.pinnedByLineItemCount === 1 ? "" : "s"}`
         : null;
 
-  return (
-    <li
-      id={`field-work-${packet.id}`}
-      className={`rounded-lg border border-zinc-800/80 bg-zinc-950/30 p-4 shadow-sm shadow-black/10 transition-shadow duration-300 ${
+  const rowId = rowDomId ?? `field-work-${packet.id}`;
+  const shellClass = isInline
+    ? `rounded-md border border-zinc-700/50 bg-zinc-950/45 p-2.5 sm:p-3 transition-shadow duration-300 ${
+        hashHighlighted ? "ring-2 ring-sky-500/60 ring-offset-1 ring-offset-zinc-950" : ""
+      }`
+    : `rounded-lg border border-zinc-800/80 bg-zinc-950/30 p-4 shadow-sm shadow-black/10 transition-shadow duration-300 ${
         hashHighlighted ? "ring-2 ring-sky-500/70 ring-offset-2 ring-offset-zinc-950" : ""
-      }`}
-    >
-      <header className="flex flex-wrap items-start justify-between gap-2 border-b border-zinc-800 pb-2 mb-3">
+      }`;
+
+  const technicalDetailsInner = (
+    <div className="mt-1 flex flex-wrap gap-2 font-mono text-[10px] text-zinc-500">
+      <span className="rounded bg-zinc-900 px-1.5 py-0.5">{packet.id}</span>
+      <span className="rounded border border-zinc-700/60 bg-zinc-900/40 px-1.5 py-0.5">
+        origin: {packet.originType}
+      </span>
+      <span
+        className={`rounded border px-1.5 py-0.5 ${
+          isPromoted
+            ? "border-emerald-800/60 bg-emerald-950/30 text-emerald-300"
+            : "border-zinc-700/60 bg-zinc-900/40 text-zinc-400"
+        }`}
+        title="Save-to-library status for this field work"
+      >
+        {formatQuoteLocalPacketPromotionStatusLabel(packet.promotionStatus)}
+      </span>
+      {isPromoted && packet.promotedScopePacketId ? (
+        <a
+          href={`/library/packets/${encodeURIComponent(packet.promotedScopePacketId)}`}
+          className="rounded border border-emerald-800/60 bg-emerald-950/30 px-1.5 py-0.5 text-emerald-300 hover:text-emerald-200"
+        >
+          Open promoted packet ↗
+        </a>
+      ) : null}
+    </div>
+  );
+
+  const defaultTechnicalDetails = (
+    <details className="mt-3 text-xs text-zinc-600">
+      <summary className="cursor-pointer text-zinc-600 hover:text-zinc-400 select-none">
+        Technical details
+      </summary>
+      {technicalDetailsInner}
+    </details>
+  );
+
+  const promoteControls = canPromote ? (
+    showPromote ? (
+      <PromoteForm
+        busy={busy}
+        defaultDisplayName={packet.displayName}
+        onCancel={() => setShowPromote(false)}
+        onSubmit={async (payload) => {
+          const result = await onPromotePacket(payload);
+          if (result.ok) setShowPromote(false);
+          return result;
+        }}
+      />
+    ) : showPromoteExisting && onPromotePacketIntoExisting !== null ? (
+      <PromoteIntoExistingForm
+        busy={busy}
+        availableSavedPackets={availableSavedPackets}
+        onCancel={() => setShowPromoteExisting(false)}
+        onSubmit={async (payload) => {
+          const result = await onPromotePacketIntoExisting(payload);
+          if (result.ok) setShowPromoteExisting(false);
+          return result;
+        }}
+      />
+    ) : (
+      <>
+        <button
+          type="button"
+          onClick={() => setShowPromote(true)}
+          className="rounded border border-violet-800/60 bg-violet-950/20 px-2 py-0.5 text-[11px] text-violet-300 hover:text-violet-200"
+          title="Save this task packet as a brand-new reusable saved task packet in the library (creates a new packet with its first DRAFT revision)."
+        >
+          ↑ Save as new template (DRAFT revision)
+        </button>
+        {canPromoteIntoExisting ? (
+          <button
+            type="button"
+            onClick={() => setShowPromoteExisting(true)}
+            className="rounded border border-violet-800/60 bg-violet-950/20 px-2 py-0.5 text-[11px] text-violet-300 hover:text-violet-200"
+            title="Add this task packet to an existing saved task packet as the next editable draft revision."
+          >
+            ↗ Add to existing saved template
+          </button>
+        ) : null}
+      </>
+    )
+  ) : null;
+
+  return (
+    <li id={rowId} className={shellClass}>
+      <header
+        className={`flex flex-wrap items-start justify-between gap-2 ${
+          isInline ? "border-b border-zinc-800/40 pb-2 mb-2" : "border-b border-zinc-800 pb-2 mb-3"
+        }`}
+      >
         <div className="min-w-0 flex-1">
           {editingHeader ? (
             <div className="space-y-2">
@@ -635,6 +733,20 @@ function PacketRow({
                 </button>
               </div>
             </div>
+          ) : isInline ? (
+            <>
+              <p className="sr-only">{packet.displayName}</p>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-zinc-500">
+                {usedByLabel ? (
+                  <span className="rounded border border-zinc-700/50 bg-zinc-900/40 px-1.5 py-0.5 text-zinc-500">
+                    {usedByLabel}
+                  </span>
+                ) : null}
+                {packet.description ? (
+                  <span className="text-zinc-600 leading-snug max-w-full">{packet.description}</span>
+                ) : null}
+              </div>
+            </>
           ) : (
             <>
               <p className="text-base font-semibold text-zinc-50 leading-snug">{packet.displayName}</p>
@@ -651,46 +763,22 @@ function PacketRow({
                   </span>
                 ) : null}
               </div>
-              <details className="mt-3 text-xs text-zinc-600">
-                <summary className="cursor-pointer text-zinc-600 hover:text-zinc-400 select-none">
-                  Technical details
-                </summary>
-                <div className="mt-1 flex flex-wrap gap-2 font-mono text-zinc-500">
-                  <span className="rounded bg-zinc-900 px-1.5 py-0.5">{packet.id}</span>
-                  <span className="rounded border border-zinc-700/60 bg-zinc-900/40 px-1.5 py-0.5">
-                    origin: {packet.originType}
-                  </span>
-                  <span
-                    className={`rounded border px-1.5 py-0.5 ${
-                      isPromoted
-                        ? "border-emerald-800/60 bg-emerald-950/30 text-emerald-300"
-                        : "border-zinc-700/60 bg-zinc-900/40 text-zinc-400"
-                    }`}
-                    title="Save-to-library status for this field work"
-                  >
-                    {formatQuoteLocalPacketPromotionStatusLabel(packet.promotionStatus)}
-                  </span>
-                  {isPromoted && packet.promotedScopePacketId ? (
-                    <a
-                      href={`/library/packets/${encodeURIComponent(packet.promotedScopePacketId)}`}
-                      className="rounded border border-emerald-800/60 bg-emerald-950/30 px-1.5 py-0.5 text-emerald-300 hover:text-emerald-200"
-                    >
-                      Open promoted packet ↗
-                    </a>
-                  ) : null}
-                </div>
-              </details>
+              {defaultTechnicalDetails}
             </>
           )}
         </div>
         {editable && !editingHeader ? (
-          <div className="flex gap-1">
+          <div className={`flex gap-1 shrink-0 ${isInline ? "items-start pt-0.5" : ""}`}>
             <button
               type="button"
               onClick={() => setEditingHeader(true)}
-              className="rounded border border-zinc-700 px-2 py-0.5 text-[10px] text-zinc-400 hover:text-zinc-200"
+              className={
+                isInline
+                  ? "rounded border border-zinc-700/70 px-1.5 py-0.5 text-[9px] text-zinc-500 hover:text-zinc-300"
+                  : "rounded border border-zinc-700 px-2 py-0.5 text-[10px] text-zinc-400 hover:text-zinc-200"
+              }
             >
-              Edit
+              {isInline ? "Rename" : "Edit"}
             </button>
             <button
               type="button"
@@ -701,7 +789,11 @@ function PacketRow({
                   ? "Detach pinning line items first."
                   : "Delete this task packet and all its tasks."
               }
-              className="rounded border border-red-900/60 px-2 py-0.5 text-[10px] text-red-400 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+              className={
+                isInline
+                  ? "rounded border border-red-900/50 px-1.5 py-0.5 text-[9px] text-red-400/90 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+                  : "rounded border border-red-900/60 px-2 py-0.5 text-[10px] text-red-400 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+              }
             >
               Delete
             </button>
@@ -714,6 +806,7 @@ function PacketRow({
         editable={editable}
         busy={busy}
         pinnedWorkflowVersionId={pinnedWorkflowVersionId}
+        presentation={presentation}
         onUpdateItem={onUpdateItem}
         onDeleteItem={onDeleteItem}
         onAddFirstTask={() => setAddTaskMode("embedded")}
@@ -721,53 +814,8 @@ function PacketRow({
         suppressEmptyAddButtons={addTaskMode !== "none"}
       />
 
-      {canPromote ? (
-        <div className="mt-3 flex flex-wrap gap-2">
-          {showPromote ? (
-            <PromoteForm
-              busy={busy}
-              defaultDisplayName={packet.displayName}
-              onCancel={() => setShowPromote(false)}
-              onSubmit={async (payload) => {
-                const result = await onPromotePacket(payload);
-                if (result.ok) setShowPromote(false);
-                return result;
-              }}
-            />
-          ) : showPromoteExisting && onPromotePacketIntoExisting !== null ? (
-            <PromoteIntoExistingForm
-              busy={busy}
-              availableSavedPackets={availableSavedPackets}
-              onCancel={() => setShowPromoteExisting(false)}
-              onSubmit={async (payload) => {
-                const result = await onPromotePacketIntoExisting(payload);
-                if (result.ok) setShowPromoteExisting(false);
-                return result;
-              }}
-            />
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={() => setShowPromote(true)}
-                className="rounded border border-violet-800/60 bg-violet-950/20 px-2 py-0.5 text-[11px] text-violet-300 hover:text-violet-200"
-                title="Save this task packet as a brand-new reusable saved task packet in the library (creates a new packet with its first DRAFT revision)."
-              >
-                ↑ Save as new template (DRAFT revision)
-              </button>
-              {canPromoteIntoExisting ? (
-                <button
-                  type="button"
-                  onClick={() => setShowPromoteExisting(true)}
-                  className="rounded border border-violet-800/60 bg-violet-950/20 px-2 py-0.5 text-[11px] text-violet-300 hover:text-violet-200"
-                  title="Add this task packet to an existing saved task packet as the next editable draft revision."
-                >
-                  ↗ Add to existing saved template
-                </button>
-              ) : null}
-            </>
-          )}
-        </div>
+      {!isInline && promoteControls ? (
+        <div className="mt-3 flex flex-wrap gap-2">{promoteControls}</div>
       ) : null}
 
       {editable ? (
@@ -815,20 +863,42 @@ function PacketRow({
               <button
                 type="button"
                 onClick={() => setAddTaskMode("embedded")}
-                className="rounded border border-emerald-800/60 bg-emerald-950/30 px-2 py-0.5 text-[11px] text-emerald-300 hover:text-emerald-200"
+                className={
+                  isInline
+                    ? "rounded-md border border-emerald-700/70 bg-emerald-950/35 px-2.5 py-1 text-[11px] font-semibold text-emerald-100 hover:bg-emerald-950/50"
+                    : "rounded border border-emerald-800/60 bg-emerald-950/30 px-2 py-0.5 text-[11px] text-emerald-300 hover:text-emerald-200"
+                }
               >
                 Add task
               </button>
               <button
                 type="button"
                 onClick={() => setAddTaskMode("library")}
-                className="rounded border border-zinc-700 bg-zinc-900/50 px-2 py-0.5 text-[11px] text-zinc-400 hover:text-zinc-200"
+                className={
+                  isInline
+                    ? "rounded-md border border-zinc-600/80 bg-zinc-900/60 px-2.5 py-1 text-[11px] font-medium text-zinc-300 hover:border-zinc-500 hover:text-zinc-100"
+                    : "rounded border border-zinc-700 bg-zinc-900/50 px-2 py-0.5 text-[11px] text-zinc-400 hover:text-zinc-200"
+                }
               >
                 Add from task library
               </button>
             </div>
           ) : null}
         </div>
+      ) : null}
+
+      {isInline ? (
+        <details className="mt-2 rounded border border-zinc-800/35 bg-zinc-900/25 px-2 py-1.5">
+          <summary className="cursor-pointer list-none text-[10px] font-medium text-zinc-500 hover:text-zinc-400 select-none [&::-webkit-details-marker]:hidden">
+            Advanced — library templates and packet IDs
+          </summary>
+          <div className="mt-2 space-y-3 border-t border-zinc-800/40 pt-2">
+            {technicalDetailsInner}
+            {promoteControls ? (
+              <div className="flex flex-wrap gap-2 border-t border-zinc-800/30 pt-2">{promoteControls}</div>
+            ) : null}
+          </div>
+        </details>
       ) : null}
     </li>
   );
@@ -841,6 +911,7 @@ type ItemsTableProps = {
   editable: boolean;
   busy: boolean;
   pinnedWorkflowVersionId: string | null;
+  presentation?: "default" | "inline";
   onUpdateItem: (
     itemId: string,
     patch: Partial<ReturnType<typeof draftToBody>>,
@@ -856,32 +927,56 @@ function ItemsTable({
   editable,
   busy,
   pinnedWorkflowVersionId,
+  presentation = "default",
   onUpdateItem,
   onDeleteItem,
   onAddFirstTask,
   onAddFirstFromLibrary,
   suppressEmptyAddButtons,
 }: ItemsTableProps) {
+  const isInline = presentation === "inline";
   if (items.length === 0) {
     return (
-      <div className="rounded-lg border border-amber-900/35 bg-amber-950/20 px-4 py-4 space-y-2">
-        <p className="text-sm font-semibold text-amber-100">No tasks yet.</p>
-        <p className="text-sm text-amber-200/90 leading-relaxed">
+      <div
+        className={
+          isInline
+            ? "rounded-md border border-amber-900/30 bg-amber-950/15 px-3 py-2.5 space-y-1.5"
+            : "rounded-lg border border-amber-900/35 bg-amber-950/20 px-4 py-4 space-y-2"
+        }
+      >
+        <p className={isInline ? "text-xs font-medium text-amber-100/95" : "text-sm font-semibold text-amber-100"}>
+          No tasks yet.
+        </p>
+        <p
+          className={
+            isInline
+              ? "text-[11px] text-amber-200/85 leading-relaxed"
+              : "text-sm text-amber-200/90 leading-relaxed"
+          }
+        >
           Add the first task for this field work.
         </p>
         {editable && !suppressEmptyAddButtons ? (
-          <div className="flex flex-wrap gap-2 pt-2">
+          <div className={`flex flex-wrap gap-2 ${isInline ? "pt-1" : "pt-2"}`}>
             <button
               type="button"
               onClick={onAddFirstTask}
-              className="rounded-md bg-emerald-700 px-3 py-2 text-sm font-semibold text-emerald-50 hover:bg-emerald-600 shadow-sm"
+              className={
+                isInline
+                  ? "rounded-md bg-emerald-700/95 px-2.5 py-1 text-[11px] font-semibold text-emerald-50 hover:bg-emerald-600"
+                  : "rounded-md bg-emerald-700 px-3 py-2 text-sm font-semibold text-emerald-50 hover:bg-emerald-600 shadow-sm"
+              }
             >
               Add first task
             </button>
             <button
               type="button"
               onClick={onAddFirstFromLibrary}
-              className="rounded border border-zinc-700 bg-zinc-900/50 px-2 py-1 text-[11px] text-zinc-400 hover:text-zinc-200"
+              className={
+                isInline
+                  ? "rounded-md border border-zinc-600/70 bg-zinc-900/50 px-2 py-1 text-[10px] font-medium text-zinc-300 hover:text-zinc-100"
+                  : "rounded border border-zinc-700 bg-zinc-900/50 px-2 py-1 text-[11px] text-zinc-400 hover:text-zinc-200"
+              }
             >
               Add from task library
             </button>
@@ -892,17 +987,31 @@ function ItemsTable({
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-zinc-800/80">
-      <table className="w-full text-left text-sm text-zinc-300">
-        <thead className="bg-zinc-900/70 text-xs font-semibold text-zinc-500 normal-case">
+    <div
+      className={
+        isInline
+          ? "overflow-x-auto rounded-md border border-zinc-800/55"
+          : "overflow-x-auto rounded-lg border border-zinc-800/80"
+      }
+    >
+      <table className={`w-full text-left ${isInline ? "text-xs text-zinc-300" : "text-sm text-zinc-300"}`}>
+        <thead
+          className={
+            isInline
+              ? "bg-zinc-900/50 text-[10px] font-medium text-zinc-500 normal-case"
+              : "bg-zinc-900/70 text-xs font-semibold text-zinc-500 normal-case"
+          }
+        >
           <tr>
-            <th className="px-3 py-2.5">Task</th>
-            <th className="px-3 py-2.5">Stage</th>
-            <th className="px-3 py-2.5">Notes</th>
-            {editable ? <th className="px-3 py-2.5 text-right">Actions</th> : null}
+            <th className={isInline ? "px-2 py-1.5" : "px-3 py-2.5"}>Task</th>
+            <th className={isInline ? "px-2 py-1.5" : "px-3 py-2.5"}>Stage</th>
+            <th className={isInline ? "px-2 py-1.5" : "px-3 py-2.5"}>Notes</th>
+            {editable ? (
+              <th className={`text-right ${isInline ? "px-2 py-1.5" : "px-3 py-2.5"}`}>Actions</th>
+            ) : null}
           </tr>
         </thead>
-        <tbody className="divide-y divide-zinc-800">
+        <tbody className={isInline ? "divide-y divide-zinc-800/70" : "divide-y divide-zinc-800"}>
           {items.map((item) => (
             <ItemRow
               key={item.id}
@@ -911,6 +1020,7 @@ function ItemsTable({
               editable={editable}
               busy={busy}
               pinnedWorkflowVersionId={pinnedWorkflowVersionId}
+              compact={isInline}
               onUpdateItem={onUpdateItem}
               onDeleteItem={onDeleteItem}
             />
@@ -927,6 +1037,7 @@ function ItemRow({
   editable,
   busy,
   pinnedWorkflowVersionId,
+  compact = false,
   onUpdateItem,
   onDeleteItem,
 }: {
@@ -935,6 +1046,7 @@ function ItemRow({
   editable: boolean;
   busy: boolean;
   pinnedWorkflowVersionId: string | null;
+  compact?: boolean;
   onUpdateItem: (
     itemId: string,
     patch: Partial<ReturnType<typeof draftToBody>>,
@@ -1000,22 +1112,33 @@ function ItemRow({
           : embeddedInstructions
         : "—";
 
+  const cellPad = compact ? "px-2 py-1.5" : "px-3 py-2.5";
+  const titleCls = compact
+    ? "text-xs font-semibold text-zinc-100 leading-snug"
+    : "text-sm font-semibold text-zinc-50 leading-snug";
+
   return (
-    <tr className="hover:bg-zinc-800/30">
-      <td className="px-3 py-2.5 align-top">
+    <tr className={compact ? "hover:bg-zinc-800/20" : "hover:bg-zinc-800/30"}>
+      <td className={`${cellPad} align-top`}>
         {item.lineKind === "LIBRARY" ? (
           <div>
-            <p className="text-[10px] font-medium uppercase tracking-wide text-sky-400/90">
+            <p
+              className={
+                compact
+                  ? "text-[9px] font-medium uppercase tracking-wide text-sky-400/85"
+                  : "text-[10px] font-medium uppercase tracking-wide text-sky-400/90"
+              }
+            >
               Saved task definition
             </p>
-            <p className="text-sm font-semibold text-zinc-50 leading-snug">{taskLabel}</p>
+            <p className={titleCls}>{taskLabel}</p>
             {item.taskDefinition?.status && item.taskDefinition.status !== "PUBLISHED" ? (
               <p className="text-[10px] text-amber-400 mt-0.5">Status: {item.taskDefinition.status}</p>
             ) : null}
           </div>
         ) : (
           <div>
-            <p className="text-sm font-semibold text-zinc-50 leading-snug">{taskLabel}</p>
+            <p className={titleCls}>{taskLabel}</p>
             {reqCount > 0 ? (
               <span className="mt-1 inline-block rounded border border-amber-900/50 bg-amber-950/30 px-1.5 py-0.5 text-[9px] font-medium text-amber-200">
                 Proof / checklist ({reqCount})
@@ -1024,19 +1147,25 @@ function ItemRow({
           </div>
         )}
       </td>
-      <td className="px-3 py-2.5 text-sm text-zinc-300 align-top">
+      <td className={`${cellPad} ${compact ? "text-xs" : "text-sm"} text-zinc-300 align-top`}>
         {humanizeCanonicalExecutionStageKey(item.targetNodeKey)}
       </td>
-      <td className="px-3 py-2.5 text-xs text-zinc-500 align-top whitespace-pre-wrap break-words max-w-[260px] leading-relaxed">
+      <td
+        className={`${cellPad} ${compact ? "text-[10px] max-w-[200px]" : "text-xs max-w-[260px]"} text-zinc-500 align-top whitespace-pre-wrap break-words leading-relaxed`}
+      >
         {notesPreview}
       </td>
       {editable ? (
-        <td className="px-3 py-2.5 text-right align-top">
+        <td className={`${cellPad} text-right align-top`}>
           <div className="inline-flex gap-1">
             <button
               type="button"
               onClick={() => setEditing(true)}
-              className="rounded border border-zinc-700 px-2 py-0.5 text-[10px] text-zinc-400 hover:text-zinc-200"
+              className={
+                compact
+                  ? "rounded border border-zinc-700/80 px-1.5 py-0.5 text-[9px] text-zinc-400 hover:text-zinc-200"
+                  : "rounded border border-zinc-700 px-2 py-0.5 text-[10px] text-zinc-400 hover:text-zinc-200"
+              }
             >
               Edit
             </button>
@@ -1044,7 +1173,11 @@ function ItemRow({
               type="button"
               disabled={busy}
               onClick={() => onDeleteItem(item.id)}
-              className="rounded border border-red-900/60 px-2 py-0.5 text-[10px] text-red-400 hover:text-red-300 disabled:opacity-40"
+              className={
+                compact
+                  ? "rounded border border-red-900/55 px-1.5 py-0.5 text-[9px] text-red-400/95 hover:text-red-300 disabled:opacity-40"
+                  : "rounded border border-red-900/60 px-2 py-0.5 text-[10px] text-red-400 hover:text-red-300 disabled:opacity-40"
+              }
             >
               Delete
             </button>
@@ -1052,445 +1185,6 @@ function ItemRow({
         </td>
       ) : null}
     </tr>
-  );
-}
-
-function EmbeddedTaskAuthoringForm({
-  variant,
-  initialDraft,
-  defaultSortOrder,
-  existingLineKeys,
-  busy,
-  pinnedWorkflowVersionId,
-  onCancel,
-  onSubmit,
-  submitLabel,
-}: {
-  variant: "create" | "edit";
-  initialDraft?: NewItemDraft;
-  defaultSortOrder: number;
-  existingLineKeys: string[];
-  busy: boolean;
-  pinnedWorkflowVersionId: string | null;
-  onCancel: () => void;
-  onSubmit: (draft: NewItemDraft) => void | Promise<void>;
-  submitLabel: string;
-}) {
-  const uid = useId();
-  const [draft, setDraft] = useState<NewItemDraft>(() =>
-    variant === "edit" && initialDraft
-      ? { ...initialDraft, lineKind: "EMBEDDED" }
-      : { ...emptyDraft(defaultSortOrder), lineKind: "EMBEDDED" },
-  );
-
-  function set<K extends keyof NewItemDraft>(key: K, value: NewItemDraft[K]) {
-    setDraft((d) => ({ ...d, [key]: value }));
-  }
-
-  const canSubmit = useMemo(
-    () => draft.embeddedTitle.trim() !== "" && draft.targetNodeKey.trim() !== "",
-    [draft.embeddedTitle, draft.targetNodeKey],
-  );
-
-  function submit() {
-    const finalized = finalizeEmbeddedDraftForSubmit(draft, existingLineKeys);
-    void onSubmit(finalized);
-  }
-
-  return (
-    <div className="rounded border border-emerald-900/40 bg-emerald-950/10 p-3 space-y-3 text-[11px]">
-      {variant === "create" ? (
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-300/80">New task</p>
-      ) : null}
-      <div className="space-y-1">
-        <label className="block text-zinc-400" htmlFor={`${uid}-task-name`}>
-          Task name
-        </label>
-        <input
-          id={`${uid}-task-name`}
-          type="text"
-          value={draft.embeddedTitle}
-          onChange={(e) => set("embeddedTitle", e.target.value)}
-          disabled={busy}
-          placeholder="e.g. Roof tear-off"
-          className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-200"
-        />
-      </div>
-      <div className="space-y-1">
-        <span className="block text-zinc-400">Stage</span>
-        <TargetNodePicker
-          workflowVersionIdForNodeKeys={pinnedWorkflowVersionId}
-          value={draft.targetNodeKey}
-          disabled={busy}
-          onChange={(next) => set("targetNodeKey", next)}
-          copyVariant="quoteScopeStage"
-        />
-      </div>
-      <div className="space-y-1">
-        <label className="block text-zinc-400" htmlFor={`${uid}-instr`}>
-          Instructions / notes
-        </label>
-        <textarea
-          id={`${uid}-instr`}
-          rows={3}
-          value={draft.embeddedInstructions}
-          onChange={(e) => set("embeddedInstructions", e.target.value)}
-          disabled={busy}
-          className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-200"
-        />
-      </div>
-
-      <details className="rounded border border-zinc-800 bg-zinc-950/40 px-2 py-1">
-        <summary className="cursor-pointer text-zinc-500 hover:text-zinc-300 select-none text-[10px] font-medium uppercase tracking-wide">
-          Advanced options
-        </summary>
-        <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-zinc-800/80">
-          <label className="space-y-1 sm:col-span-2">
-            <span className="block text-zinc-500">Internal key (optional override)</span>
-            <input
-              type="text"
-              value={draft.lineKey}
-              onChange={(e) => set("lineKey", e.target.value)}
-              disabled={busy}
-              placeholder="Leave blank to auto-generate from task name"
-              className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-zinc-200"
-            />
-          </label>
-          <label className="space-y-1">
-            <span className="block text-zinc-500">Manual order</span>
-            <input
-              type="number"
-              value={draft.sortOrder}
-              onChange={(e) => set("sortOrder", Number.parseInt(e.target.value || "0", 10))}
-              disabled={busy}
-              className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-zinc-200"
-            />
-          </label>
-          <label className="space-y-1">
-            <span className="block text-zinc-500">Tier (optional)</span>
-            <input
-              type="text"
-              value={draft.tierCode}
-              onChange={(e) => set("tierCode", e.target.value)}
-              disabled={busy}
-              placeholder="Blank = all tiers"
-              className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-zinc-200"
-            />
-          </label>
-          <label className="space-y-1 sm:col-span-2">
-            <span className="block text-zinc-500">Task kind (optional)</span>
-            <input
-              type="text"
-              value={draft.embeddedTaskKind}
-              onChange={(e) => set("embeddedTaskKind", e.target.value)}
-              disabled={busy}
-              placeholder="INSPECT / INSTALL / …"
-              className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-200"
-            />
-          </label>
-        </div>
-      </details>
-
-      <div className="flex flex-wrap justify-end gap-2 pt-1">
-        <button
-          type="button"
-          disabled={busy || !canSubmit}
-          onClick={() => submit()}
-          className="rounded bg-emerald-800/90 px-2 py-0.5 text-[11px] font-medium text-emerald-50 hover:bg-emerald-700 disabled:opacity-50"
-        >
-          {submitLabel}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-400 hover:text-zinc-200"
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function LibraryTaskCreateForm({
-  busy,
-  pinnedWorkflowVersionId,
-  defaultSortOrder,
-  existingLineKeys,
-  onCancel,
-  onSubmit,
-}: {
-  busy: boolean;
-  pinnedWorkflowVersionId: string | null;
-  defaultSortOrder: number;
-  existingLineKeys: string[];
-  onCancel: () => void;
-  onSubmit: (draft: NewItemDraft) => void | Promise<void>;
-}) {
-  const uid = useId();
-  const [draft, setDraft] = useState<NewItemDraft>(() => ({
-    ...emptyDraft(defaultSortOrder),
-    lineKind: "LIBRARY",
-  }));
-  const [libSummary, setLibSummary] = useState<SelectedTaskDefinitionSummary | null>(null);
-
-  function set<K extends keyof NewItemDraft>(key: K, value: NewItemDraft[K]) {
-    setDraft((d) => ({ ...d, [key]: value }));
-  }
-
-  const canSubmit =
-    draft.targetNodeKey.trim() !== "" && draft.taskDefinitionId.trim() !== "";
-
-  function submit() {
-    const keySet = new Set(existingLineKeys.filter(Boolean));
-    let lk = draft.lineKey.trim();
-    if (lk.length === 0) {
-      lk = lineKeyFromTaskName(
-        libSummary?.displayName?.trim() && libSummary.displayName.trim().length > 0
-          ? libSummary.displayName
-          : "task",
-        keySet,
-      );
-    }
-    const next: NewItemDraft = {
-      ...draft,
-      lineKind: "LIBRARY",
-      lineKey: lk,
-      embeddedTitle: "",
-      embeddedTaskKind: "",
-      embeddedInstructions: "",
-    };
-    void onSubmit(next);
-  }
-
-  return (
-    <div className="rounded border border-sky-900/40 bg-sky-950/10 p-3 space-y-3 text-[11px]">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-sky-300/80">
-        Add from task library
-      </p>
-      <div className="space-y-1">
-        <span className="block text-zinc-400">Saved task definition</span>
-        <TaskDefinitionPicker
-          initialSelectedId={null}
-          initialSelectedSummary={null}
-          value={draft.taskDefinitionId.trim() === "" ? null : draft.taskDefinitionId}
-          disabled={busy}
-          onChange={({ id, summary }) => {
-            set("taskDefinitionId", id ?? "");
-            setLibSummary(summary);
-          }}
-        />
-      </div>
-      <div className="space-y-1">
-        <span className="block text-zinc-400">Stage</span>
-        <TargetNodePicker
-          workflowVersionIdForNodeKeys={pinnedWorkflowVersionId}
-          value={draft.targetNodeKey}
-          disabled={busy}
-          onChange={(next) => set("targetNodeKey", next)}
-          copyVariant="quoteScopeStage"
-        />
-      </div>
-
-      <details className="rounded border border-zinc-800 bg-zinc-950/40 px-2 py-1">
-        <summary className="cursor-pointer text-zinc-500 hover:text-zinc-300 select-none text-[10px] font-medium uppercase tracking-wide">
-          Advanced options
-        </summary>
-        <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-zinc-800/80">
-          <label className="space-y-1 sm:col-span-2">
-            <span className="block text-zinc-500">Internal key (optional override)</span>
-            <input
-              id={`${uid}-lib-key`}
-              type="text"
-              value={draft.lineKey}
-              onChange={(e) => set("lineKey", e.target.value)}
-              disabled={busy}
-              placeholder="Leave blank to auto-generate from definition name"
-              className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-zinc-200"
-            />
-          </label>
-          <label className="space-y-1">
-            <span className="block text-zinc-500">Manual order</span>
-            <input
-              type="number"
-              value={draft.sortOrder}
-              onChange={(e) => set("sortOrder", Number.parseInt(e.target.value || "0", 10))}
-              disabled={busy}
-              className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-zinc-200"
-            />
-          </label>
-          <label className="space-y-1">
-            <span className="block text-zinc-500">Tier (optional)</span>
-            <input
-              type="text"
-              value={draft.tierCode}
-              onChange={(e) => set("tierCode", e.target.value)}
-              disabled={busy}
-              placeholder="Blank = all tiers"
-              className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-zinc-200"
-            />
-          </label>
-        </div>
-      </details>
-
-      <div className="flex flex-wrap justify-end gap-2 pt-1">
-        <button
-          type="button"
-          disabled={busy || !canSubmit}
-          onClick={() => submit()}
-          className="rounded bg-sky-800/90 px-2 py-0.5 text-[11px] font-medium text-sky-50 hover:bg-sky-700 disabled:opacity-50"
-        >
-          Add task from library
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-400 hover:text-zinc-200"
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function LibraryItemEditor({
-  item,
-  busy,
-  collisionKeys,
-  pinnedWorkflowVersionId,
-  onCancel,
-  onSave,
-}: {
-  item: QuoteLocalPacketItemDto;
-  busy: boolean;
-  collisionKeys: string[];
-  pinnedWorkflowVersionId: string | null;
-  onCancel: () => void;
-  onSave: (draft: NewItemDraft) => void | Promise<void>;
-}) {
-  const [draft, setDraft] = useState<NewItemDraft>(() => itemToDraft(item));
-  const [definitionLabel, setDefinitionLabel] = useState(
-    () => item.taskDefinition?.displayName ?? "",
-  );
-
-  function set<K extends keyof NewItemDraft>(key: K, value: NewItemDraft[K]) {
-    setDraft((d) => ({ ...d, [key]: value }));
-  }
-
-  const canSave =
-    draft.lineKind === "LIBRARY" &&
-    draft.targetNodeKey.trim() !== "" &&
-    draft.taskDefinitionId.trim() !== "";
-
-  function save() {
-    const manual = draft.lineKey.trim();
-    const definitionChanged = draft.taskDefinitionId !== item.taskDefinitionId;
-    const resolvedKey =
-      manual.length > 0
-        ? manual
-        : definitionChanged
-          ? lineKeyFromTaskName(definitionLabel.trim() || "task", new Set(collisionKeys))
-          : item.lineKey;
-    void onSave({
-      ...draft,
-      lineKind: "LIBRARY",
-      lineKey: resolvedKey,
-      embeddedTitle: "",
-      embeddedTaskKind: "",
-      embeddedInstructions: "",
-    });
-  }
-
-  return (
-    <div className="rounded border border-sky-900/40 bg-sky-950/10 p-3 space-y-3 text-[11px]">
-      <div>
-        <p className="text-[10px] font-medium uppercase tracking-wide text-sky-400/90">Saved task definition</p>
-        <p className="text-sm text-zinc-100 mt-0.5">
-          {definitionLabel.trim() !== "" ? definitionLabel : "Unknown definition"}
-        </p>
-      </div>
-      <div className="space-y-1">
-        <span className="block text-zinc-400">Stage</span>
-        <TargetNodePicker
-          workflowVersionIdForNodeKeys={pinnedWorkflowVersionId}
-          value={draft.targetNodeKey}
-          disabled={busy}
-          onChange={(next) => set("targetNodeKey", next)}
-          copyVariant="quoteScopeStage"
-        />
-      </div>
-
-      <details className="rounded border border-zinc-800 bg-zinc-950/40 px-2 py-1">
-        <summary className="cursor-pointer text-zinc-500 hover:text-zinc-300 select-none text-[10px] font-medium uppercase tracking-wide">
-          Advanced options
-        </summary>
-        <div className="mt-2 space-y-2 pt-1 border-t border-zinc-800/80">
-          <div className="space-y-1">
-            <span className="block text-zinc-500">Change linked definition</span>
-            <TaskDefinitionPicker
-              initialSelectedId={item.taskDefinitionId}
-              initialSelectedSummary={item.taskDefinition}
-              value={draft.taskDefinitionId.trim() === "" ? null : draft.taskDefinitionId}
-              disabled={busy}
-              onChange={({ id, summary }) => {
-                set("taskDefinitionId", id ?? "");
-                if (summary?.displayName) setDefinitionLabel(summary.displayName);
-              }}
-            />
-          </div>
-          <label className="space-y-1 block">
-            <span className="block text-zinc-500">Internal key (optional override)</span>
-            <input
-              type="text"
-              value={draft.lineKey}
-              onChange={(e) => set("lineKey", e.target.value)}
-              disabled={busy}
-              className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-zinc-200"
-            />
-          </label>
-          <label className="space-y-1 block">
-            <span className="block text-zinc-500">Manual order</span>
-            <input
-              type="number"
-              value={draft.sortOrder}
-              onChange={(e) => set("sortOrder", Number.parseInt(e.target.value || "0", 10))}
-              disabled={busy}
-              className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-zinc-200"
-            />
-          </label>
-          <label className="space-y-1 block">
-            <span className="block text-zinc-500">Tier (optional)</span>
-            <input
-              type="text"
-              value={draft.tierCode}
-              onChange={(e) => set("tierCode", e.target.value)}
-              disabled={busy}
-              placeholder="Blank = all tiers"
-              className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-zinc-200"
-            />
-          </label>
-        </div>
-      </details>
-
-      <div className="flex flex-wrap justify-end gap-2 pt-1">
-        <button
-          type="button"
-          disabled={busy || !canSave}
-          onClick={() => save()}
-          className="rounded bg-sky-800/90 px-2 py-0.5 text-[11px] font-medium text-sky-50 hover:bg-sky-700 disabled:opacity-50"
-        >
-          Save task
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-400 hover:text-zinc-200"
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
   );
 }
 
@@ -1762,6 +1456,304 @@ function PromoteIntoExistingForm({
           {busy ? "Adding…" : "Add as new draft revision"}
         </button>
       </div>
+    </div>
+  );
+}
+
+export type QuoteLocalSinglePacketEditorProps = {
+  initialPacket: QuoteLocalPacketDto;
+  pinnedWorkflowVersionId: string | null;
+  availableSavedPackets: SavedPacketOption[];
+  lineItemTitlesForPacket?: string[];
+  isDraft: boolean;
+  canOfficeMutate: boolean;
+  /** Unique per host row; must not collide with full-page `#field-work-*`. */
+  rowDomId: string;
+  onClose?: () => void;
+};
+
+/**
+ * One quote-local packet row for inline editing (e.g. under a line item).
+ * Uses the same API routes as {@link QuoteLocalPacketEditor}; no global section ids.
+ */
+export function QuoteLocalSinglePacketEditor({
+  initialPacket,
+  pinnedWorkflowVersionId,
+  availableSavedPackets,
+  lineItemTitlesForPacket,
+  isDraft,
+  canOfficeMutate,
+  rowDomId,
+  onClose,
+}: QuoteLocalSinglePacketEditorProps) {
+  const router = useRouter();
+  const [packet, setPacket] = useState<QuoteLocalPacketDto>(initialPacket);
+  const [busy, setBusy] = useState(false);
+  const [globalError, setGlobalError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPacket(initialPacket);
+  }, [initialPacket]);
+
+  const editable = isDraft && canOfficeMutate;
+
+  function refresh() {
+    router.refresh();
+  }
+
+  async function handleUpdatePacket(patch: { displayName?: string; description?: string | null }) {
+    if (!editable) return;
+    setBusy(true);
+    setGlobalError(null);
+    try {
+      const res = await fetch(`/api/quote-local-packets/${encodeURIComponent(packet.id)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) {
+        setGlobalError(await readApiError(res));
+        return;
+      }
+      const body = (await res.json()) as { data: QuoteLocalPacketDto };
+      setPacket(body.data);
+      refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDeletePacket() {
+    if (!editable) return;
+    if (!window.confirm("Delete this field work? All tasks inside it will be removed too.")) return;
+    setBusy(true);
+    setGlobalError(null);
+    try {
+      const res = await fetch(`/api/quote-local-packets/${encodeURIComponent(packet.id)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        setGlobalError(await readApiError(res));
+        return;
+      }
+      refresh();
+      onClose?.();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleCreateItem(draft: NewItemDraft) {
+    if (!editable) return false;
+    setBusy(true);
+    setGlobalError(null);
+    try {
+      const res = await fetch(
+        `/api/quote-local-packets/${encodeURIComponent(packet.id)}/items`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(draftToBody(draft)),
+        },
+      );
+      if (!res.ok) {
+        setGlobalError(await readApiError(res));
+        return false;
+      }
+      const body = (await res.json()) as { data: QuoteLocalPacketDto };
+      setPacket(body.data);
+      refresh();
+      return true;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleUpdateItem(
+    itemId: string,
+    patch: Partial<ReturnType<typeof draftToBody>>,
+  ) {
+    if (!editable) return false;
+    setBusy(true);
+    setGlobalError(null);
+    try {
+      const res = await fetch(
+        `/api/quote-local-packets/${encodeURIComponent(packet.id)}/items/${encodeURIComponent(itemId)}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(patch),
+        },
+      );
+      if (!res.ok) {
+        setGlobalError(await readApiError(res));
+        return false;
+      }
+      const body = (await res.json()) as { data: QuoteLocalPacketDto };
+      setPacket(body.data);
+      refresh();
+      return true;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDeleteItem(itemId: string) {
+    if (!editable) return;
+    if (!window.confirm("Delete this task?")) return;
+    setBusy(true);
+    setGlobalError(null);
+    try {
+      const res = await fetch(
+        `/api/quote-local-packets/${encodeURIComponent(packet.id)}/items/${encodeURIComponent(itemId)}`,
+        { method: "DELETE", credentials: "include" },
+      );
+      if (!res.ok) {
+        setGlobalError(await readApiError(res));
+        return;
+      }
+      setPacket((prev) => ({
+        ...prev,
+        items: prev.items.filter((it) => it.id !== itemId),
+        itemCount: prev.itemCount - 1,
+      }));
+      refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handlePromotePacket(payload: {
+    packetKey: string;
+    displayName?: string;
+  }): Promise<
+    | { ok: true; promotedScopePacketId: string }
+    | { ok: false; error: string }
+  > {
+    if (!editable) return { ok: false, error: "Not editable" };
+    setBusy(true);
+    setGlobalError(null);
+    try {
+      const res = await fetch(`/api/quote-local-packets/${encodeURIComponent(packet.id)}/promote`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          packetKey: payload.packetKey.trim(),
+          ...(payload.displayName !== undefined ? { displayName: payload.displayName } : {}),
+        }),
+      });
+      if (!res.ok) {
+        const msg = await readApiError(res);
+        setGlobalError(msg);
+        return { ok: false, error: msg };
+      }
+      const body = (await res.json()) as {
+        data: {
+          promotion: { promotedScopePacketId: string };
+          quoteLocalPacket: QuoteLocalPacketDto | null;
+        };
+      };
+      const refreshed = body.data.quoteLocalPacket;
+      if (refreshed) {
+        setPacket(refreshed);
+      }
+      refresh();
+      return { ok: true, promotedScopePacketId: body.data.promotion.promotedScopePacketId };
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handlePromotePacketIntoExisting(payload: { targetScopePacketId: string }): Promise<
+    | { ok: true; targetScopePacketId: string; revisionId: string }
+    | { ok: false; error: string }
+  > {
+    if (!editable) return { ok: false, error: "Not editable" };
+    setBusy(true);
+    setGlobalError(null);
+    try {
+      const res = await fetch(`/api/quote-local-packets/${encodeURIComponent(packet.id)}/promote`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ targetScopePacketId: payload.targetScopePacketId }),
+      });
+      if (!res.ok) {
+        const msg = await readApiError(res);
+        setGlobalError(msg);
+        return { ok: false, error: msg };
+      }
+      const body = (await res.json()) as {
+        data: {
+          promotion: {
+            promotedScopePacketId: string;
+            scopePacketRevision: { id: string };
+          };
+          quoteLocalPacket: QuoteLocalPacketDto | null;
+        };
+      };
+      const refreshed = body.data.quoteLocalPacket;
+      if (refreshed) {
+        setPacket(refreshed);
+      }
+      refresh();
+      return {
+        ok: true,
+        targetScopePacketId: body.data.promotion.promotedScopePacketId,
+        revisionId: body.data.promotion.scopePacketRevision.id,
+      };
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-1.5 ml-1.5 border-l-2 border-zinc-600/40 pl-2.5 sm:ml-2 sm:pl-3 space-y-1.5">
+      {onClose ? (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-[10px] font-medium text-zinc-500 hover:text-zinc-300 underline underline-offset-2 decoration-zinc-600"
+          >
+            Close
+          </button>
+        </div>
+      ) : null}
+      {globalError ? (
+        <p className="rounded border border-red-900/60 bg-red-950/30 px-2 py-1.5 text-[11px] text-red-300">
+          {globalError}
+        </p>
+      ) : null}
+      <ul className="list-none p-0 m-0 space-y-0">
+        <PacketRow
+          rowDomId={rowDomId}
+          packet={packet}
+          editable={editable}
+          busy={busy}
+          pinnedWorkflowVersionId={pinnedWorkflowVersionId}
+          presentation="inline"
+          hashHighlighted={false}
+          lineItemTitlesForPacket={lineItemTitlesForPacket}
+          onUpdatePacket={handleUpdatePacket}
+          onDeletePacket={handleDeletePacket}
+          onCreateItem={(draft) => handleCreateItem(draft)}
+          onUpdateItem={(itemId, patch) => handleUpdateItem(itemId, patch)}
+          onDeleteItem={(itemId) => void handleDeleteItem(itemId)}
+          onPromotePacket={(payload) => handlePromotePacket(payload)}
+          onPromotePacketIntoExisting={
+            availableSavedPackets.length > 0
+              ? (payload) => handlePromotePacketIntoExisting(payload)
+              : null
+          }
+          availableSavedPackets={availableSavedPackets}
+        />
+      </ul>
     </div>
   );
 }

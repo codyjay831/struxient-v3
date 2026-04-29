@@ -33,10 +33,10 @@ export function QuoteWorkspaceLineItemList({ quoteId, versionNumber, items }: Pr
         </div>
         <InternalSparseState
           message="No line items yet"
-          hint={`Draft v${versionNumber} is empty. These rows are what the customer sees on the proposal; some lines can also attach crew tasks after approval. Start by adding a line.`}
+          hint={`Draft v${versionNumber} is empty. When step 1 shows the full builder, add quote lines here with + Add line item. This summary is read-only in this view — open Line & tasks to add or edit lines, or for saved work and crew tasks.`}
           action={{
             href: `/quotes/${quoteId}/scope`,
-            label: "Add or edit line items →",
+            label: "Line & tasks →",
           }}
         />
       </section>
@@ -53,7 +53,8 @@ export function QuoteWorkspaceLineItemList({ quoteId, versionNumber, items }: Pr
       </div>
 
       <p className="mb-3 text-xs leading-relaxed text-zinc-400">
-        These are the lines the customer will see. Some lines also create crew work after approval.
+        These are the lines the customer will see. Estimate-only lines stay on the proposal until you add crew tasks
+        later for lines that need work after approval.
       </p>
 
       <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/30">
@@ -94,8 +95,8 @@ export function QuoteWorkspaceLineItemList({ quoteId, versionNumber, items }: Pr
       </div>
 
       <p className="mt-3 text-[10px] text-zinc-500">
-        Read-only for v{versionNumber}. Add or edit line items and tasks in the builder, then review and send from this
-        page.
+        Read-only summary for v{versionNumber}. When the full builder is open in step 1, add or edit lines there. Open
+        Line & tasks for saved work, crew tasks, and technical options.
       </p>
     </section>
   );
