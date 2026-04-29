@@ -52,4 +52,33 @@ describe("line item → field work links (static)", () => {
     expect(scopeEditor).toContain("singleDefaultMainGroup");
     expect(scopeEditor).toContain('proposalGroups[0]?.name?.trim() === "Main"');
   });
+
+  it("post-save scroll helper does not use window.location.assign (no auto-leave embedded workspace)", () => {
+    const fnStart = scopeEditor.indexOf("function scrollFieldWorkSectionIntoView");
+    expect(fnStart).toBeGreaterThanOrEqual(0);
+    const fnEnd = scopeEditor.indexOf("type ProposalGroup", fnStart);
+    expect(fnEnd).toBeGreaterThan(fnStart);
+    const fnSrc = scopeEditor.slice(fnStart, fnEnd);
+    expect(fnSrc).not.toContain("window.location.assign");
+    expect(fnSrc).toContain("if (fieldWorkExternalBaseHref)");
+    expect(fnSrc).toContain("scrollIntoView");
+  });
+
+  it("explicit link href builders still prefix external base for #quote-local-field-work and #field-work-*", () => {
+    const sectionStart = scopeEditor.indexOf("function fieldWorkSectionHref");
+    expect(sectionStart).toBeGreaterThanOrEqual(0);
+    const sectionEnd = scopeEditor.indexOf("function fieldWorkPacketHref", sectionStart);
+    expect(sectionEnd).toBeGreaterThan(sectionStart);
+    expect(scopeEditor.slice(sectionStart, sectionEnd)).toContain(
+      "return `${fieldWorkExternalBaseHref}#${FIELD_WORK_SECTION_ID}`;",
+    );
+
+    const packetStart = scopeEditor.indexOf("function fieldWorkPacketHref");
+    expect(packetStart).toBeGreaterThanOrEqual(0);
+    const packetEnd = scopeEditor.indexOf("function scrollFieldWorkSectionIntoView", packetStart);
+    expect(packetEnd).toBeGreaterThan(packetStart);
+    expect(scopeEditor.slice(packetStart, packetEnd)).toContain(
+      "return `${fieldWorkExternalBaseHref}#field-work-${packetId}`;",
+    );
+  });
 });

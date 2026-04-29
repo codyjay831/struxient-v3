@@ -47,8 +47,11 @@ function fieldWorkPacketHref(fieldWorkExternalBaseHref: string | null | undefine
 
 function scrollFieldWorkSectionIntoView(fieldWorkExternalBaseHref?: string | null) {
   window.setTimeout(() => {
+    // Full /scope page only: after save, scroll the quote-local field work block into view.
+    // When `fieldWorkExternalBaseHref` is set (embedded quote workspace), same-page ids are not
+    // mounted here — auto-navigation would hijack the workspace; operators use explicit
+    // `fieldWorkSectionHref` / `fieldWorkPacketHref` links to open `/quotes/:id/scope#…`.
     if (fieldWorkExternalBaseHref) {
-      window.location.assign(`${fieldWorkExternalBaseHref}#${FIELD_WORK_SECTION_ID}`);
       return;
     }
     document.getElementById(FIELD_WORK_SECTION_ID)?.scrollIntoView({
