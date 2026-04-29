@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useId, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import {
   buildSoldScopeLineItemCreateRequestBody,
   validateWorkspaceLineCreateFields,
   type WorkspaceLineCreateFieldsInput,
   type WorkspaceLineCreateFieldErrors,
 } from "@/lib/workspace/quote-workspace-line-create-validation";
+import { workspaceComputedLineTotalKind } from "@/lib/workspace/quote-workspace-line-unit-price";
 
 type ApiErrorBody = { error?: { code?: string; message?: string } };
 
@@ -21,6 +22,10 @@ async function readApiError(res: Response): Promise<string> {
     // ignore
   }
   return `HTTP ${res.status}`;
+}
+
+function formatUsd(cents: number): string {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
 }
 
 export type QuoteWorkspaceLineCreateGroup = {
@@ -57,10 +62,15 @@ export function QuoteWorkspaceLineCreateForm({
   const [title, setTitle] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [description, setDescription] = useState("");
-  const [lineTotalDollars, setLineTotalDollars] = useState("");
+  const [unitPriceDollars, setUnitPriceDollars] = useState("");
   const [fieldErrors, setFieldErrors] = useState<WorkspaceLineCreateFieldErrors>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const lineTotalDisplay = useMemo(
+    () => workspaceComputedLineTotalKind(unitPriceDollars, quantity),
+    [unitPriceDollars, quantity],
+  );
 
   if (!canAddLineItems) {
     return null;
@@ -71,11 +81,15 @@ export function QuoteWorkspaceLineCreateForm({
       <div className="rounded-md border border-amber-900/45 bg-amber-950/20 px-3 py-2.5 text-xs text-amber-100/95">
         <p className="font-medium text-amber-50/95">Cannot add lines yet</p>
         <p className="mt-1 text-[11px] leading-relaxed text-amber-200/90">
-          This draft needs a proposal group before lines can be added on this page. Open{" "}
-          <Link href={`/quotes/${quoteId}/scope`} className="font-semibold text-amber-100 underline underline-offset-2">
-            Line &amp; tasks
+          This draft needs a proposal group before lines can be added here. Finish setup from{" "}
+          <Link href={`/quotes/${quoteId}#step-1`} className="font-semibold text-amber-100 underline underline-offset-2">
+            step 1
           </Link>{" "}
-          to finish setup.
+          on the quote workspace, or use the{" "}
+          <Link href={`/quotes/${quoteId}/scope`} className="font-semibold text-amber-100 underline underline-offset-2">
+            focused Line &amp; tasks view
+          </Link>
+          .
         </p>
       </div>
     );
@@ -85,7 +99,7 @@ export function QuoteWorkspaceLineCreateForm({
     setTitle("");
     setQuantity("1");
     setDescription("");
-    setLineTotalDollars("");
+    setUnitPriceDollars("");
     setFieldErrors({});
     setSubmitError(null);
     setProposalGroupId(groupsWithItems[0]?.id ?? "");
@@ -102,7 +116,7 @@ export function QuoteWorkspaceLineCreateForm({
       title,
       quantity,
       description,
-      lineTotalDollars,
+      unitPriceDollars,
     };
     const v = validateWorkspaceLineCreateFields(input);
     if (!v.ok) {
@@ -166,10 +180,10 @@ export function QuoteWorkspaceLineCreateForm({
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
               <p className="text-sm font-semibold text-zinc-100">Add line item</p>
-              <p className="mt-1 max-w-xl text-[11px] leading-relaxed text-zinc-500">
-                Estimate-only line — what the customer sees on the proposal. Add crew tasks later from{" "}
-                <span className="whitespace-nowrap">Line &amp; tasks</span> when this line needs work after approval.
-              </p>
+               <p className="mt-1 max-w-xl text-[11px] leading-relaxed text-zinc-500">
+                 Estimate-only line. Add a quote line with quantity and price. Crew tasks and saved work are added from{" "}
+                 <span className="whitespace-nowrap">step 1</span> when the full editor is on the quote workspace.
+               </p>
             </div>
           </div>
 
@@ -224,22 +238,37 @@ export function QuoteWorkspaceLineCreateForm({
               ) : null}
             </label>
             <label className="block space-y-0.5">
-              <span className="text-zinc-400">Line total (USD)</span>
+              <span className="text-zinc-400">Unit price</span>
               <input
-                id={`${uid}-amt`}
+                id={`${uid}-unit`}
                 type="number"
                 min={0}
                 step={0.01}
-                value={lineTotalDollars}
-                onChange={(e) => setLineTotalDollars(e.target.value)}
+                value={unitPriceDollars}
+                onChange={(e) => setUnitPriceDollars(e.target.value)}
                 disabled={busy}
                 placeholder="Optional"
                 className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100"
               />
-              {fieldErrors.lineTotal ? (
-                <span className="text-[11px] text-red-300/95">{fieldErrors.lineTotal}</span>
+              {fieldErrors.unitPrice ? (
+                <span className="text-[11px] text-red-300/95">{fieldErrors.unitPrice}</span>
               ) : null}
             </label>
+            <div className="block space-y-0.5 sm:col-span-2">
+              <span className="text-zinc-400">Line total</span>
+              <p
+                id={`${uid}-line-total`}
+                className="mt-1 rounded border border-zinc-800/80 bg-zinc-950/80 px-2 py-1.5 text-sm text-zinc-200"
+              >
+                {lineTotalDisplay.kind === "no_amount" ? (
+                  <span className="text-zinc-500">No amount set</span>
+                ) : lineTotalDisplay.kind === "amount" ? (
+                  <span className="font-mono text-zinc-100">{formatUsd(lineTotalDisplay.cents!)}</span>
+                ) : (
+                  <span className="text-zinc-500">—</span>
+                )}
+              </p>
+            </div>
             <label className="block space-y-0.5 sm:col-span-2">
               <span className="text-zinc-400">Description</span>
               <textarea
@@ -268,13 +297,13 @@ export function QuoteWorkspaceLineCreateForm({
 
           <div className="flex flex-col gap-1.5 pt-0.5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
             <p className="text-[10px] leading-snug text-zinc-500 max-w-md order-2 sm:order-1">
-              Use Line &amp; tasks for saved work, crew tasks, and technical options.
+              Saved work and crew tasks are edited in step 1 when the full editor is on the quote workspace.
             </p>
             <Link
               href={`/quotes/${quoteId}/scope`}
               className="text-[10px] text-zinc-600 hover:text-zinc-400 underline underline-offset-2 order-1 sm:order-2 sm:shrink-0"
             >
-              Advanced line setup →
+              Focused Line &amp; tasks view
             </Link>
             <div className="flex flex-wrap gap-2">
               <button

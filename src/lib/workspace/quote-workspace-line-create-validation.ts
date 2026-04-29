@@ -2,12 +2,18 @@ import {
   SCOPE_LINE_ITEM_MAX_DESCRIPTION,
   SCOPE_LINE_ITEM_MAX_TITLE,
 } from "@/lib/quote-line-item-scope-form-validation";
+import {
+  assertSafeLineTotalCents,
+  lineTotalCentsFromUnitAndQuantity,
+  parseWorkspaceUnitPriceDollarsToCents,
+} from "@/lib/workspace/quote-workspace-line-unit-price";
 
 export type WorkspaceLineCreateFieldsInput = {
   title: string;
   quantity: string;
   description: string;
-  lineTotalDollars: string;
+  /** Per-unit price in dollars; blank → no line amount (`lineTotalCents: null`). */
+  unitPriceDollars: string;
 };
 
 export type ValidatedWorkspaceLineCreate = {
@@ -21,7 +27,7 @@ export type WorkspaceLineCreateFieldErrors = {
   title?: string;
   quantity?: string;
   description?: string;
-  lineTotal?: string;
+  unitPrice?: string;
 };
 
 export type ValidateWorkspaceLineCreateResult =
@@ -31,6 +37,9 @@ export type ValidateWorkspaceLineCreateResult =
 /**
  * Client validation for adding a simple estimate-only line from the quote workspace.
  * Quantity must be ≥ 1 to match `assertQuantity` in `createQuoteLineItemForTenant`.
+ *
+ * `lineTotalCents` = rounded unit price (cents) × quantity; blank unit price → null total.
+ * Per-unit dollars → cents: half-up via `Math.round(dollars * 100)`.
  */
 export function validateWorkspaceLineCreateFields(
   input: WorkspaceLineCreateFieldsInput,
@@ -50,13 +59,13 @@ export function validateWorkspaceLineCreateFields(
   }
 
   const quantityRaw = input.quantity.trim();
+  let quantity = 0;
   if (!quantityRaw) {
     errors.quantity = "Quantity is required.";
   } else if (!/^\d+$/.test(quantityRaw)) {
-    // `Number.parseInt("1.5", 10)` is 1 — reject fractional / scientific input explicitly.
     errors.quantity = "Quantity must be a whole number.";
   } else {
-    const quantity = Number.parseInt(quantityRaw, 10);
+    quantity = Number.parseInt(quantityRaw, 10);
     if (!Number.isFinite(quantity) || !Number.isInteger(quantity)) {
       errors.quantity = "Quantity must be a whole number.";
     } else if (quantity < 1) {
@@ -64,19 +73,14 @@ export function validateWorkspaceLineCreateFields(
     }
   }
 
-  const amt = input.lineTotalDollars.trim();
-  let lineTotalCents: number | null = null;
-  if (amt.length > 0) {
-    const dollars = Number.parseFloat(amt);
-    if (!Number.isFinite(dollars) || dollars < 0) {
-      errors.lineTotal = "Line total must be a non-negative number.";
-    } else {
-      const cents = Math.round(dollars * 100);
-      if (!Number.isInteger(cents) || cents < 0) {
-        errors.lineTotal = "Line total must be a non-negative amount.";
-      } else {
-        lineTotalCents = cents;
-      }
+  const unitParsed = parseWorkspaceUnitPriceDollarsToCents(input.unitPriceDollars);
+  if (!unitParsed.ok) {
+    errors.unitPrice = unitParsed.error;
+  } else if (unitParsed.unitPriceCents != null && !errors.quantity) {
+    const product = lineTotalCentsFromUnitAndQuantity(unitParsed.unitPriceCents, quantity);
+    const unsafe = assertSafeLineTotalCents(product);
+    if (unsafe) {
+      errors.unitPrice = unsafe;
     }
   }
 
@@ -84,8 +88,15 @@ export function validateWorkspaceLineCreateFields(
     return { ok: false, errors };
   }
 
+  if (!unitParsed.ok) {
+    return { ok: false, errors: { unitPrice: unitParsed.error } };
+  }
+
   const description: string | null = descTrimmed.length > 0 ? descTrimmed : null;
-  const quantity = Number.parseInt(quantityRaw, 10);
+  const lineTotalCents: number | null =
+    unitParsed.unitPriceCents == null
+      ? null
+      : lineTotalCentsFromUnitAndQuantity(unitParsed.unitPriceCents, quantity);
 
   return {
     ok: true,

@@ -33,10 +33,10 @@ export function QuoteWorkspaceLineItemList({ quoteId, versionNumber, items }: Pr
         </div>
         <InternalSparseState
           message="No line items yet"
-          hint={`Draft v${versionNumber} is empty. When step 1 shows the full builder, add quote lines here with + Add line item. This summary is read-only in this view — open Line & tasks to add or edit lines, or for saved work and crew tasks.`}
+          hint={`Draft v${versionNumber} is empty. This summary is read-only when the full editor is not available in step 1. Use the focused Line & tasks view to add or edit lines, saved work, and crew tasks, or resolve permissions and reload the quote workspace.`}
           action={{
             href: `/quotes/${quoteId}/scope`,
-            label: "Line & tasks →",
+            label: "Focused Line & tasks view",
           }}
         />
       </section>
@@ -54,7 +54,7 @@ export function QuoteWorkspaceLineItemList({ quoteId, versionNumber, items }: Pr
 
       <p className="mb-3 text-xs leading-relaxed text-zinc-400">
         These are the lines the customer will see. Estimate-only lines stay on the proposal until you add crew tasks
-        later for lines that need work after approval.
+        later for lines that include crew work.
       </p>
 
       <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/30">
@@ -95,8 +95,8 @@ export function QuoteWorkspaceLineItemList({ quoteId, versionNumber, items }: Pr
       </div>
 
       <p className="mt-3 text-[10px] text-zinc-500">
-        Read-only summary for v{versionNumber}. When the full builder is open in step 1, add or edit lines there. Open
-        Line & tasks for saved work, crew tasks, and technical options.
+        Read-only summary for v{versionNumber}. When the full editor is open in step 1, add or edit lines there. The
+        focused Line & tasks view is optional for the same tools in a full-page layout.
       </p>
     </section>
   );

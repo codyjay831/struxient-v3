@@ -2,11 +2,16 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useId, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import {
   validateWorkspaceLineEditFields,
   type WorkspaceLineEditFieldsInput,
+  type WorkspaceLineEditPricingSnapshot,
 } from "@/lib/workspace/quote-workspace-line-edit-validation";
+import {
+  workspaceComputedLineTotalKind,
+  workspaceUnitPriceDollarsSnapshotFromLine,
+} from "@/lib/workspace/quote-workspace-line-unit-price";
 
 type ApiErrorBody = { error?: { code?: string; message?: string } };
 
@@ -21,6 +26,10 @@ async function readApiError(res: Response): Promise<string> {
   return `HTTP ${res.status}`;
 }
 
+function formatUsd(cents: number): string {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
+}
+
 type Props = {
   quoteId: string;
   quoteVersionId: string;
@@ -31,11 +40,6 @@ type Props = {
   initialLineTotalCents: number | null;
   onCancel: () => void;
 };
-
-function dollarsFromCents(cents: number | null): string {
-  if (cents == null) return "";
-  return (cents / 100).toFixed(2);
-}
 
 /**
  * Inline commercial-only line edit for the quote workspace (no pins / mode / payment).
@@ -52,23 +56,42 @@ export function QuoteWorkspaceLineEditForm({
 }: Props) {
   const router = useRouter();
   const uid = useId();
+  const pricingSnapshot = useMemo<WorkspaceLineEditPricingSnapshot>(
+    () => ({
+      baselineLineTotalCents: initialLineTotalCents,
+      baselineQuantity: initialQuantity,
+      initialUnitPriceDollarsSnapshot: workspaceUnitPriceDollarsSnapshotFromLine(
+        initialLineTotalCents,
+        initialQuantity,
+      ),
+    }),
+    [initialLineTotalCents, initialQuantity],
+  );
+
   const [title, setTitle] = useState(initialTitle);
   const [quantity, setQuantity] = useState(String(initialQuantity));
   const [description, setDescription] = useState(initialDescription ?? "");
-  const [lineTotalDollars, setLineTotalDollars] = useState(dollarsFromCents(initialLineTotalCents));
+  const [unitPriceDollars, setUnitPriceDollars] = useState(() =>
+    workspaceUnitPriceDollarsSnapshotFromLine(initialLineTotalCents, initialQuantity),
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const scopeAdvancedHref = `/quotes/${quoteId}/scope#line-item-${lineItemId}`;
+  const lineTotalDisplay = useMemo(
+    () => workspaceComputedLineTotalKind(unitPriceDollars, quantity),
+    [unitPriceDollars, quantity],
+  );
+
+  const lineSetupHref = `/quotes/${quoteId}#line-item-${lineItemId}`;
 
   async function handleSave() {
     const input: WorkspaceLineEditFieldsInput = {
       title,
       quantity,
       description,
-      lineTotalDollars,
+      unitPriceDollars,
     };
-    const v = validateWorkspaceLineEditFields(input);
+    const v = validateWorkspaceLineEditFields(input, pricingSnapshot);
     if (!v.ok) {
       setError(v.message);
       return;
@@ -104,6 +127,9 @@ export function QuoteWorkspaceLineEditForm({
   return (
     <div className="rounded-md border border-zinc-700/80 bg-zinc-900/40 p-3 space-y-3 text-xs">
       <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Edit line</p>
+      <p className="text-[11px] leading-relaxed text-zinc-500">
+        Update the quote details for this line. Crew tasks and saved work stay managed from Line &amp; tasks.
+      </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <label className="block space-y-0.5 sm:col-span-2">
           <span className="text-zinc-400">Title</span>
@@ -130,19 +156,34 @@ export function QuoteWorkspaceLineEditForm({
           />
         </label>
         <label className="block space-y-0.5">
-          <span className="text-zinc-400">Line total (USD)</span>
+          <span className="text-zinc-400">Unit price</span>
           <input
-            id={`${uid}-amt`}
+            id={`${uid}-unit`}
             type="number"
             min={0}
             step={0.01}
-            value={lineTotalDollars}
-            onChange={(e) => setLineTotalDollars(e.target.value)}
+            value={unitPriceDollars}
+            onChange={(e) => setUnitPriceDollars(e.target.value)}
             disabled={busy}
-            placeholder="0.00"
+            placeholder="Optional"
             className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100"
           />
         </label>
+        <div className="block space-y-0.5 sm:col-span-2">
+          <span className="text-zinc-400">Line total</span>
+          <p
+            id={`${uid}-line-total`}
+            className="mt-1 rounded border border-zinc-800/80 bg-zinc-950/80 px-2 py-1.5 text-sm text-zinc-200"
+          >
+            {lineTotalDisplay.kind === "no_amount" ? (
+              <span className="text-zinc-500">No amount set</span>
+            ) : lineTotalDisplay.kind === "amount" ? (
+              <span className="font-mono text-zinc-100">{formatUsd(lineTotalDisplay.cents!)}</span>
+            ) : (
+              <span className="text-zinc-500">—</span>
+            )}
+          </p>
+        </div>
         <label className="block space-y-0.5 sm:col-span-2">
           <span className="text-zinc-400">Description</span>
           <textarea
@@ -160,7 +201,7 @@ export function QuoteWorkspaceLineEditForm({
       ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
         <Link
-          href={scopeAdvancedHref}
+          href={lineSetupHref}
           className="text-[10px] text-zinc-600 hover:text-zinc-400 underline underline-offset-2"
         >
           Advanced setup →

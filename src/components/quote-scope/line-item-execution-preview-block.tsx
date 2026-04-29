@@ -4,28 +4,28 @@ import type {
   LineItemExecutionPreviewDto,
 } from "@/lib/quote-line-item-execution-preview";
 
-export type LineItemExecutionPreviewPresentation = "default" | "workspaceCrewTasks";
+export type LineItemExecutionPreviewPresentation = "default" | "workspaceCrewTasks" | "workspaceUnified";
 
 /** Primary heading for the attached packet preview (full /scope and read-only scope). */
 function taskPacketPreviewHeading(packetName: string): string {
   const t = packetName.trim();
-  if (!t) return "Task Packet";
-  return `Task Packet - ${t}`;
+  if (!t) return "Saved work";
+  return `Saved work — ${t}`;
 }
 
-/** Workspace-embedded quote UI: crew-task framing, not packet administration. */
+/** Legacy workspace label — prefer {@link workspaceUnified}; kept for older call sites. */
 function workspaceCrewTasksHeading(): string {
-  return "Crew tasks";
+  return "Crew work";
 }
 
 function taskPacketRelationshipLine(kind: "manifestLibrary" | "manifestLocal"): string {
-  return kind === "manifestLibrary" ? "Tasks from saved packet" : "Crew work attached to this line";
+  return kind === "manifestLibrary" ? "Tasks from saved work" : "Internal crew work for this line";
 }
 
 function workspaceCrewRelationshipLine(kind: "manifestLibrary" | "manifestLocal"): string {
   return kind === "manifestLibrary"
-    ? "Linked from your saved task catalog."
-    : "Crew tasks for this line.";
+    ? "Linked from your saved work catalog."
+    : "Internal tasks your team will perform after the quote is approved.";
 }
 
 /** Visual connector so the preview reads as a child of the line item card above. */
@@ -33,6 +33,19 @@ function LineItemPreviewNest({ children }: { children: ReactNode }) {
   return (
     <div className="mt-1 ml-2 border-l-2 border-zinc-600/50 pl-3 sm:ml-3">{children}</div>
   );
+}
+
+function PreviewShell({
+  presentation,
+  children,
+}: {
+  presentation: LineItemExecutionPreviewPresentation;
+  children: ReactNode;
+}) {
+  if (presentation === "workspaceUnified") {
+    return <div className="mt-0 space-y-2">{children}</div>;
+  }
+  return <LineItemPreviewNest>{children}</LineItemPreviewNest>;
 }
 
 /**
@@ -54,36 +67,38 @@ export function LineItemExecutionPreviewBlock({
   presentation = "default",
 }: {
   preview: LineItemExecutionPreviewDto;
-  /** `workspaceCrewTasks`: quote workspace — hide packet-style headings. */
+  /** `workspaceCrewTasks`: older quote workspace framing. `workspaceUnified`: flat body inside parent “Crew work” shell. */
   presentation?: LineItemExecutionPreviewPresentation;
 }) {
+  const isWU = presentation === "workspaceUnified";
+
   if (preview.kind === "soldScopeCommercial") {
     return (
-      <LineItemPreviewNest>
+      <PreviewShell presentation={presentation}>
         <div className="rounded-md border border-zinc-800/90 bg-zinc-950/50 px-3 py-2.5 text-sm leading-relaxed text-zinc-400">
-          Quote-only line. Won&rsquo;t create crew work unless a task packet is attached.
+          Estimate-only line. Won&rsquo;t create crew work unless saved work or custom work is attached.
         </div>
-      </LineItemPreviewNest>
+      </PreviewShell>
     );
   }
   if (preview.kind === "manifestNoPacket") {
     return (
-      <LineItemPreviewNest>
+      <PreviewShell presentation={presentation}>
         <div className="rounded-md border border-amber-900/45 bg-amber-950/30 px-3 py-2.5 text-sm leading-relaxed text-amber-200">
-          No field work attached yet. Attach saved field work or create field work on this quote,
-          then save the line.
+          {isWU
+            ? "Attach saved work or add custom work for this line, then save."
+            : "No crew work attached yet. Attach saved work or create custom work on this quote, then save the line."}
         </div>
-      </LineItemPreviewNest>
+      </PreviewShell>
     );
   }
   if (preview.kind === "manifestLibraryMissing") {
     return (
-      <LineItemPreviewNest>
+      <PreviewShell presentation={presentation}>
         <div className="rounded-md border border-red-900/45 bg-red-950/30 px-3 py-2.5 text-sm text-red-200 space-y-2">
-          <p className="font-semibold text-red-100">Saved task packet isn&rsquo;t available</p>
+          <p className="font-semibold text-red-100">Saved work isn&rsquo;t available</p>
           <p className="text-xs text-red-200/90 leading-relaxed">
-            The packet may have been archived or moved. Re-attach this line to a visible saved task
-            packet.
+            It may have been archived or moved. Re-attach this line to visible saved work.
           </p>
           <details className="text-xs text-red-300/80">
             <summary className="cursor-pointer hover:text-red-200 select-none">Technical details</summary>
@@ -92,16 +107,18 @@ export function LineItemExecutionPreviewBlock({
             </p>
           </details>
         </div>
-      </LineItemPreviewNest>
+      </PreviewShell>
     );
   }
   if (preview.kind === "manifestLocalMissing") {
     return (
-      <LineItemPreviewNest>
+      <PreviewShell presentation={presentation}>
         <div className="rounded-md border border-red-900/45 bg-red-950/30 px-3 py-2.5 text-sm text-red-200 space-y-2">
-          <p className="font-semibold text-red-100">Field work on this quote isn&rsquo;t available</p>
+          <p className="font-semibold text-red-100">
+            {isWU ? "This custom work isn&rsquo;t available" : "Custom work on this quote isn&rsquo;t available"}
+          </p>
           <p className="text-xs text-red-200/90 leading-relaxed">
-            It may have been removed from this quote. Re-attach field work or a saved task packet.
+            It may have been removed from this quote. Re-attach custom work or saved work.
           </p>
           <details className="text-xs text-red-300/80">
             <summary className="cursor-pointer hover:text-red-200 select-none">Technical details</summary>
@@ -110,7 +127,7 @@ export function LineItemExecutionPreviewBlock({
             </p>
           </details>
         </div>
-      </LineItemPreviewNest>
+      </PreviewShell>
     );
   }
 
@@ -136,8 +153,51 @@ export function LineItemExecutionPreviewBlock({
         }`
       : null;
 
+  if (isWU && (preview.kind === "manifestLibrary" || preview.kind === "manifestLocal")) {
+    const taskCount = preview.tasks.length;
+    return (
+      <PreviewShell presentation={presentation}>
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-end justify-end gap-2">
+            <p className="text-[11px] text-zinc-600 tabular-nums">
+              {taskCount} {taskCount === 1 ? "task" : "tasks"}
+            </p>
+          </div>
+          {taskCount === 0 ? (
+            <p className="text-xs text-amber-200/95 leading-relaxed">
+              {preview.kind === "manifestLocal"
+                ? "No tasks yet. Use Add task below."
+                : "No tasks in this saved work yet — nothing will run for this line until tasks exist."}
+            </p>
+          ) : (
+            <ul className="space-y-2.5 list-none p-0 m-0">
+              {renderPreviewTasksWithStageGroups(preview.tasks)}
+            </ul>
+          )}
+          {preview.kind === "manifestLibrary" ? (
+            <details className="text-[11px] text-zinc-600">
+              <summary className="cursor-pointer hover:text-zinc-400 select-none">Technical details</summary>
+              <div className="mt-1 space-y-1 font-mono text-[10px] text-zinc-500 break-all">
+                {libraryRevisionMeta ? <p>{libraryRevisionMeta}</p> : null}
+                <p>savedWorkKey: {preview.packetKey}</p>
+                <p>revisionId: {preview.revisionId}</p>
+              </div>
+            </details>
+          ) : (
+            <details className="text-[11px] text-zinc-600">
+              <summary className="cursor-pointer hover:text-zinc-400 select-none">Technical details</summary>
+              <div className="mt-1 space-y-1 font-mono text-[10px] text-zinc-500 break-all">
+                <p>workListId: {preview.quoteLocalPacketId}</p>
+              </div>
+            </details>
+          )}
+        </div>
+      </PreviewShell>
+    );
+  }
+
   return (
-    <LineItemPreviewNest>
+    <PreviewShell presentation={presentation}>
       <div
         className={`rounded-md border ${headerTone} bg-zinc-950/40 px-3 py-2.5 space-y-2`}
       >
@@ -167,10 +227,10 @@ export function LineItemExecutionPreviewBlock({
             {preview.kind === "manifestLocal"
               ? isWorkspaceCrew
                 ? "No crew tasks yet. Use Add task below."
-                : "No tasks yet. Add tasks in Field work on this quote below."
+                : "No tasks yet. Add crew tasks in Custom work on this quote below."
               : isWorkspaceCrew
                 ? "No crew tasks from this catalog yet — nothing will run for this line until tasks exist."
-                : "No tasks in this packet yet — no crew tasks will be created for this line."}
+                : "No tasks in this saved work yet — no crew tasks will be created for this line."}
           </p>
         ) : (
           <ul className="space-y-2.5 list-none p-0 m-0">
@@ -178,7 +238,7 @@ export function LineItemExecutionPreviewBlock({
           </ul>
         )}
       </div>
-    </LineItemPreviewNest>
+    </PreviewShell>
   );
 }
 

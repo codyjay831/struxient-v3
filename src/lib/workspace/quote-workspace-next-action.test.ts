@@ -37,8 +37,8 @@ describe("buildQuoteWorkspaceNextActionView", () => {
     expect(v.headline.toLowerCase()).toContain("start here");
     expect(v.blockerLine).toBeNull();
     expect(v.primary.label).toBe("Add or edit line items");
-    expect(v.primary.href).toBe("/quotes/quote_test_1/scope");
-    expect(v.secondary?.label).toBe("View quote progress");
+    expect(v.primary.href).toBe("#step-1");
+    expect(v.secondary).toBeNull();
   });
 
   it("draft step 2: prominent card with short blocker for work plan row", () => {
@@ -46,20 +46,20 @@ describe("buildQuoteWorkspaceNextActionView", () => {
     expect(v.blockerLine).toBe("Work plan is not attached to this draft yet.");
   });
 
-  it("draft with scope warnings recommends fix work plan + field-work style body", () => {
+  it("draft with scope warnings recommends fix work plan + crew-work style body", () => {
     const v = view(
       base({
         status: "DRAFT",
         lineItemCount: 2,
         hasPinnedWorkflow: true,
-        packetStageReadiness: { state: "no", note: "1 of 2 field-work line(s) need attention." },
+        packetStageReadiness: { state: "no", note: "1 of 2 line(s) with crew work need attention." },
       }),
     );
-    expect(v.blockerLine).toBe("Field work on this draft needs attention before you can send.");
+    expect(v.blockerLine).toBe("Crew work setup on this draft needs attention before you can send.");
     expect(v.headline.toLowerCase()).toContain("review work plan");
-    expect(v.body.toLowerCase()).toMatch(/field.work|attention/);
+    expect(v.body.toLowerCase()).toMatch(/crew work|attention/);
     expect(v.primary.label).toBe("Fix line items & crew tasks");
-    expect(v.primary.href).toBe("/quotes/quote_test_1/scope");
+    expect(v.primary.href).toBe("#step-1");
   });
 
   it("ready draft: send headline + preview & send; no activation-style blocker", () => {

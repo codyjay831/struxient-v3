@@ -18,9 +18,8 @@ describe("mapComposeLineBlockingIssueToBanner", () => {
     expect(b.contractorBody).toContain("no crew tasks for the selected tier");
     expect(b.technicalCode).toBe("EXPANSION_EMPTY");
     expect(b.technicalMessage).toBe(EXPANSION_EMPTY_QUOTE_LOCAL_MESSAGE);
-    expect(b.actionLabel).toBe("Open Line & tasks");
-    expect(b.actionHref).toContain("/quotes/q1/scope");
-    expect(b.actionHref).toContain("line-item-line-a");
+    expect(b.actionLabel).toBe("Jump to line");
+    expect(b.actionHref).toBe("/quotes/q1#line-item-line-a");
     expect(b.showTechnicalDetails).toBe(true);
   });
 

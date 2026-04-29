@@ -4,51 +4,50 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 /**
- * Static copy guard for the scope line-item field-work UX (Triangle Mode).
- * Ensures the investigated overpromise string does not return without a deliberate edit.
+ * Static copy guard for the scope line-item work-setup UX (Triangle Mode).
  */
 const scopeEditorSource = readFileSync(
   path.join(path.dirname(fileURLToPath(import.meta.url)), "scope-editor.tsx"),
   "utf8",
 );
 
-describe("scope-editor field-work copy (static)", () => {
-  it("uses honest editable-field-work label, not create-new-tasks overpromise", () => {
+describe("scope-editor work-setup copy (static)", () => {
+  it("uses honest editable-custom-work label, not create-new-tasks overpromise", () => {
     expect(scopeEditorSource).not.toContain("Create new tasks for this line");
-    expect(scopeEditorSource).toContain("Create editable field work for this line");
+    expect(scopeEditorSource).toContain("Add custom work");
   });
 
-  it("uses one-click create field work for this line without requiring a second name step", () => {
-    expect(scopeEditorSource).toContain("Create field work for this line");
-    expect(scopeEditorSource).toContain("Add a line title before creating field work.");
+  it("uses one-click add custom work without requiring a second name step", () => {
+    expect(scopeEditorSource).toContain("Add custom work");
+    expect(scopeEditorSource).toContain("Add a line title before creating custom work.");
     expect(scopeEditorSource).toContain("Customize name before creating");
-    expect(scopeEditorSource).toContain("Uses your line title as the field work name.");
+    expect(scopeEditorSource).toContain("Uses your line title as the custom work name.");
   });
 
-  it("surfaces add-tasks-below handoff link label", () => {
-    expect(scopeEditorSource).toContain("Add tasks below →");
+  it("surfaces add-crew-tasks-below handoff link label", () => {
+    expect(scopeEditorSource).toContain("Add crew tasks below →");
   });
 
   it("does not leak one-off into visible strings (allow comments mentioning quote-local API)", () => {
     expect(scopeEditorSource).not.toMatch(/>\s*[^<]*one-off[^<]*</i);
   });
 
-  it("exposes field-work status chip labels for line item scan", () => {
-    expect(scopeEditorSource).toContain("Quote only");
-    expect(scopeEditorSource).toContain("Field work attached");
-    expect(scopeEditorSource).toContain("Needs field work");
-    expect(scopeEditorSource).toContain("Field work has no tasks");
+  it("exposes crew-work status chip labels for line item scan", () => {
+    expect(scopeEditorSource).toContain("Estimate-only line");
+    expect(scopeEditorSource).toContain("Includes crew work");
+    expect(scopeEditorSource).toContain("Needs crew work setup");
+    expect(scopeEditorSource).toContain("Crew work has no tasks yet");
   });
 
-  it("does not put packetKey in the primary saved-packet summary string", () => {
-    expect(scopeEditorSource).toContain("Saved task packet ·");
+  it("does not put packetKey in the primary saved-work summary string", () => {
+    expect(scopeEditorSource).toContain("Saved work ·");
     expect(scopeEditorSource).not.toMatch(/\$\{parent\.displayName\} \(\$\{parent\.packetKey\}\)/);
   });
 
-  it("puts create-new field work ahead of the reuse dropdown in the create branch", () => {
+  it("puts add custom work ahead of the reuse dropdown in the create branch", () => {
     expect(scopeEditorSource).not.toContain("— Choose field work on this quote —");
-    expect(scopeEditorSource).toContain("Choose existing field work on this quote…");
-    expect(scopeEditorSource).toContain("Use existing field work instead");
+    expect(scopeEditorSource).toContain("Choose existing custom work…");
+    expect(scopeEditorSource).toContain("Use existing custom work instead");
     const anchor = '      {manifestFieldWorkSetup === "createNewTasks" ? (';
     const branchStart = scopeEditorSource.indexOf(anchor);
     expect(branchStart).toBeGreaterThanOrEqual(0);
@@ -59,7 +58,7 @@ describe("scope-editor field-work copy (static)", () => {
     expect(branchEnd).toBeGreaterThan(branchStart);
     const createBranchSlice = scopeEditorSource.slice(branchStart, branchEnd);
     expect(createBranchSlice.indexOf("InlineCreateTaskPacketForLine")).toBeLessThan(
-      createBranchSlice.indexOf("Choose existing field work on this quote…"),
+      createBranchSlice.indexOf("Choose existing custom work…"),
     );
   });
 });

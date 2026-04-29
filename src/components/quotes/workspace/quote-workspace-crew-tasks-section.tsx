@@ -27,7 +27,7 @@ type ApiErrorBody = { error?: { code?: string; message?: string } };
 
 const FRIENDLY_SETUP_FAIL = "Could not set up crew tasks for this line.";
 const FRIENDLY_TASK_AFTER_SETUP_FAIL =
-  "Could not add the task. Try again, or open Line & tasks to finish.";
+  "Could not add the task. Try again, or use step 1 on the quote workspace to finish.";
 
 async function readApiError(res: Response): Promise<string> {
   try {
@@ -76,7 +76,8 @@ export function QuoteWorkspaceCrewTasksSection({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const scopeHref = `/quotes/${quoteId}/scope`;
+  const workspaceBase = `/quotes/${quoteId}`;
+  const lineAnchorHref = `${workspaceBase}#line-item-${encodeURIComponent(lineItemId)}`;
 
   if (executionMode !== "MANIFEST") {
     return (
@@ -109,14 +110,14 @@ export function QuoteWorkspaceCrewTasksSection({
       <div className="mt-3 space-y-2">
         <div className="rounded-md border border-red-900/40 bg-red-950/25 px-3 py-2">
           <p className="text-xs text-red-200/95 leading-relaxed">
-            Something this line depends on is no longer available. Open{" "}
-            <Link href={scopeHref} className="font-medium text-red-100 underline underline-offset-2">
-              Line &amp; tasks
+            Something this line depends on is no longer available.{" "}
+            <Link href={lineAnchorHref} className="font-medium text-red-100 underline underline-offset-2">
+              Jump to this line
             </Link>{" "}
-            to repair the line.
+            in step 1 to repair it.
           </p>
         </div>
-        <AddTaskButton disabled reason="Set up crew work in Line & tasks" />
+        <AddTaskButton disabled reason="Set up crew work in step 1" />
       </div>
     );
   }
@@ -227,7 +228,7 @@ export function QuoteWorkspaceCrewTasksSection({
       );
       if (!patchRes.ok) {
         setError(
-          `${FRIENDLY_SETUP_FAIL} Open Line & tasks if this keeps happening.`,
+          `${FRIENDLY_SETUP_FAIL} Use step 1 on the quote workspace if this keeps happening.`,
         );
         return;
       }
@@ -331,8 +332,8 @@ export function QuoteWorkspaceCrewTasksSection({
         <div className="rounded-md border border-amber-900/35 bg-amber-950/20 px-3 py-2">
           <p className="text-xs text-amber-100/95 leading-relaxed">
             This line needs setup in{" "}
-            <Link href={scopeHref} className="font-medium text-amber-50 underline underline-offset-2">
-              Line &amp; tasks
+            <Link href={lineAnchorHref} className="font-medium text-amber-50 underline underline-offset-2">
+              step 1
             </Link>
             .
           </p>
@@ -340,7 +341,7 @@ export function QuoteWorkspaceCrewTasksSection({
       ) : null}
 
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h4 className="text-[11px] font-semibold uppercase tracking-wide text-zinc-400">Crew tasks</h4>
+        <h4 className="text-[11px] font-semibold uppercase tracking-wide text-zinc-400">Crew work</h4>
         <span className="text-[10px] text-zinc-600 tabular-nums">
           {count} {count === 1 ? "task" : "tasks"}
         </span>
@@ -397,9 +398,9 @@ export function QuoteWorkspaceCrewTasksSection({
                           !canAddLocalTask
                             ? "This quote isn’t editable here."
                             : !packetItem
-                              ? "Set up crew work in Line & tasks"
+                              ? "Set up crew work in step 1"
                               : packetItem.lineKind === "LIBRARY"
-                                ? "Edit saved tasks in Line & tasks"
+                                ? "Edit saved tasks on this line in step 1"
                                 : "Edit"
                         }
                         onClick={() => {
@@ -419,7 +420,7 @@ export function QuoteWorkspaceCrewTasksSection({
                       <button
                         type="button"
                         disabled={busy || !canDeleteRow}
-                        title={!canDeleteRow ? "Set up crew work in Line & tasks" : "Delete"}
+                        title={!canDeleteRow ? "Set up crew work in step 1" : "Delete"}
                         onClick={() => {
                           if (!packetItem || !canDeleteRow) return;
                           void handleDeleteTask(packetItem.id);
@@ -449,9 +450,9 @@ export function QuoteWorkspaceCrewTasksSection({
 
       {isCatalogLine ? (
         <p className="text-[11px] text-zinc-500 leading-relaxed">
-          This line uses a saved crew list. To add or change tasks, open{" "}
-          <Link href={scopeHref} className="font-medium text-sky-400/90 hover:text-sky-300">
-            Line &amp; tasks
+          This line uses a saved crew list. To add or change tasks, edit the line in{" "}
+          <Link href={lineAnchorHref} className="font-medium text-sky-400/90 hover:text-sky-300">
+            step 1
           </Link>
           .
         </p>
@@ -492,14 +493,14 @@ export function QuoteWorkspaceCrewTasksSection({
         </button>
       ) : !isCatalogLine && executionMode === "MANIFEST" ? (
         <div className="space-y-1">
-          <AddTaskButton disabled reason="Set up crew work in Line & tasks" />
+          <AddTaskButton disabled reason="Set up crew work in step 1" />
           {!canAuthorTasks ? (
             <p className="text-[10px] text-zinc-600">This quote isn’t editable here.</p>
           ) : preview.kind === "manifestLocal" && (quoteLocalPacketId == null || localPacket == null) ? (
             <p className="text-[10px] text-zinc-600">
-              Attach a crew work list in{" "}
-              <Link href={scopeHref} className="text-sky-400/90 hover:text-sky-300 underline">
-                Line &amp; tasks
+              Finish custom work or saved work setup on{" "}
+              <Link href={lineAnchorHref} className="text-sky-400/90 hover:text-sky-300 underline">
+                this line in step 1
               </Link>{" "}
               before adding tasks here.
             </p>

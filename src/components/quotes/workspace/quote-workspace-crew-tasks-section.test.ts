@@ -31,4 +31,10 @@ describe("quote-workspace-crew-tasks-section (static wiring)", () => {
     expect(src).toContain("quoteLocalPacketId: newPacketId");
     expect(src).toContain("line-items");
   });
+
+  it("manifest-local setup handoff points at this line in step 1 (not quote-local field-work hash)", () => {
+    expect(src).toContain("this line in step 1");
+    expect(src).toContain("lineAnchorHref");
+    expect(src).not.toContain("#quote-local-field-work");
+  });
 });

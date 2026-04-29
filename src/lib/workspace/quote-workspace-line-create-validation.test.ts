@@ -9,7 +9,7 @@ describe("validateWorkspaceLineCreateFields", () => {
     title: "Roof repair",
     quantity: "1",
     description: "",
-    lineTotalDollars: "",
+    unitPriceDollars: "",
     ...over,
   });
 
@@ -53,21 +53,45 @@ describe("validateWorkspaceLineCreateFields", () => {
     if (r.ok) expect(r.value.description).toBe("Notes here");
   });
 
-  it("parses optional line total dollars to cents", () => {
-    const r = validateWorkspaceLineCreateFields(base({ lineTotalDollars: "12.34" }));
-    expect(r.ok).toBe(true);
-    if (r.ok) expect(r.value.lineTotalCents).toBe(1234);
-  });
-
-  it("allows null line total when blank", () => {
-    const r = validateWorkspaceLineCreateFields(base({ lineTotalDollars: "  " }));
+  it("allows null line total when unit price blank", () => {
+    const r = validateWorkspaceLineCreateFields(base({ unitPriceDollars: "  " }));
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.value.lineTotalCents).toBe(null);
+  });
+
+  it("parses unit price dollars to cents and multiplies by quantity for lineTotalCents", () => {
+    const r = validateWorkspaceLineCreateFields(
+      base({ unitPriceDollars: "12.34", quantity: "2" }),
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.lineTotalCents).toBe(2468);
+  });
+
+  it("uses half-up rounding for per-unit cents before multiplying", () => {
+    const r = validateWorkspaceLineCreateFields(
+      base({ unitPriceDollars: "0.125", quantity: "2" }),
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.lineTotalCents).toBe(26);
+  });
+
+  it("rejects negative unit price", () => {
+    const r = validateWorkspaceLineCreateFields(base({ unitPriceDollars: "-1" }));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.unitPrice).toMatch(/non-negative/i);
+  });
+
+  it("rejects invalid unit price string", () => {
+    const r = validateWorkspaceLineCreateFields(base({ unitPriceDollars: "x" }));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.unitPrice).toBeDefined();
   });
 });
 
 describe("buildSoldScopeLineItemCreateRequestBody", () => {
-  it("matches workspace SOLD_SCOPE create intent (null pins, no manifest)", () => {
+  it("matches workspace SOLD_SCOPE create intent (null pins, unitPriceCents null)", () => {
     const body = buildSoldScopeLineItemCreateRequestBody({
       proposalGroupId: "pg_1",
       sortOrder: 3,

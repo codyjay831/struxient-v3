@@ -40,17 +40,16 @@ export function mapComposeLineBlockingIssueToBanner(
   lineItemId: string,
   issue: ComposeLineIssueForMapping,
 ): LineComposeBlockerBannerModel {
-  const actionHref = `/quotes/${encodeURIComponent(quoteId)}/scope#line-item-${encodeURIComponent(lineItemId)}`;
+  const actionHref = `/quotes/${encodeURIComponent(quoteId)}#line-item-${encodeURIComponent(lineItemId)}`;
 
   if (isExpansionEmptyQuoteLocalIssue(issue)) {
     return {
       contractorTitle: "Line needs crew tasks",
       contractorBody:
         "This line has no crew tasks for the selected tier. Add matching tasks, change the tier, or turn this into an estimate-only line before sending.",
-      actionLabel: "Open Line & tasks",
+      actionLabel: "Jump to line",
       actionHref,
-      actionHelper:
-        "Open Line & tasks to fix the work setup, or edit the line if it should be estimate-only.",
+      actionHelper: "Edit this line in step 1 to fix crew work or change it to estimate-only.",
       technicalCode: issue.code,
       technicalMessage: issue.message,
       showTechnicalDetails: true,
@@ -61,7 +60,7 @@ export function mapComposeLineBlockingIssueToBanner(
     contractorTitle: "Line needs attention",
     contractorBody:
       "This line is blocking the proposal from being sent. Review the send preview for details.",
-    actionLabel: "Open Line & tasks",
+    actionLabel: "Jump to line",
     actionHref,
     technicalCode: issue.code,
     technicalMessage: issue.message,

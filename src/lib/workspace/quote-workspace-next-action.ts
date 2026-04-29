@@ -45,7 +45,7 @@ function shortBlockerLine(r: Extract<QuoteHeadWorkspaceReadiness, { kind: "head"
 
   if (m.id === "scope") return "No line items yet.";
   if (m.id === "pin") return "Work plan is not attached to this draft yet.";
-  if (m.id === "packets") return "Field work on this draft needs attention before you can send.";
+  if (m.id === "packets") return "Crew work setup on this draft needs attention before you can send.";
   if (m.id === "frozen") return "This revision is not in a sent-and-locked state yet.";
   if (m.id === "activation") return "Work has not been started for this signed version yet.";
   if (m.id === "groups") return "Proposal groups may need attention before sending.";
@@ -57,7 +57,7 @@ function draftStep2Body(r: Extract<QuoteHeadWorkspaceReadiness, { kind: "head" }
   if (packetRow?.state === "no" && packetRow.note?.trim()) {
     return packetRow.note;
   }
-  return "Some field work needs attention before this quote can be sent, or the work plan is not ready.";
+  return "Some lines need crew work setup before this quote can be sent, or the work plan is not ready.";
 }
 
 /**
@@ -156,8 +156,8 @@ export function buildQuoteWorkspaceNextActionView(
       headline: "Start here: build the quote",
       body: "Add or edit line items and tasks first. Proposal-only lines stay on the quote; other lines can attach crew tasks after approval — get those right before you review and send.",
       blockerLine: null,
-      primary: { label: "Add or edit line items", href: `/quotes/${quoteId}/scope` },
-      secondary: { label: "View quote progress", href: "#step-1" },
+      primary: { label: "Add or edit line items", href: "#step-1" },
+      secondary: null,
     };
   }
 
@@ -166,7 +166,7 @@ export function buildQuoteWorkspaceNextActionView(
       headline: stepTitle ? `Next: ${stepTitle}` : "Next: Review work plan",
       body: draftStep2Body(r),
       blockerLine: blocker,
-      primary: { label: "Fix line items & crew tasks", href: `/quotes/${quoteId}/scope` },
+      primary: { label: "Fix line items & crew tasks", href: "#step-1" },
       secondary: { label: "Review work plan", href: "#step-2" },
     };
   }

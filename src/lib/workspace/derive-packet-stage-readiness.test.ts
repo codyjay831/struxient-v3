@@ -61,7 +61,7 @@ describe("derivePacketStageReadiness", () => {
     expect(r.manifestLineCount).toBe(0);
     expect(r.okManifestLineCount).toBe(0);
     expect(r.issues).toEqual([]);
-    expect(r.note.toLowerCase()).toContain("no field-work lines");
+    expect(r.note.toLowerCase()).toContain("crew work");
   });
 
   it("only sold-scope lines → n/a (commercial-only does not pull state to needs-attention)", () => {
@@ -95,25 +95,25 @@ describe("derivePacketStageReadiness", () => {
     expect(r.manifestLineCount).toBe(2);
     expect(r.okManifestLineCount).toBe(1);
     expect(r.issues).toContainEqual({ kind: "manifestNoPacket", lineItemId: "li-bad" });
-    expect(r.note).toContain("no task packet attached");
+    expect(r.note).toContain("no work source attached");
   });
 
-  it("manifestLibraryMissing → no, copy mentions saved task packet", () => {
+  it("manifestLibraryMissing → no, copy mentions saved work", () => {
     const r = derivePacketStageReadiness([
       input("li-x", { kind: "manifestLibraryMissing", scopePacketRevisionId: "rev-archived" }),
     ]);
     expect(r.state).toBe("no");
     expect(r.issues).toContainEqual({ kind: "manifestLibraryMissing", lineItemId: "li-x" });
-    expect(r.note.toLowerCase()).toContain("saved task packet");
+    expect(r.note.toLowerCase()).toContain("saved work");
   });
 
-  it("manifestLocalMissing → no, copy mentions field work on this quote", () => {
+  it("manifestLocalMissing → no, copy mentions custom work on this quote", () => {
     const r = derivePacketStageReadiness([
       input("li-y", { kind: "manifestLocalMissing", quoteLocalPacketId: "qlp-gone" }),
     ]);
     expect(r.state).toBe("no");
     expect(r.issues).toContainEqual({ kind: "manifestLocalMissing", lineItemId: "li-y" });
-    expect(r.note.toLowerCase()).toContain("field work on this quote");
+    expect(r.note.toLowerCase()).toContain("custom work on this quote");
   });
 
   it("stage off pinned snapshot inside a manifestLibrary → no, with stageOffSnapshot issue", () => {

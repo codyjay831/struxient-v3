@@ -12,16 +12,16 @@
  *     visible rather than silently relabelled to one of the canon labels.
  *
  * Examples:
- *   formatExecutionModeLabel("SOLD_SCOPE") === "Quote-only"
- *   formatExecutionModeLabel("MANIFEST")   === "Field work"
+ *   formatExecutionModeLabel("SOLD_SCOPE") === "Estimate-only"
+ *   formatExecutionModeLabel("MANIFEST")   === "Includes crew work"
  *   formatExecutionModeLabel("FUTURE")     === "FUTURE"
  */
 export function formatExecutionModeLabel(executionMode: string): string {
   switch (executionMode) {
     case "SOLD_SCOPE":
-      return "Quote-only";
+      return "Estimate-only";
     case "MANIFEST":
-      return "Field work";
+      return "Includes crew work";
     default:
       return executionMode;
   }

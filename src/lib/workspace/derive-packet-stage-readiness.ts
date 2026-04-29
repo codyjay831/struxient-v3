@@ -117,28 +117,28 @@ function formatNote(args: {
   bindingDefect: boolean;
 }): string {
   if (args.manifestLineCount === 0) {
-    return "No field-work lines on this draft yet — only commercial / quote-only items.";
+    return "No lines with crew work on this draft yet — only estimate-only commercial lines.";
   }
   if (args.badLineCount === 0 && !args.bindingDefect) {
-    return `${String(args.okManifestLineCount)} of ${String(args.manifestLineCount)} field-work line(s) resolve to valid packets and stages.`;
+    return `${String(args.okManifestLineCount)} of ${String(args.manifestLineCount)} line(s) with crew work resolve to valid saved work, custom work, and stages.`;
   }
   if (args.badLineCount === 0 && args.bindingDefect) {
-    return `${String(args.okManifestLineCount)} of ${String(args.manifestLineCount)} field-work line(s) resolve to packets, but the bound execution flow has no stage nodes — repair workflow binding.`;
+    return `${String(args.okManifestLineCount)} of ${String(args.manifestLineCount)} line(s) with crew work resolve to work sources, but the bound execution flow has no stage nodes — repair workflow binding.`;
   }
   const fragments: string[] = [];
   if (args.noPacketCount > 0) {
     fragments.push(
-      `${String(args.noPacketCount)} field-work line(s) have no task packet attached`,
+      `${String(args.noPacketCount)} line(s) with crew work have no work source attached yet`,
     );
   }
   if (args.missingLibraryCount > 0) {
     fragments.push(
-      `${String(args.missingLibraryCount)} reference a saved task packet that isn't loadable`,
+      `${String(args.missingLibraryCount)} reference saved work that isn't loadable`,
     );
   }
   if (args.missingLocalCount > 0) {
     fragments.push(
-      `${String(args.missingLocalCount)} reference field work on this quote that isn't loadable`,
+      `${String(args.missingLocalCount)} reference custom work on this quote that isn't loadable`,
     );
   }
   if (args.stageOffSnapshotCount > 0) {
@@ -151,7 +151,7 @@ function formatNote(args: {
       "execution flow binding is incomplete (no stage nodes on the bound workflow — repair binding or contact support)",
     );
   }
-  return `${String(args.badLineCount)} of ${String(args.manifestLineCount)} field-work line(s) need attention — ${fragments.join("; ")}.`;
+  return `${String(args.badLineCount)} of ${String(args.manifestLineCount)} line(s) with crew work need attention — ${fragments.join("; ")}.`;
 }
 
 /* ------------------------------------------------------------------ */

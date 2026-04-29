@@ -70,15 +70,15 @@ export function validateScopeLineItemFormFields(
   }
   const description: string | null = descTrimmed.length > 0 ? descTrimmed : null;
   const quantity = Number.parseInt(fields.quantity, 10);
-  if (!Number.isFinite(quantity) || !Number.isInteger(quantity) || quantity < 0) {
-    return { ok: false, message: "Quantity must be a non-negative integer." };
+  if (!Number.isFinite(quantity) || !Number.isInteger(quantity) || quantity < 1) {
+    return { ok: false, message: "Quantity must be a whole number of at least 1." };
   }
 
   let unitPriceCents: number | null = null;
   if (fields.unitPriceCents.trim()) {
     const parsed = Number.parseInt(fields.unitPriceCents.trim(), 10);
     if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) {
-      return { ok: false, message: "Unit price (cents) must be an integer if provided." };
+      return { ok: false, message: "Per-unit amount must be a whole number of cents if provided." };
     }
     unitPriceCents = parsed;
   }
@@ -105,7 +105,7 @@ export function validateScopeLineItemFormFields(
       return {
         ok: false,
         message:
-          "Choose how to set up the field work for this line — saved task packet, new tasks, or copy and customize.",
+          "Choose how to set up crew work for this line — saved work, new internal tasks on this quote, or copy from saved work and customize.",
       };
     }
 
@@ -113,19 +113,19 @@ export function validateScopeLineItemFormFields(
       return {
         ok: false,
         message:
-          "This line can only reference one task packet at a time — either a saved task packet or field work on this quote, not both.",
+          "This line can only attach one work source at a time — either saved work from your library or custom work on this quote, not both.",
       };
     }
 
     if (setup === "useSavedTaskPacket") {
       if (!scopeId) {
-        return { ok: false, message: "Choose a saved task packet to attach to this line." };
+        return { ok: false, message: "Choose saved work from your library to attach to this line." };
       }
       if (localId) {
         return {
           ok: false,
           message:
-            "Detach field work on this quote before attaching a saved task packet, or switch to a different field-work option.",
+            "Detach custom work on this quote before attaching saved work, or switch to a different work setup option.",
         };
       }
       scopePacketRevisionId = scopeId;
@@ -135,19 +135,20 @@ export function validateScopeLineItemFormFields(
           return {
             ok: false,
             message:
-              "Pick a saved task packet and use “Copy to this quote and attach”, or switch to another field-work option.",
+              "Pick saved work and use “Copy to this quote and attach”, or switch to another work setup option.",
           };
         }
         return {
           ok: false,
-          message: "Choose field work on this quote to attach, or create a new task packet for this line.",
+          message:
+            "Choose custom work on this quote to attach, or create new custom work for this line first.",
         };
       }
       if (scopeId) {
         return {
           ok: false,
           message:
-            "Detach the saved task packet before using field work on this quote for this line, or switch to a different field-work option.",
+            "Detach saved work before using custom work on this quote for this line, or switch to a different work setup option.",
         };
       }
       quoteLocalPacketId = localId;

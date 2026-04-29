@@ -28,16 +28,17 @@ type Props = {
 };
 
 /**
- * Read-only work plan preview from line items + task packets (authoring on scope).
+ * Read-only work plan preview from line items + attached saved/custom work.
  *
  * Path B / Triangle Mode product direction:
- *   - Phases organize the work; line items + task packets define it. The
- *     panel shows the crew tasks the plan would generate, grouped by phase.
+ *   - Phases organize the work; line items plus saved work or custom work
+ *     on the quote define crew tasks. The panel shows the tasks the plan
+ *     would generate, grouped by phase.
  *   - There is no "process template" picker here. The canonical workflow
  *     is auto-pinned in the backend; the user only authors line items,
  *     reviews the plan, and sends.
- *   - This panel is read-only. All authoring happens in the line-item /
- *     scope editor.
+ *   - This panel is read-only. Authoring happens in step 1 on the quote workspace
+ *     (optional focused Line & tasks view for a full-page layout).
  */
 export function QuoteWorkspaceProposedExecutionFlow({ flow, isEditableDraft }: Props) {
   return (
@@ -46,8 +47,8 @@ export function QuoteWorkspaceProposedExecutionFlow({ flow, isEditableDraft }: P
         Review work plan
       </h2>
       <p className="text-xs text-zinc-500 leading-relaxed">
-        This preview is built from the quoted line items and their task packets.
-        Phases organize the work; task packets define tasks, order, blockers, and proof requirements.
+        This preview is built from the quoted line items and the saved work or custom work attached to lines that include crew work.
+        Phases organize internal crew tasks; that setup defines order, blockers, and proof requirements after the quote is approved.
       </p>
 
       {flow == null ? (
@@ -88,9 +89,10 @@ function SummaryRow({ summary }: { summary: ProposedExecutionFlow["summary"] }) 
         muted={summary.quotedLineCount === 0}
       />
       <SummaryStat
-        label="Task packets"
+        label="Work setups"
         value={summary.packetCount}
         muted={summary.packetCount === 0}
+        title="Distinct saved work or custom work on this quote attached to lines."
       />
       <SummaryStat
         label="Planned tasks"
@@ -98,7 +100,7 @@ function SummaryRow({ summary }: { summary: ProposedExecutionFlow["summary"] }) 
         muted={summary.generatedTaskCount === 0}
       />
       <SummaryStat
-        label="Quote-only lines"
+        label="Estimate-only lines"
         value={summary.soldScopeOnlyCount}
         muted
         title="Lines that appear on the proposal but won't create crew work."
@@ -164,7 +166,7 @@ function WarningsList({
       ) : null}
       {isEditableDraft ? (
         <p className="mt-2 text-[11px] text-amber-300/80">
-          If a line needs a packet or a phase fix, open the line-item editor. If the note is about work plan binding,
+          If a line needs saved or custom work or a phase fix, open the line-item editor. If the note is about work plan binding,
           wait for the system to finish attaching the plan or contact support.
         </p>
       ) : (
@@ -182,15 +184,15 @@ function warningCopy(w: ProposedExecutionFlowLineWarning): string {
   }
   const lineLabel = w.lineTitle ? `"${w.lineTitle}"` : `line ${shortId(w.lineItemId)}`;
   if (w.kind === "missingPacket") {
-    return `${lineLabel} has no task packet attached. Field-work lines create crew tasks only when a saved task packet or field work on this quote is attached.`;
+    return `${lineLabel} has no saved work or custom work on this quote attached yet. Lines that include crew work only get internal tasks when that work is set up and attached.`;
   }
   if (w.kind === "missingLibraryRevision") {
-    return `${lineLabel} references a saved task packet that isn't loadable (revision ${shortId(
+    return `${lineLabel} references saved work that isn't loadable (revision ${shortId(
       w.scopePacketRevisionId,
-    )}). Re-attach to a visible packet to clear this state.`;
+    )}). Re-attach to visible saved work to clear this state.`;
   }
   if (w.kind === "missingLocalPacket") {
-    return `${lineLabel} references field work on this quote that isn't loadable. Re-attach to a visible task packet to clear this state.`;
+    return `${lineLabel} references custom work on this quote that isn't loadable. Re-attach to visible custom work to clear this state.`;
   }
   if (w.kind === "stageOffSnapshot") {
     const stage = w.stageDisplayLabel.trim() || "this phase";
@@ -219,23 +221,23 @@ function EmptyState({ summary }: { summary: ProposedExecutionFlow["summary"] }) 
   if (summary.quotedLineCount === 0) {
     return (
       <p className="mt-4 text-xs text-zinc-500">
-        No quoted lines yet. Add line items in step 1 — the work plan preview appears once at least one field-work line
-        has a task packet attached.
+        No quoted lines yet. Add line items in step 1 — the work plan preview appears once at least one line with crew work
+        has saved work or custom work on this quote attached.
       </p>
     );
   }
   if (summary.soldScopeOnlyCount === summary.quotedLineCount) {
     return (
       <p className="mt-4 text-xs text-zinc-500">
-        All quoted lines are quote-only — none of them create crew work. You can still
+        All quoted lines are estimate-only — none of them create crew work. You can still
         send this proposal; activation will not create job tasks from these lines.
       </p>
     );
   }
   return (
     <p className="mt-4 text-xs text-zinc-500">
-      No tasks resolve yet. Attach a task packet to each field-work line item to populate
-      the proposed flow.
+      No tasks resolve yet. Attach saved work or custom work on this quote to each line that includes crew work to populate the
+      proposed flow.
     </p>
   );
 }

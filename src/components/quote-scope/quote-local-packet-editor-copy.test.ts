@@ -15,12 +15,12 @@ describe("quote-local-packet-editor UX copy", () => {
 
   it("uses task-oriented empty state and primary CTA", () => {
     expect(source).toContain("No tasks yet.");
-    expect(source).toContain("Add the first task for this field work.");
+    expect(source).toContain("Add the first crew task for this custom work.");
     expect(source).toContain("Add first task");
   });
 
-  it("uses field work group count label", () => {
-    expect(source).toContain("field work groups");
+  it("uses custom work group count label", () => {
+    expect(source).toContain("custom work groups");
   });
 
   it("avoids legacy packet-item labels in default flow", () => {
@@ -35,7 +35,17 @@ describe("quote-local-packet-editor UX copy", () => {
     expect(source).toContain("Add from task library");
   });
 
-  it("keeps section title", () => {
-    expect(source).toContain("Field work on this quote");
+  it("keeps default section title for focused scope / quote-level mounts", () => {
+    expect(source).toContain("Custom work on this quote");
+  });
+
+  it("uses shared-by wording for inline multi-line used-by labels", () => {
+    expect(source).toContain("Shared by ${titles.length} lines");
+    expect(source).toContain("Used by this line");
+  });
+
+  it("uses Technical details disclosure for inline editor, not Advanced packet wording", () => {
+    expect(source).toContain("Technical details");
+    expect(source).not.toContain("Advanced — library templates and packet IDs");
   });
 });

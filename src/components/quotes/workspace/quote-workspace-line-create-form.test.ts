@@ -23,13 +23,22 @@ describe("quote-workspace-line-create-form (static wiring)", () => {
     expect(src).toContain("router.refresh()");
   });
 
-  it("exposes add affordance and contractor copy", () => {
+  it("exposes add affordance, unit price, line total helper, and contractor copy", () => {
     expect(src).toContain("+ Add line item");
     expect(src).toContain("Add line item");
     expect(src).toContain("Add line");
-    expect(src).toContain("crew tasks later");
+    expect(src).toContain("Unit price");
+    expect(src).toContain("Line total");
+    expect(src).toContain("No amount set");
     expect(src).toContain("Estimate-only line");
-    expect(src).toContain("saved work, crew tasks, and technical options");
+    expect(src).toContain("Crew tasks and saved work are added from");
+    expect(src).toContain("step 1");
+    expect(src).toContain("Focused Line &amp; tasks view");
+  });
+
+  it("does not surface cents vocabulary in visible labels", () => {
+    expect(src).not.toMatch(/>\s*[^<]*[Uu]nit price[^<]*cents/i);
+    expect(src).not.toMatch(/Line total[^<]*\(cents\)/i);
   });
 
   it("hides entire form when canAddLineItems is false", () => {

@@ -2,12 +2,24 @@ import {
   SCOPE_LINE_ITEM_MAX_DESCRIPTION,
   SCOPE_LINE_ITEM_MAX_TITLE,
 } from "@/lib/quote-line-item-scope-form-validation";
+import {
+  assertSafeLineTotalCents,
+  lineTotalCentsFromUnitAndQuantity,
+  parseWorkspaceUnitPriceDollarsToCents,
+} from "@/lib/workspace/quote-workspace-line-unit-price";
 
 export type WorkspaceLineEditFieldsInput = {
   title: string;
   quantity: string;
   description: string;
-  lineTotalDollars: string;
+  unitPriceDollars: string;
+};
+
+/** When quantity and unit price match these snapshots, `lineTotalCents` stays `baselineLineTotalCents` (no-op pricing). */
+export type WorkspaceLineEditPricingSnapshot = {
+  baselineLineTotalCents: number | null;
+  baselineQuantity: number;
+  initialUnitPriceDollarsSnapshot: string;
 };
 
 export type ValidatedWorkspaceLineEdit =
@@ -23,9 +35,13 @@ export type ValidatedWorkspaceLineEdit =
 /**
  * Narrow validation for quote workspace line edit (commercial fields only).
  * Mirrors server line title / description / quantity / non-negative cents rules.
+ *
+ * Optional `pricingSnapshot`: if quantity and trimmed unit price match the snapshot,
+ * returns `baselineLineTotalCents` so indivisible totals round-trip without drift.
  */
 export function validateWorkspaceLineEditFields(
   input: WorkspaceLineEditFieldsInput,
+  pricingSnapshot?: WorkspaceLineEditPricingSnapshot | null,
 ): ValidatedWorkspaceLineEdit {
   const title = input.title.trim();
   if (!title) {
@@ -52,17 +68,34 @@ export function validateWorkspaceLineEditFields(
     return { ok: false, message: "Quantity must be a whole number of at least 1." };
   }
 
-  const amt = input.lineTotalDollars.trim();
-  let lineTotalCents: number | null = null;
-  if (amt.length > 0) {
-    const dollars = Number.parseFloat(amt);
-    if (!Number.isFinite(dollars) || dollars < 0) {
-      return { ok: false, message: "Line total must be a non-negative number." };
-    }
-    lineTotalCents = Math.round(dollars * 100);
-    if (!Number.isInteger(lineTotalCents) || lineTotalCents < 0) {
-      return { ok: false, message: "Line total must be a non-negative amount." };
-    }
+  const unitTrim = input.unitPriceDollars.trim();
+  const snapTrim = (pricingSnapshot?.initialUnitPriceDollarsSnapshot ?? "").trim();
+  if (
+    pricingSnapshot &&
+    quantity === pricingSnapshot.baselineQuantity &&
+    unitTrim === snapTrim
+  ) {
+    return {
+      ok: true,
+      title,
+      description,
+      quantity,
+      lineTotalCents: pricingSnapshot.baselineLineTotalCents,
+    };
+  }
+
+  const unitParsed = parseWorkspaceUnitPriceDollarsToCents(input.unitPriceDollars);
+  if (!unitParsed.ok) {
+    return { ok: false, message: unitParsed.error };
+  }
+  if (unitParsed.unitPriceCents == null) {
+    return { ok: true, title, description, quantity, lineTotalCents: null };
+  }
+
+  const lineTotalCents = lineTotalCentsFromUnitAndQuantity(unitParsed.unitPriceCents, quantity);
+  const unsafe = assertSafeLineTotalCents(lineTotalCents);
+  if (unsafe) {
+    return { ok: false, message: unsafe };
   }
 
   return { ok: true, title, description, quantity, lineTotalCents };

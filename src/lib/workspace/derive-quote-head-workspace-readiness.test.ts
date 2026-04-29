@@ -86,7 +86,7 @@ describe("deriveQuoteHeadWorkspaceReadiness", () => {
         hasPinnedWorkflow: true,
         packetStageReadiness: {
           state: "no",
-          note: "1 of 2 field-work line(s) need attention.",
+          note: "1 of 2 line(s) with crew work need attention.",
         },
       }),
     );
@@ -159,7 +159,7 @@ describe("deriveQuoteHeadWorkspaceReadiness", () => {
       r.honestyNotes.some(
         (s) =>
           s.toLowerCase().includes("line items") &&
-          s.toLowerCase().includes("task packets") &&
+          s.toLowerCase().includes("saved work") &&
           s.toLowerCase().includes("phases"),
       ),
     ).toBe(true);
@@ -202,7 +202,7 @@ describe("deriveQuoteHeadWorkspaceReadiness", () => {
         status: "DRAFT",
         lineItemCount: 2,
         hasPinnedWorkflow: true,
-        packetStageReadiness: { state: "yes", note: "2 of 2 field-work line(s) resolve." },
+        packetStageReadiness: { state: "yes", note: "2 of 2 line(s) with crew work resolve." },
       }),
     );
     expect(r.kind).toBe("head");
@@ -210,7 +210,7 @@ describe("deriveQuoteHeadWorkspaceReadiness", () => {
     const row = r.checklist.find((c) => c.id === "packets");
     expect(row).toBeDefined();
     expect(row?.state).toBe("yes");
-    expect(row?.label.toLowerCase()).toContain("field-work");
+    expect(row?.label.toLowerCase()).toContain("crew work");
     expect(row?.note).toContain("2 of 2");
   });
 
@@ -222,7 +222,7 @@ describe("deriveQuoteHeadWorkspaceReadiness", () => {
         hasPinnedWorkflow: true,
         packetStageReadiness: {
           state: "no",
-          note: "1 of 2 field-work line(s) need attention — 1 line(s) have no task packet attached.",
+          note: "1 of 2 line(s) with crew work need attention — 1 line(s) have no work source attached yet.",
         },
       }),
     );

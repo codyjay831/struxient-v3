@@ -46,12 +46,12 @@ describe("line item → field work links (static)", () => {
     expect(libBranchMatch![0]).not.toContain("#field-work-");
   });
 
-  it("shows Edit tasks and Add tasks labels for local field work", () => {
+  it("shows Edit tasks and Add crew tasks labels for local crew work", () => {
     expect(scopeEditor).toContain("Edit tasks");
-    expect(scopeEditor).toContain("Add tasks");
+    expect(scopeEditor).toContain("Add crew tasks");
     expect(scopeEditor).toContain("Review tasks");
-    expect(scopeEditor).toContain("Open saved packet");
-    expect(scopeEditor).toContain("Set up field work");
+    expect(scopeEditor).toContain("Open saved work");
+    expect(scopeEditor).toContain("Set up crew work");
   });
 
   it("single default Main group uses muted header branch", () => {

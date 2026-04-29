@@ -85,12 +85,16 @@ export function QuoteWorkspaceSimpleBuilder({
   return (
     <div className="space-y-6">
       <p className="text-sm text-zinc-500 leading-relaxed">
-        Add quote lines here with + Add line item (estimate-only lines). Add crew tasks later when a line needs work
-        after approval. Use{" "}
-        <Link href={`/quotes/${quoteId}/scope`} className="font-medium text-sky-400/90 hover:text-sky-300">
-          Line &amp; tasks
+        Add quote lines here with + Add line item — estimate-only lines with quantity and unit price. Build saved work
+        and crew tasks from{" "}
+        <Link href={`/quotes/${quoteId}#step-1`} className="font-medium text-sky-400/90 hover:text-sky-300">
+          step 1
         </Link>{" "}
-        for saved work, crew tasks, and technical options — advanced line setup, full screen.
+        on the quote workspace when the full editor is shown there. Optional:{" "}
+        <Link href={`/quotes/${quoteId}/scope`} className="font-medium text-sky-400/90 hover:text-sky-300">
+          focused Line &amp; tasks view
+        </Link>{" "}
+        for a full-page layout.
       </p>
 
       <QuoteWorkspaceLineCreateForm
@@ -133,9 +137,13 @@ export function QuoteWorkspaceSimpleBuilder({
         <section className="rounded-md border border-amber-900/40 bg-amber-950/15 p-3 space-y-2">
           <p className="text-xs font-semibold text-amber-200">Ungrouped lines</p>
           <p className="text-[11px] text-amber-200/85">
-            These lines are not in a proposal group the UI recognized. Check{" "}
+            These lines are not in a proposal group the UI recognized. Review them in{" "}
+            <Link href={`/quotes/${quoteId}#step-1`} className="underline font-medium text-amber-100">
+              step 1
+            </Link>{" "}
+            or the{" "}
             <Link href={`/quotes/${quoteId}/scope`} className="underline font-medium text-amber-100">
-              Line &amp; tasks
+              focused view
             </Link>
             .
           </p>
@@ -165,11 +173,9 @@ export function QuoteWorkspaceSimpleBuilder({
           href={`/quotes/${quoteId}/scope`}
           className="text-xs font-semibold text-sky-300 hover:text-sky-200 underline underline-offset-2"
         >
-          Line &amp; tasks →
+          Focused Line &amp; tasks view
         </Link>
-        <span>
-          Advanced line setup — optional. Not required for a basic quote line.
-        </span>
+        <span>Optional full-page layout — same tools as step 1 when the full editor is on the quote workspace.</span>
       </div>
     </div>
   );

@@ -29,14 +29,14 @@ describe("quote-workspace-line-card estimate-only crew handoff (static)", () => 
     expect(src).toContain("!createsCrew && canAuthorTasks && !editingLine && !composeBlocker");
   });
 
-  it("uses Line & tasks scope anchor for the handoff link", () => {
-    expect(src).toContain('`/quotes/${quoteId}/scope#line-item-${line.id}`');
-    expect(src).toContain("Open Line &amp; tasks");
+  it("uses same-page quote workspace anchor for the handoff link", () => {
+    expect(src).toContain('`/quotes/${quoteId}#line-item-${line.id}`');
+    expect(src).toContain("Set up crew tasks on this line");
   });
 
   it("includes helper and safety copy for contractors", () => {
     expect(src).toContain("Add crew tasks");
-    expect(src).toContain("Use this when this line should create work after the customer approves.");
+    expect(src).toContain("Use this when this line should include internal crew work after the quote is approved.");
     expect(src).toContain("This line stays estimate-only until crew tasks or saved work are added.");
   });
 

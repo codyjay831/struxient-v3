@@ -75,7 +75,7 @@ export function validateOneOffWorkDisplayNameInput(
     return {
       ok: false,
       message:
-        "Give this field work a short name (e.g. 'Roof tear-off for this house').",
+        "Give this custom work on the quote a short name (e.g. 'Roof tear-off for this house').",
     };
   }
   if (trimmed.length > MAX_ONE_OFF_WORK_DISPLAY_NAME) {

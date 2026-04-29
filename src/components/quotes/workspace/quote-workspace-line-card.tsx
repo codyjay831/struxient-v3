@@ -45,7 +45,7 @@ export function QuoteWorkspaceLineCard({
 }: Props) {
   const [editingLine, setEditingLine] = useState(false);
   const createsCrew = line.executionMode === "MANIFEST";
-  /** Option B: guided handoff only — no mutations. Hidden when compose blocker already links to Line & tasks. */
+  /** Option B: guided handoff only — no mutations. Hidden when compose blocker already surfaces a fix link. */
   const showEstimateOnlyCrewHandoff =
     !createsCrew && canAuthorTasks && !editingLine && !composeBlocker;
 
@@ -160,16 +160,16 @@ export function QuoteWorkspaceLineCard({
         >
           <p className="text-xs font-semibold text-zinc-200">Add crew tasks</p>
           <p className="text-[11px] leading-relaxed text-zinc-400">
-            Use this when this line should create work after the customer approves.
+            Use this when this line should include internal crew work after the quote is approved.
           </p>
           <p className="text-[10px] leading-snug text-zinc-500">
             This line stays estimate-only until crew tasks or saved work are added.
           </p>
           <Link
-            href={`/quotes/${quoteId}/scope#line-item-${line.id}`}
+            href={`/quotes/${quoteId}#line-item-${line.id}`}
             className="inline-flex text-[11px] font-semibold text-sky-400/90 hover:text-sky-300 underline underline-offset-2 w-fit"
           >
-            Open Line &amp; tasks
+            Set up crew tasks on this line
           </Link>
         </div>
       ) : null}

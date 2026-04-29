@@ -103,7 +103,7 @@ describe("validateScopeLineItemFormFields", () => {
     );
     expect(r.ok).toBe(false);
     if (r.ok) return;
-    expect(r.message.toLowerCase()).toContain("field work");
+    expect(r.message.toLowerCase()).toContain("crew work");
     expect(r.message).not.toMatch(/attach a work template/i);
   });
 
@@ -167,7 +167,7 @@ describe("validateScopeLineItemFormFields", () => {
     );
     expect(r.ok).toBe(false);
     if (r.ok) return;
-    expect(r.message.toLowerCase()).toContain("one task packet");
+    expect(r.message.toLowerCase()).toContain("one work source");
   });
 
   it("rejects stale scope id when createNewTasks is selected", () => {
@@ -180,5 +180,12 @@ describe("validateScopeLineItemFormFields", () => {
       }),
     );
     expect(r.ok).toBe(false);
+  });
+
+  it("rejects quantity zero (aligned with server assertQuantity)", () => {
+    const r = validateScopeLineItemFormFields(base({ quantity: "0" }));
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.message).toMatch(/at least 1/);
   });
 });

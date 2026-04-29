@@ -148,7 +148,7 @@ export function QuoteWorkspaceSignSent({
       if (!res.ok) {
         const extra =
           body.error?.code === "SIGN_ROLLED_BACK_AUTO_ACTIVATE_FAILED" ?
-            " (auto-start-work after approval failed; transaction rolled back — see error details in response.)"
+            " (auto-start-work after quote approval failed; transaction rolled back — see error details in response.)"
           : "";
         setResult({
           kind: "error",

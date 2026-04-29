@@ -47,12 +47,12 @@ export function QuoteWorkspaceLineItemSummary({ versionNumber, summary }: Props)
         <div>
           <p className="text-xs font-medium uppercase tracking-tight text-zinc-500">Proposal only</p>
           <p className="mt-0.5 text-lg font-semibold tabular-nums text-zinc-300">{outcomes.quoteOnly}</p>
-          <p className="mt-0.5 text-xs text-zinc-600">No crew tasks from this line</p>
+          <p className="mt-0.5 text-xs text-zinc-600">No crew work from this line</p>
         </div>
         <div>
-          <p className="text-xs font-medium uppercase tracking-tight text-zinc-500">With crew tasks</p>
+          <p className="text-xs font-medium uppercase tracking-tight text-zinc-500">With crew work</p>
           <p className="mt-0.5 text-lg font-semibold tabular-nums text-sky-400/90">{outcomes.fieldWork}</p>
-          <p className="mt-0.5 text-xs text-zinc-600">After customer approval</p>
+          <p className="mt-0.5 text-xs text-zinc-600">Internal work tied to quote lines</p>
         </div>
         <div>
           <p className="text-xs font-medium uppercase tracking-tight text-zinc-500">Subtotal</p>
@@ -62,8 +62,8 @@ export function QuoteWorkspaceLineItemSummary({ versionNumber, summary }: Props)
 
       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-600">
         <span>
-          Crew tasks: <span className="text-zinc-400 tabular-nums">{outcomes.fieldWorkSaved}</span> from saved
-          packets · <span className="text-zinc-400 tabular-nums">{outcomes.fieldWorkOneOff}</span> on this quote
+          Internal crew tasks: <span className="text-zinc-400 tabular-nums">{outcomes.fieldWorkSaved}</span> from saved
+          work · <span className="text-zinc-400 tabular-nums">{outcomes.fieldWorkOneOff}</span> custom on this quote
         </span>
       </div>
     </section>

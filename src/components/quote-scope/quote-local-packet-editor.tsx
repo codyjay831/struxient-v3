@@ -60,6 +60,10 @@ type Props = {
    * derived on the scope page without changing packet read APIs.
    */
   lineItemTitlesByLocalPacketId?: Record<string, string[]>;
+  /** Override primary heading (e.g. secondary “unattached” disclosure on the quote workspace). */
+  sectionTitle?: string;
+  /** Override section `id` for anchors (avoid duplicate ids when multiple mounts exist). */
+  sectionDomId?: string;
 };
 
 type ApiErrorBody = { error?: { code?: string; message?: string } };
@@ -83,6 +87,8 @@ export function QuoteLocalPacketEditor({
   pinnedWorkflowVersionId,
   availableSavedPackets,
   lineItemTitlesByLocalPacketId,
+  sectionTitle = "Custom work on this quote",
+  sectionDomId = "quote-local-field-work",
 }: Props) {
   const router = useRouter();
   const [packets, setPackets] = useState<QuoteLocalPacketDto[]>(initialPackets);
@@ -197,7 +203,7 @@ export function QuoteLocalPacketEditor({
 
   async function handleDeletePacket(packetId: string) {
     if (!editable) return;
-    if (!window.confirm("Delete this field work? All tasks inside it will be removed too.")) return;
+    if (!window.confirm("Delete this custom work? All tasks inside it will be removed too.")) return;
     setBusy(true);
     setGlobalError(null);
     try {
@@ -404,21 +410,21 @@ export function QuoteLocalPacketEditor({
   }
 
   return (
-    <section id="quote-local-field-work" className="space-y-8">
+    <section id={sectionDomId} className="space-y-8">
       <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-zinc-800/90 pb-3">
-        <h2 className="text-lg font-semibold tracking-tight text-zinc-100">Field work on this quote</h2>
+        <h2 className="text-lg font-semibold tracking-tight text-zinc-100">{sectionTitle}</h2>
         <span className="text-xs font-normal text-zinc-500 normal-case">
-          {packets.length} field work groups
+          {packets.length} custom work groups
         </span>
       </div>
 
       {!isDraft ? (
         <p className="rounded border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-300/90">
-          This quote version is no longer a draft. Field work on this quote can&rsquo;t be edited here.
+          This quote version is no longer a draft. This custom work can&rsquo;t be edited here.
         </p>
       ) : !canOfficeMutate ? (
         <p className="rounded border border-zinc-800 bg-zinc-900/40 px-3 py-2 text-[11px] text-zinc-400">
-          Sign in as an office user with <code className="text-zinc-300">office_mutate</code> to add or edit field work on this quote.
+          Sign in as an office user with <code className="text-zinc-300">office_mutate</code> to add or edit custom work on this quote.
         </p>
       ) : null}
 
@@ -430,8 +436,8 @@ export function QuoteLocalPacketEditor({
 
       {packets.length === 0 ? (
         <p className="rounded-lg border border-dashed border-zinc-700/80 bg-zinc-950/40 px-4 py-4 text-sm leading-relaxed text-zinc-400">
-          No field work on this quote yet. Add field work below to plan crew tasks without changing
-          saved task packets in the library.
+          No custom work on this quote yet. Add custom work below to plan crew tasks without changing
+          saved work in the library.
         </p>
       ) : (
         <ul className="space-y-5">
@@ -463,7 +469,7 @@ export function QuoteLocalPacketEditor({
 
       {editable ? (
         <div className="rounded-lg border border-zinc-800/60 bg-zinc-950/30 p-3 space-y-2">
-          <p className="text-xs font-medium text-zinc-400">New editable field work</p>
+          <p className="text-xs font-medium text-zinc-400">New editable custom work</p>
           <input
             type="text"
             placeholder="Display name"
@@ -487,7 +493,7 @@ export function QuoteLocalPacketEditor({
               onClick={() => void handleCreatePacket()}
               className="rounded bg-emerald-800/90 px-3 py-1 text-[11px] font-medium text-emerald-50 hover:bg-emerald-700 disabled:opacity-50"
             >
-              {busy ? "Working…" : "Create task packet"}
+              {busy ? "Working…" : "Create custom work"}
             </button>
           </div>
         </div>
@@ -542,6 +548,8 @@ type PacketRowProps = {
   availableSavedPackets: SavedPacketOption[];
   /** `inline`: under line-item preview — lighter chrome, no duplicate title, advanced tucked away. */
   presentation?: "default" | "inline";
+  /** Inside workspace “Crew work” shell — drop extra borders and tuck source into details. */
+  unifiedWorkSection?: boolean;
 };
 
 function PacketRow({
@@ -561,6 +569,7 @@ function PacketRow({
   onPromotePacketIntoExisting,
   availableSavedPackets,
   presentation = "default",
+  unifiedWorkSection = false,
 }: PacketRowProps) {
   const [editingHeader, setEditingHeader] = useState(false);
   const [headerName, setHeaderName] = useState(packet.displayName);
@@ -581,21 +590,32 @@ function PacketRow({
   const titles = lineItemTitlesForPacket?.filter((t) => t.trim().length > 0) ?? [];
   const usedByLabel =
     pinned && titles.length > 0
-      ? titles.length === 1
-        ? `Used by: ${titles[0]}`
-        : `Used by: ${titles.join(" · ")}`
+      ? isInline
+        ? titles.length === 1
+          ? "Used by this line"
+          : `Shared by ${titles.length} lines`
+        : titles.length === 1
+          ? `Used by: ${titles[0]}`
+          : `Used by: ${titles.join(" · ")}`
       : pinned
         ? `Used by ${packet.pinnedByLineItemCount} line item${packet.pinnedByLineItemCount === 1 ? "" : "s"}`
         : null;
 
   const rowId = rowDomId ?? `field-work-${packet.id}`;
-  const shellClass = isInline
-    ? `rounded-md border border-zinc-700/50 bg-zinc-950/45 p-2.5 sm:p-3 transition-shadow duration-300 ${
-        hashHighlighted ? "ring-2 ring-sky-500/60 ring-offset-1 ring-offset-zinc-950" : ""
-      }`
-    : `rounded-lg border border-zinc-800/80 bg-zinc-950/30 p-4 shadow-sm shadow-black/10 transition-shadow duration-300 ${
-        hashHighlighted ? "ring-2 ring-sky-500/70 ring-offset-2 ring-offset-zinc-950" : ""
-      }`;
+  const shellClass =
+    isInline && unifiedWorkSection
+      ? `space-y-2 transition-shadow duration-300 ${
+          hashHighlighted ? "ring-2 ring-sky-500/60 ring-offset-1 ring-offset-zinc-950" : ""
+        }`
+      : isInline
+        ? `rounded-md border border-zinc-700/50 bg-zinc-950/45 p-2.5 sm:p-3 transition-shadow duration-300 ${
+            hashHighlighted ? "ring-2 ring-sky-500/60 ring-offset-1 ring-offset-zinc-950" : ""
+          }`
+        : `rounded-lg border border-zinc-800/80 bg-zinc-950/30 p-4 shadow-sm shadow-black/10 transition-shadow duration-300 ${
+            hashHighlighted ? "ring-2 ring-sky-500/70 ring-offset-2 ring-offset-zinc-950" : ""
+          }`;
+
+  const showInlineHeaderBadges = !(isInline && unifiedWorkSection);
 
   const technicalDetailsInner = (
     <div className="mt-1 flex flex-wrap gap-2 font-mono text-[10px] text-zinc-500">
@@ -609,7 +629,7 @@ function PacketRow({
             ? "border-emerald-800/60 bg-emerald-950/30 text-emerald-300"
             : "border-zinc-700/60 bg-zinc-900/40 text-zinc-400"
         }`}
-        title="Save-to-library status for this field work"
+        title="Save-to-library status for this custom work"
       >
         {formatQuoteLocalPacketPromotionStatusLabel(packet.promotionStatus)}
       </span>
@@ -737,7 +757,7 @@ function PacketRow({
             <>
               <p className="sr-only">{packet.displayName}</p>
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-zinc-500">
-                {usedByLabel ? (
+                {showInlineHeaderBadges && usedByLabel ? (
                   <span className="rounded border border-zinc-700/50 bg-zinc-900/40 px-1.5 py-0.5 text-zinc-500">
                     {usedByLabel}
                   </span>
@@ -787,7 +807,7 @@ function PacketRow({
               title={
                 pinned
                   ? "Detach pinning line items first."
-                  : "Delete this task packet and all its tasks."
+                  : "Delete this custom work and all its tasks."
               }
               className={
                 isInline
@@ -890,9 +910,14 @@ function PacketRow({
       {isInline ? (
         <details className="mt-2 rounded border border-zinc-800/35 bg-zinc-900/25 px-2 py-1.5">
           <summary className="cursor-pointer list-none text-[10px] font-medium text-zinc-500 hover:text-zinc-400 select-none [&::-webkit-details-marker]:hidden">
-            Advanced — library templates and packet IDs
+            Technical details
           </summary>
           <div className="mt-2 space-y-3 border-t border-zinc-800/40 pt-2">
+            {unifiedWorkSection && titles.length > 0 ? (
+              <p className="text-[10px] text-zinc-500 leading-relaxed font-sans">
+                Lines using this work: {titles.join(" · ")}
+              </p>
+            ) : null}
             {technicalDetailsInner}
             {promoteControls ? (
               <div className="flex flex-wrap gap-2 border-t border-zinc-800/30 pt-2">{promoteControls}</div>
@@ -954,7 +979,7 @@ function ItemsTable({
               : "text-sm text-amber-200/90 leading-relaxed"
           }
         >
-          Add the first task for this field work.
+          Add the first crew task for this custom work.
         </p>
         {editable && !suppressEmptyAddButtons ? (
           <div className={`flex flex-wrap gap-2 ${isInline ? "pt-1" : "pt-2"}`}>
@@ -1470,6 +1495,8 @@ export type QuoteLocalSinglePacketEditorProps = {
   /** Unique per host row; must not collide with full-page `#field-work-*`. */
   rowDomId: string;
   onClose?: () => void;
+  /** Nested under quote workspace “Crew work” — lighter chrome. */
+  unifiedWorkSection?: boolean;
 };
 
 /**
@@ -1485,6 +1512,7 @@ export function QuoteLocalSinglePacketEditor({
   canOfficeMutate,
   rowDomId,
   onClose,
+  unifiedWorkSection = false,
 }: QuoteLocalSinglePacketEditorProps) {
   const router = useRouter();
   const [packet, setPacket] = useState<QuoteLocalPacketDto>(initialPacket);
@@ -1526,7 +1554,7 @@ export function QuoteLocalSinglePacketEditor({
 
   async function handleDeletePacket() {
     if (!editable) return;
-    if (!window.confirm("Delete this field work? All tasks inside it will be removed too.")) return;
+    if (!window.confirm("Delete this custom work? All tasks inside it will be removed too.")) return;
     setBusy(true);
     setGlobalError(null);
     try {
@@ -1738,6 +1766,7 @@ export function QuoteLocalSinglePacketEditor({
           busy={busy}
           pinnedWorkflowVersionId={pinnedWorkflowVersionId}
           presentation="inline"
+          unifiedWorkSection={unifiedWorkSection}
           hashHighlighted={false}
           lineItemTitlesForPacket={lineItemTitlesForPacket}
           onUpdatePacket={handleUpdatePacket}

@@ -7,14 +7,14 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)));
 const src = readFileSync(path.join(root, "quote-workspace-line-item-list.tsx"), "utf8");
 
 describe("quote-workspace-line-item-list copy (static)", () => {
-  it("empty state points to full builder and Line & tasks without implying scope is the only path", () => {
-    expect(src).toContain("+ Add line item");
-    expect(src).toContain("Line & tasks →");
+  it("empty state offers optional focused view when full editor is unavailable", () => {
+    expect(src).toContain("Focused Line & tasks view");
+    expect(src).toContain("/scope");
     expect(src).not.toMatch(/saved packets/i);
   });
 
-  it("read-only footer references step 1 builder and Line & tasks", () => {
+  it("read-only footer references step 1 and optional focused view", () => {
     expect(src).toContain("Read-only summary");
-    expect(src).toContain("full builder");
+    expect(src).toContain("full editor");
   });
 });

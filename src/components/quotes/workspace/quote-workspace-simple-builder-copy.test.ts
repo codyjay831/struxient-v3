@@ -28,37 +28,39 @@ describe("quote-workspace-simple-builder shell copy (static)", () => {
   const crew = read("quote-workspace-crew-tasks-section.tsx");
   const blob = `${simple}\n${line}\n${crew}`;
   const blobSurface = `${surfaceCopyOnly(simple)}\n${surfaceCopyOnly(line)}\n${surfaceCopyOnly(crew)}`;
+  const simpleLineSurface = `${surfaceCopyOnly(simple)}\n${surfaceCopyOnly(line)}`;
 
   it("frames crew work without packet-admin vocabulary", () => {
-    expect(blob).toContain("Crew tasks");
+    expect(blob).toContain("Crew work");
     expect(blob).not.toMatch(/Task Packet/i);
-    expect(blobSurface).not.toMatch(/quote-local/i);
+    // `quote-workspace-crew-tasks-section` links to `#quote-local-field-work` (stable DOM id); keep UI copy clean in simple + line only.
+    expect(simpleLineSurface).not.toMatch(/quote-local/i);
     expect(blobSurface).not.toMatch(/field work on this quote/i);
     expect(blob).not.toMatch(/promote/i);
     expect(blob).not.toMatch(/packetKey/i);
     expect(blobSurface).not.toMatch(/revisionId/i);
   });
 
-  it("links to advanced scope route", () => {
+  it("keeps optional focused /scope link and points primary copy at quote workspace step 1", () => {
     expect(simple).toContain("/scope");
-    expect(simple).toContain("Line &amp; tasks");
+    expect(simple).toContain("focused Line &amp; tasks view");
+    expect(simple).toContain("#step-1");
     expect(simple).toContain("QuoteWorkspaceLineCreateForm");
     expect(simple).toContain("Add quote lines here");
-    expect(simple).toContain("Not required for a basic quote line");
     expect(createForm).toContain("+ Add line item");
   });
 
-  it("line card keeps Edit line in workspace and adds optional Line & tasks handoff for estimate-only lines", () => {
+  it("line card keeps Edit line in workspace and same-page line anchor for estimate-only crew setup", () => {
     const line = read("quote-workspace-line-card.tsx");
     expect(line).toContain("Edit line");
     expect(line).toContain('type="button"');
     expect(line).toContain("Add crew tasks");
-    expect(line).toMatch(/\/quotes\/\$\{quoteId\}\/scope#line-item-\$\{line\.id\}/);
+    expect(line).toMatch(/\/quotes\/\$\{quoteId\}#line-item-\$\{line\.id\}/);
   });
 
-  it("line edit form links quiet Advanced setup to scope line anchor", () => {
+  it("line edit form links quiet Advanced setup to same-page line anchor", () => {
     const form = read("quote-workspace-line-edit-form.tsx");
     expect(form).toContain("Advanced setup");
-    expect(form).toMatch(/\/quotes\/\$\{quoteId\}\/scope#line-item-/);
+    expect(form).toMatch(/\/quotes\/\$\{quoteId\}#line-item-/);
   });
 });

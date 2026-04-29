@@ -50,7 +50,7 @@ export function QuoteWorkspaceActions({
       setResult({
         kind: "success",
         title: "New version created",
-        message: `Version v${String(body.data?.versionNumber)} is now the head draft. Update scope or field work on this draft, then send again when you are ready.`,
+        message: `Version v${String(body.data?.versionNumber)} is now the head draft. Update line items or crew work setup on this draft, then send again when you are ready.`,
       });
       router.refresh();
     } finally {
@@ -110,7 +110,7 @@ export function QuoteWorkspaceActions({
           technicalDetails={result.technicalDetails}
           nextStep={
             result.kind === "success" ?
-              { label: "Line & tasks", href: `/quotes/${encodeURIComponent(quoteId)}/scope` }
+              { label: "Continue in quote workspace", href: `/quotes/${encodeURIComponent(quoteId)}#step-1` }
             : undefined
           }
         />

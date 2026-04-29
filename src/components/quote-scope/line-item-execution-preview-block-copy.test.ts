@@ -25,16 +25,21 @@ describe("line-item-execution-preview-block copy (static)", () => {
     expect(source).toMatch(/No tasks yet/i);
   });
 
-  it("labels attached packet preview as Task Packet with name, not a duplicate line-item title", () => {
-    expect(source).toContain("Task Packet - ");
+  it("labels attached packet preview as Saved work with name, not a duplicate line-item title", () => {
+    expect(source).toContain("Saved work — ");
     expect(source).toContain("taskPacketPreviewHeading");
-    expect(source).toContain("Tasks from saved packet");
-    expect(source).toContain("Crew work attached to this line");
+    expect(source).toContain("Tasks from saved work");
+    expect(source).toContain("Internal crew work for this line");
   });
 
   it("supports workspace crew-task presentation without removing default packet copy", () => {
     expect(source).toContain("workspaceCrewTasks");
     expect(source).toContain("workspaceCrewTasksHeading");
     expect(source).toContain("LineItemExecutionPreviewPresentation");
+  });
+
+  it("supports unified workspace body presentation without duplicate headings", () => {
+    expect(source).toContain("workspaceUnified");
+    expect(source).toContain("PreviewShell");
   });
 });

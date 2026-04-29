@@ -122,7 +122,7 @@ export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput 
       hasScope ? "yes" : "no",
       status === "DRAFT"
         ? hasScope
-          ? `${String(head.lineItemCount)} line item(s) on this draft. Line items and their task packets define the sold work.`
+          ? `${String(head.lineItemCount)} line item(s) on this draft. Line items define what you sell; saved work and custom work on this quote set up crew tasks after approval.`
           : "No line items yet — add line items in step 1 before reviewing the work plan or sending."
         : hasScope
           ? "Line items on this version are what the job task list uses after sign-off."
@@ -177,7 +177,7 @@ export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput 
           ? "yes"
           : "no",
       status === "DRAFT" || status === "SENT"
-        ? "You will start work after the customer approves and you run Start work on a signed version."
+        ? "You will start internal crew work after the quote is approved and you run Start work on a signed version."
         : status === "DECLINED"
           ? "Customer declined this revision on the portal — not eligible to start work."
           : status === "SIGNED"
@@ -202,7 +202,7 @@ export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput 
     checklist.push(
       checklistItem(
         "packets",
-        "Field-work lines are stage-ready",
+        "Lines with crew work are stage-ready",
         head.packetStageReadiness.state,
         head.packetStageReadiness.note,
       ),
@@ -213,7 +213,7 @@ export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput 
   let recommendedStepIndex: number | null = null;
   const honestyNotes: string[] = [
     "This card summarizes fields from your workspace history. It is not a substitute for a full commercial or legal review.",
-    "Line items define what you sell; task packets define the crew work after approval. Phases group that work in the work plan.",
+    "Line items define what you sell; saved work and custom work on this quote define internal crew tasks your team performs after the quote is approved. Phases group that work in the work plan.",
   ];
 
   if (status === "DRAFT") {
@@ -224,7 +224,7 @@ export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput 
     if (!hasScope) {
       recommendedStepIndex = 1; // Build the quote
       likelyNextSteps.push(
-        "Add line items to this draft — line items are the primary scope object. Field-work lines also need a task packet attached.",
+        "Add line items to this draft — line items are the primary scope object. Lines that include crew work also need saved work or custom work on this quote attached.",
       );
       likelyNextSteps.push("Then review the work plan (step 2) before sending.");
     } else if (!head.hasPinnedWorkflow) {
@@ -240,10 +240,10 @@ export function deriveQuoteHeadWorkspaceReadiness(head: QuoteHeadReadinessInput 
       // plan with known stage placement issues.
       recommendedStepIndex = 2;
       likelyNextSteps.push(
-        "Review the work plan (step 2) — one or more field-work lines need attention before sending.",
+        "Review the work plan (step 2) — one or more lines with crew work need attention before sending.",
       );
       likelyNextSteps.push(
-        "Open the line-item editor to attach a task packet or move tasks to a standard phase.",
+        "Open the line-item editor to attach saved or custom work or move tasks to a standard phase.",
       );
     } else {
       // Happy path under Path B: scope is authored, the canonical execution

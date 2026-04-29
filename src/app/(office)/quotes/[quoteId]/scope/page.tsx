@@ -10,6 +10,7 @@ import {
 import { principalHasCapability, tryGetApiPrincipal } from "@/lib/auth/api-principal";
 import type { ScopeVersionContext } from "@/lib/quote-scope/quote-scope-grouping";
 import { QuoteLocalPacketEditor } from "@/components/quote-scope/quote-local-packet-editor";
+import { OrphanedLineItemsWarning } from "@/components/quote-scope/orphaned-line-items-warning";
 import { ScopeEditor } from "./scope-editor";
 
 type PageProps = { params: Promise<{ quoteId: string }> };
@@ -46,10 +47,10 @@ export default async function OfficeQuoteScopePage({ params }: PageProps) {
     return (
       <main className="p-8 max-w-5xl mx-auto text-zinc-200">
         <ScopeBreadcrumb quoteId={quoteId} quoteNumber={ws.quote.quoteNumber} />
-        <h1 className="text-2xl font-semibold text-zinc-50">Scope</h1>
+        <h1 className="text-2xl font-semibold text-zinc-50">Line &amp; tasks</h1>
         <p className="mt-3 text-sm text-zinc-400">
-          This quote has no versions yet, so there is nothing to author. Open the workspace to
-          create the first draft version.
+          This quote has no versions yet, so there is nothing to set up here. Open the quote
+          workspace to create the first draft version.
         </p>
         <div className="mt-4">
           <Link
@@ -105,26 +106,31 @@ export default async function OfficeQuoteScopePage({ params }: PageProps) {
         <ScopeBreadcrumb quoteId={quoteId} quoteNumber={ws.quote.quoteNumber} />
         <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-zinc-50">Line items</h1>
-            <p className="mt-1 text-sm text-zinc-400 max-w-2xl">
-              Add, edit, or remove the line items on this draft for {ws.customer.name} —{" "}
-              {ws.flowGroup.name}.
+            <h1 className="text-2xl font-bold text-zinc-50">Line &amp; tasks</h1>
+            <p className="mt-1 text-sm font-medium text-zinc-300 max-w-2xl">
+              Focused setup for quote lines, saved work, and crew tasks.
+            </p>
+            <p className="mt-2 text-sm text-zinc-400 max-w-2xl leading-relaxed">
+              Use this focused view when a quote has many lines, saved work, or crew tasks that need
+              more room to set up. Basic quote lines can also be added and edited from the{" "}
+              <Link href={`/quotes/${quoteId}`} className="text-sky-400/90 hover:text-sky-300 underline underline-offset-2">
+                main quote workspace
+              </Link>
+              .
             </p>
           </div>
           <Link
             href={`/quotes/${quoteId}`}
             className="rounded border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
           >
-            ← Back to workspace
+            ← Quote workspace
           </Link>
         </div>
       </header>
 
       <VersionContextBanner context={versionContext} quoteId={quoteId} />
 
-      {grouping.orphanedItems.length > 0 ? (
-        <OrphanedLineItemsWarning count={grouping.orphanedItems.length} />
-      ) : null}
+      {grouping.orphanedItems.length > 0 ? <OrphanedLineItemsWarning count={grouping.orphanedItems.length} /> : null}
 
       <ScopeEditor
         quoteId={quoteId}
@@ -182,7 +188,7 @@ function ScopeBreadcrumb({ quoteId, quoteNumber }: { quoteId: string; quoteNumbe
         {quoteNumber}
       </Link>
       <span>/</span>
-      <span className="text-zinc-400">Scope</span>
+      <span className="text-zinc-400">Line &amp; tasks</span>
     </nav>
   );
 }
@@ -221,17 +227,3 @@ function VersionContextBanner({ context, quoteId }: { context: ScopeVersionConte
   );
 }
 
-function OrphanedLineItemsWarning({ count }: { count: number }) {
-  return (
-    <section className="mb-6 rounded-lg border border-red-900/60 bg-red-950/20 p-4 text-xs leading-relaxed text-red-200">
-      <p className="text-[11px] font-semibold uppercase tracking-wide">
-        Scope DTO inconsistency · {count} orphaned line item{count === 1 ? "" : "s"}
-      </p>
-      <p className="mt-1 opacity-90">
-        {count === 1 ? "One line item references" : `${count} line items reference`} a proposal
-        group not present in this version. {count === 1 ? "It is" : "They are"} intentionally not
-        rendered below so the inconsistency stays visible.
-      </p>
-    </section>
-  );
-}

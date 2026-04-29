@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 import { formatExecutionModeLabel } from "./quote-line-item-execution-mode-label";
 
 describe("formatExecutionModeLabel", () => {
-  it("renders SOLD_SCOPE as 'Quote-only'", () => {
-    expect(formatExecutionModeLabel("SOLD_SCOPE")).toBe("Quote-only");
+  it("renders SOLD_SCOPE as 'Estimate-only'", () => {
+    expect(formatExecutionModeLabel("SOLD_SCOPE")).toBe("Estimate-only");
   });
 
-  it("renders MANIFEST as 'Field work'", () => {
-    expect(formatExecutionModeLabel("MANIFEST")).toBe("Field work");
+  it("renders MANIFEST as 'Includes crew work'", () => {
+    expect(formatExecutionModeLabel("MANIFEST")).toBe("Includes crew work");
   });
 
   it("falls back to the raw input for unknown enum values", () => {

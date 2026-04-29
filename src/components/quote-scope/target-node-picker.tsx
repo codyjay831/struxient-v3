@@ -127,7 +127,7 @@ export function TargetNodePicker({
       {workflowVersionIdForNodeKeys && valueOnWorkflow === false && trimmed !== "" ? (
         <p className="text-[10px] text-amber-400">
           Warning: Stage <span className="font-mono">{trimmed}</span> is not present on the pinned workflow.
-          Compose will fail; ensure the workflow includes this stage ID.
+          Preparing the proposal to send may fail until the workflow includes this stage ID.
         </p>
       ) : null}
 

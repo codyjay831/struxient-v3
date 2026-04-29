@@ -7,7 +7,10 @@ import { listQuoteLocalPacketsForVersion } from "@/server/slice1/reads/quote-loc
 import { listScopePacketsForTenant } from "@/server/slice1/reads/scope-packet-catalog-reads";
 import { loadLineItemExecutionPreviewsForTenant } from "@/server/slice1/reads/line-item-execution-preview-support";
 import { SCOPE_PACKET_LIST_LIMIT_DEFAULTS } from "@/lib/scope-packet-catalog-summary";
-import { loadOfficeHeadScopeAuthoringModel } from "@/server/slice1/reads/load-office-head-scope-authoring-model";
+import {
+  buildLineItemTitlesByLocalPacketId,
+  loadOfficeHeadScopeAuthoringModel,
+} from "@/server/slice1/reads/load-office-head-scope-authoring-model";
 import { derivePacketStageReadiness } from "@/lib/workspace/derive-packet-stage-readiness";
 import {
   buildProposedExecutionFlow,
@@ -36,7 +39,9 @@ import { QuoteWorkspaceShellSummary } from "@/components/quotes/workspace/quote-
 import { QuoteWorkspaceNextActionCard } from "@/components/quotes/workspace/quote-workspace-next-action-card";
 import { QuoteWorkspaceLineItemSummary } from "@/components/quotes/workspace/quote-workspace-line-item-summary";
 import { QuoteWorkspaceLineItemList } from "@/components/quotes/workspace/quote-workspace-line-item-list";
-import { QuoteWorkspaceSimpleBuilder } from "@/components/quotes/workspace/quote-workspace-simple-builder";
+import { QuoteWorkspaceEmbeddedScopeEditor } from "@/components/quotes/workspace/quote-workspace-embedded-scope-editor";
+import { QuoteLocalPacketEditor } from "@/components/quote-scope/quote-local-packet-editor";
+import { OrphanedLineItemsWarning } from "@/components/quote-scope/orphaned-line-items-warning";
 import { QuoteWorkspaceHeadReadiness } from "@/components/quotes/workspace/quote-workspace-head-readiness";
 import { QuoteWorkspaceProposedExecutionFlow } from "@/components/quotes/workspace/quote-workspace-proposed-execution-flow";
 import { QuoteWorkspaceComposePreviewProvider } from "@/components/quotes/workspace/quote-workspace-compose-preview-context";
@@ -259,6 +264,30 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
   const scopeHref = `/quotes/${quoteId}/scope`;
   const headDisplay = headForReadiness ?? head;
 
+  const lineItemTitlesByLocalPacketId =
+    officeAuthoring != null ? buildLineItemTitlesByLocalPacketId(officeAuthoring.dto.orderedLineItems) : {};
+
+  const referencedQuoteLocalPacketIds =
+    officeAuthoring != null
+      ? new Set(
+          officeAuthoring.dto.orderedLineItems
+            .map((l) => l.quoteLocalPacketId)
+            .filter((id): id is string => typeof id === "string" && id.length > 0),
+        )
+      : null;
+  const unattachedQuoteLocalPackets =
+    officeAuthoring != null && referencedQuoteLocalPacketIds != null
+      ? officeAuthoring.localPackets.filter((p) => !referencedQuoteLocalPacketIds.has(p.id))
+      : [];
+
+  const librarySavedPacketOptions =
+    officeAuthoring?.libraryPackets.map((p) => ({
+      id: p.id,
+      packetKey: p.packetKey,
+      displayName: p.displayName,
+      hasDraftRevision: p.hasDraftRevision,
+    })) ?? [];
+
   return (
     <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <QuoteWorkspaceShellSummary
@@ -291,9 +320,8 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
                 Build quote
               </h2>
               <p className="mt-1 max-w-2xl text-sm text-zinc-500">
-                Line items and pricing first, then work plan, send, approval, and start work. Build the quote here in
-                step 1 when you see + Add line item. Open Line & tasks when you need saved work, crew tasks, or
-                technical options.
+                Line items and pricing first, then work plan, send, approval, and start work. Build the quote here:
+                add line items, saved work, and crew tasks in step 1 without leaving the workspace.
               </p>
             </div>
 
@@ -302,7 +330,7 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
                 <QuoteWorkspacePipelineStep
                   step={1}
                   title="Line items & pricing"
-                  hint="Build estimate-only lines here. Add crew tasks later for lines that need work after approval. Line & tasks is for saved work, crew tasks, and technical options when you need them."
+                  hint="Build the quote here. Add line items, saved work, and crew tasks without leaving the workspace."
                   isRecommended={recommendedStep === 1}
                   isQuiet={stepQuiet(1)}
                   titleAside={
@@ -312,10 +340,10 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
                           href={scopeHref}
                           className="inline-block w-fit max-w-full rounded-md border border-zinc-700/80 bg-zinc-900/60 px-2.5 py-1.5 text-xs font-medium text-zinc-300 hover:border-zinc-600 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
                         >
-                          Line & tasks →
+                          Focused Line &amp; tasks view
                         </Link>
                         <span className="max-w-[14rem] text-right text-[10px] leading-tight text-zinc-600">
-                          Saved work, crew tasks, and technical options
+                          Optional full-page layout for dense quotes
                         </span>
                       </div>
                     : undefined
@@ -324,25 +352,66 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
                   <div id="line-items" className="space-y-5">
                     {embedScopeEditorInWorkspace && officeAuthoring ? (
                       <>
-                        <div className="rounded-md border border-zinc-800/90 bg-zinc-950/40 p-3 ring-1 ring-zinc-800/60 sm:p-4">
-                          <QuoteWorkspaceSimpleBuilder
+                        <div className="rounded-md border border-zinc-800/90 bg-zinc-950/40 p-3 ring-1 ring-zinc-800/60 sm:p-4 space-y-4">
+                          {officeAuthoring.grouping.orphanedItems.length > 0 ? (
+                            <OrphanedLineItemsWarning count={officeAuthoring.grouping.orphanedItems.length} />
+                          ) : null}
+                          <QuoteWorkspaceEmbeddedScopeEditor
                             quoteId={quoteId}
                             quoteVersionId={officeAuthoring.dto.quoteVersion.id}
-                            groupsWithItems={officeAuthoring.grouping.groupsWithItems}
-                            orphanedItems={officeAuthoring.grouping.orphanedItems}
-                            headLineItems={ws.headLineItems}
+                            versionNumber={officeAuthoring.dto.quoteVersion.versionNumber}
+                            proposalGroups={officeAuthoring.dto.proposalGroups}
+                            groupedLineItems={officeAuthoring.grouping.groupsWithItems}
+                            availableLibraryPackets={officeAuthoring.libraryPackets}
+                            availableLocalPackets={officeAuthoring.localPackets}
+                            availablePresets={officeAuthoring.presets}
                             executionPreviewByLineItemId={
                               officeAuthoring.executionPreview?.previewsByLineItemId ?? null
                             }
-                            localPackets={officeAuthoring.localPackets}
-                            canAuthorTasks={
-                              officeAuthoring.isEditableHead && canOfficeMutate
+                            fieldWorkAnchorsActive={officeAuthoring.isEditableHead}
+                            canMutate={canOfficeMutate && officeAuthoring.isEditableHead}
+                            editableReason={
+                              !canOfficeMutate
+                                ? "missing_capability"
+                                : !officeAuthoring.isEditableHead
+                                  ? "not_editable_head"
+                                  : "ok"
                             }
-                            pinnedWorkflowVersionId={
-                              officeAuthoring.dto.quoteVersion.pinnedWorkflowVersionId ?? null
-                            }
+                            inlineLocalTaskEditing
+                            pinnedWorkflowVersionId={officeAuthoring.dto.quoteVersion.pinnedWorkflowVersionId}
+                            availableSavedPacketsForFieldWork={librarySavedPacketOptions}
+                            lineItemTitlesByLocalPacketId={lineItemTitlesByLocalPacketId}
+                            workspaceCrewTaskCopy
+                            lineOwnedCustomWork
                           />
                         </div>
+
+                        {officeAuthoring.isEditableHead && unattachedQuoteLocalPackets.length > 0 ? (
+                          <details className="mt-8 rounded-md border border-zinc-800/70 bg-zinc-950/20 pt-2 pb-3 px-3 space-y-3">
+                            <summary className="cursor-pointer text-sm font-medium text-zinc-400 hover:text-zinc-300 list-none [&::-webkit-details-marker]:hidden">
+                              <span className="underline-offset-2 hover:underline">
+                                Unattached custom work ({unattachedQuoteLocalPackets.length})
+                              </span>
+                              <span className="mt-1 block text-[11px] font-normal text-zinc-600 leading-snug">
+                                Crew work that is not linked to any line yet. Attach it from a line’s work setup, or
+                                manage it here.
+                              </span>
+                            </summary>
+                            <div className="pt-2 border-t border-zinc-800/60 space-y-4">
+                              <QuoteLocalPacketEditor
+                                quoteVersionId={officeAuthoring.dto.quoteVersion.id}
+                                isDraft={true}
+                                canOfficeMutate={canOfficeMutate}
+                                initialPackets={unattachedQuoteLocalPackets}
+                                pinnedWorkflowVersionId={officeAuthoring.dto.quoteVersion.pinnedWorkflowVersionId}
+                                lineItemTitlesByLocalPacketId={lineItemTitlesByLocalPacketId}
+                                availableSavedPackets={librarySavedPacketOptions}
+                                sectionTitle="Unattached custom work"
+                                sectionDomId="quote-local-field-work-unattached"
+                              />
+                            </div>
+                          </details>
+                        ) : null}
 
                         <QuoteWorkspaceLineItemSummary
                           versionNumber={head?.versionNumber ?? null}
@@ -367,11 +436,11 @@ export default async function OfficeQuoteWorkspacePage({ params }: PageProps) {
                             href={scopeHref}
                             className="rounded-md bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-500 transition-colors"
                           >
-                            Line & tasks →
+                            Focused Line &amp; tasks view
                           </Link>
                           <span className="text-xs text-zinc-500">
-                            Use Line & tasks for saved work, crew tasks, and technical options. Not required for a
-                            basic quote line.
+                            Optional full-page layout for lines, saved work, and crew tasks when this summary view is
+                            easier to read there.
                           </span>
                         </div>
                       </>
